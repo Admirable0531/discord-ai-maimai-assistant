@@ -1,0 +1,28 @@
+services:
+  # Atri — the maimai Discord AI assistant (Gemini/DeepSeek/Groq chat + tools).
+  # Split out of the maimaiscrape monorepo into its own repo/stack — it was
+  # always a separate Discord application with its own token and SQLite
+  # database, only ever consuming maimaiscrape's API over HTTP. Reaches that
+  # API via the host's LAN IP (MAIMAI_API_URL below) since it's no longer on
+  # maimaiscrape's docker-compose network.
+  ai-bot:
+    build:
+      context: .
+    container_name: atri_bot
+    env_file:
+      - .env
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Kuala_Lumpur
+    volumes:
+      # SQLite lives here (see src/database/client.js) — without this volume
+      # every container recreate wipes saved memories and chat history. If
+      # this directory doesn't exist yet, Compose creates it host-owned on
+      # first run; if the "node" user inside the container (uid 1000) can't
+      # write to it, `chown -R 1000:1000 ./data` on the host.
+      - ./data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
