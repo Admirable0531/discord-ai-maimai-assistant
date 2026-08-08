@@ -1,0 +1,21 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    # Runs directly on the Pi itself via a self-hosted runner registered to
+    # this repo specifically (see maimaiscrape's deploy.yml for the same
+    # pattern and the reasoning: a self-hosted runner polls outward to
+    # GitHub, so nothing needs to be reachable from the internet).
+    runs-on: self-hosted
+    steps:
+      - name: Deploy
+        run: |
+          cd /home/ryan/Desktop/discord-ai-maimai-assistant
+          git pull
+          docker compose down
+          docker compose up -d --build
