@@ -47,14 +47,16 @@ WORKDIR /app
 # over `npm install`.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-# better-sqlite3 ships its linux-arm64 prebuild bundled directly in the npm
-# package (not fetched at install time), and its own binding.js loads that
-# file unconditionally whenever it exists — env vars like
-# npm_config_build_from_source never come into play. That bundled prebuild
-# is built against a newer glibc than bullseye ships (fails with
-# "GLIBC_2.38 not found" at runtime on a Pi), so delete it and compile from
-# source against the toolchain installed above instead.
-RUN rm -f node_modules/better-sqlite3/prebuilds/linux-arm64.node && \
+# better-sqlite3 ships prebuilds bundled directly in the npm package (not
+# fetched at install time), and its own binding.js loads whichever one
+# matches the current arch unconditionally — env vars like
+# npm_config_build_from_source never come into play. Those bundled
+# prebuilds are built against a newer glibc than bullseye ships (confirmed
+# live: "GLIBC_2.38 not found" on a Pi's arm64 prebuild, "GLIBC_2.33 not
+# found" on an x86_64 box's linux-x64 one — not an arm64-specific problem),
+# so delete whichever one shipped and compile from source against the
+# toolchain installed above instead, regardless of architecture.
+RUN rm -f node_modules/better-sqlite3/prebuilds/*.node && \
   (cd node_modules/better-sqlite3 && npx --yes node-gyp rebuild --release)
 
 COPY . .
