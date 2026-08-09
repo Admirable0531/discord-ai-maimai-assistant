@@ -4,7 +4,7 @@ const declaration = {
     name: 'list_maimai_remywiki_pages',
     description:
         'Get SilentBlue.RemyWiki (silentblue.remywiki.com) organized by page type, with a ready-to-use URL for ' +
-        'each — call this before guessing a URL on that wiki (its exact page-title conventions aren\'t ' +
+        "each — call this before guessing a URL on that wiki (its exact page-title conventions aren't " +
         'guessable, e.g. some versions have no page at all). Its strength is per-version release notes: what ' +
         'changed, new areas/maps, difficulty changes, and complete songlists for a specific game version — ' +
         'generally more detailed on this than the Fandom wiki for that specific purpose. Coverage starts ' +
@@ -33,7 +33,9 @@ async function execute(args) {
     }
 
     const filter = typeof args?.category === 'string' ? args.category.trim().toLowerCase() : '';
-    const filtered = filter ? categories.filter((c) => c.label.toLowerCase().includes(filter)) : categories;
+    const filtered = filter
+        ? categories.filter((c) => c.label.toLowerCase().includes(filter))
+        : categories;
 
     if (filter && filtered.length === 0) {
         return {

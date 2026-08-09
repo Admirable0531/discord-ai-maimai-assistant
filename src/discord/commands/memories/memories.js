@@ -3,11 +3,16 @@ const { listMemories } = require('../../../database/repositories/memoryRepositor
 const { isAllowed } = require('../../../permissions/permissionStore');
 
 module.exports = {
-    data: new SlashCommandBuilder().setName('memories').setDescription('List everything I remember about you'),
+    data: new SlashCommandBuilder()
+        .setName('memories')
+        .setDescription('List everything I remember about you'),
 
     async execute(interaction) {
         if (!isAllowed(interaction.user.id)) {
-            await interaction.reply({ content: "You don't have permission to use this bot.", flags: MessageFlags.Ephemeral });
+            await interaction.reply({
+                content: "You don't have permission to use this bot.",
+                flags: MessageFlags.Ephemeral,
+            });
             return;
         }
 
@@ -20,7 +25,9 @@ module.exports = {
             return;
         }
 
-        const lines = memories.map((m) => `• **${m.key}** — ${m.value}${m.category ? ` _(${m.category})_` : ''}`);
+        const lines = memories.map(
+            (m) => `• **${m.key}** — ${m.value}${m.category ? ` _(${m.category})_` : ''}`
+        );
         await interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
     },
 };

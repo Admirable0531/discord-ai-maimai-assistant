@@ -67,7 +67,8 @@ function findMinAchvForRating(level, targetRating) {
     const ranksLowToHigh = [...RANK_DEFINITIONS].sort((a, b) => a.minAchv - b.minAchv);
     for (let i = 0; i < ranksLowToHigh.length; i++) {
         const rank = ranksLowToHigh[i];
-        const nextMinAchv = i + 1 < ranksLowToHigh.length ? ranksLowToHigh[i + 1].minAchv : RATING_CAP_ACHV;
+        const nextMinAchv =
+            i + 1 < ranksLowToHigh.length ? ranksLowToHigh[i + 1].minAchv : RATING_CAP_ACHV;
         const bracketTopAchv = Math.min(nextMinAchv, RATING_CAP_ACHV);
         const maxRatingInBracket = Math.floor(level * bracketTopAchv * rank.factor);
 
@@ -81,4 +82,10 @@ function findMinAchvForRating(level, targetRating) {
     return null; // not reachable even at 100.5%
 }
 
-module.exports = { RANK_DEFINITIONS, RATING_CAP_ACHV, getRankByAchievement, getSongRating, findMinAchvForRating };
+module.exports = {
+    RANK_DEFINITIONS,
+    RATING_CAP_ACHV,
+    getRankByAchievement,
+    getSongRating,
+    findMinAchvForRating,
+};

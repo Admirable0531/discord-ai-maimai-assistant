@@ -8,10 +8,29 @@ const cheerio = require('cheerio');
 // constant/constant.js hardcoded narrowly (only 14.0-15.0, values 21-23) —
 // scraped here for the full 1-15 range instead of guessing the pattern.
 const LEVEL_BUCKETS = {
-    '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6,
-    '7': 7, '7+': 8, '8': 9, '8+': 10, '9': 11, '9+': 12,
-    '10': 13, '10+': 14, '11': 15, '11+': 16, '12': 17, '12+': 18,
-    '13': 19, '13+': 20, '14': 21, '14+': 22, '15': 23,
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6,
+    7: 7,
+    '7+': 8,
+    8: 9,
+    '8+': 10,
+    9: 11,
+    '9+': 12,
+    10: 13,
+    '10+': 14,
+    11: 15,
+    '11+': 16,
+    12: 17,
+    '12+': 18,
+    13: 19,
+    '13+': 20,
+    14: 21,
+    '14+': 22,
+    15: 23,
 };
 
 /** Maps an exact chart constant (e.g. 14.3) to the displayed-level bucket the friendLevelVs page needs. */
@@ -28,7 +47,7 @@ function constantToLevelBucket(constant) {
 function normalizeName(s) {
     return (s || '')
         .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
-        .replace(/　/g, ' ')
+        .replace(/　/g, ' ') // eslint-disable-line no-irregular-whitespace -- intentional: full-width space U+3000
         .trim()
         .toLowerCase();
 }
@@ -83,4 +102,10 @@ function parseLevelVsEntries(html) {
     return entries;
 }
 
-module.exports = { LEVEL_BUCKETS, constantToLevelBucket, normalizeName, parseFriendListPage, parseLevelVsEntries };
+module.exports = {
+    LEVEL_BUCKETS,
+    constantToLevelBucket,
+    normalizeName,
+    parseFriendListPage,
+    parseLevelVsEntries,
+};

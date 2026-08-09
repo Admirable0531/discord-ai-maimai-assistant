@@ -11,7 +11,10 @@ const declaration = {
     parametersJsonSchema: {
         type: 'object',
         properties: {
-            limit: { type: 'integer', description: 'How many top circles to return (default 20, max 100).' },
+            limit: {
+                type: 'integer',
+                description: 'How many top circles to return (default 20, max 100).',
+            },
         },
     },
 };

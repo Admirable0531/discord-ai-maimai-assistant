@@ -9,10 +9,16 @@ const logger = require('../utils/logger');
 // for its Puppeteer browser, so resolve the system Chromium apt installs the
 // same way that file does, rather than relying on Playwright's downloader.
 function resolveExecutablePath() {
-    let executablePath = process.env.CHROME_EXECUTABLE_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-    const isArmLinux = process.platform === 'linux' && (process.arch === 'arm' || process.arch === 'arm64');
+    let executablePath =
+        process.env.CHROME_EXECUTABLE_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    const isArmLinux =
+        process.platform === 'linux' && (process.arch === 'arm' || process.arch === 'arm64');
     if (!executablePath && isArmLinux) {
-        const candidates = ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'];
+        const candidates = [
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome',
+        ];
         executablePath = candidates.find((p) => fs.existsSync(p));
     }
     return executablePath;
@@ -60,7 +66,9 @@ function scheduleIdleClose() {
     if (IDLE_TIMEOUT_MS <= 0) return;
     clearIdleTimer();
     idleTimer = setTimeout(() => {
-        closeSession().catch((err) => logger.error('web', 'Error auto-closing idle maimai account session', err));
+        closeSession().catch((err) =>
+            logger.error('web', 'Error auto-closing idle maimai account session', err)
+        );
     }, IDLE_TIMEOUT_MS);
     idleTimer.unref?.();
 }
@@ -91,7 +99,10 @@ async function isErrorPage(page) {
 // (every page load after it fails identically until a fresh login), not
 // just the request itself — block them outright rather than relying on
 // isErrorPage's relogin-and-retry to recover after the fact.
-const BLOCKED_PATHS = new Set(['/maimai-mobile/home/ratingTargetMusic/', '/maimai-mobile/home/serialcode/']);
+const BLOCKED_PATHS = new Set([
+    '/maimai-mobile/home/ratingTargetMusic/',
+    '/maimai-mobile/home/serialcode/',
+]);
 
 async function clickAgreeCheckbox(page) {
     const boxes = page.locator('input.c-form__checkbox.js-agree');
@@ -143,7 +154,9 @@ async function login(page) {
             await pwdField.fill(PASSWORD, { timeout: 20000 });
         } catch {
             await page.evaluate((value) => {
-                const input = document.querySelector('#password') || document.querySelector('input[type="password"]');
+                const input =
+                    document.querySelector('#password') ||
+                    document.querySelector('input[type="password"]');
                 if (input) input.value = value;
             }, PASSWORD);
         }
@@ -151,7 +164,9 @@ async function login(page) {
 
     if (onGateway) {
         await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }).catch(() => {}),
+            page
+                .waitForNavigation({ waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS })
+                .catch(() => {}),
             page.evaluate(() => {
                 const form =
                     document.querySelector('form[name="loginForm"]') ||
@@ -164,14 +179,18 @@ async function login(page) {
         const loginBtn = page.locator('.c-button--login').first();
         if ((await loginBtn.count().catch(() => 0)) > 0) {
             await Promise.all([
-                page.waitForNavigation({ waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }).catch(() => {}),
+                page
+                    .waitForNavigation({ waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS })
+                    .catch(() => {}),
                 loginBtn.click(),
             ]);
         }
     }
 
     if (await isErrorPage(page)) {
-        throw new Error('SEGA login failed (error page returned) — check MAIMAI_LOGIN_SID/MAIMAI_LOGIN_PASSWORD.');
+        throw new Error(
+            'SEGA login failed (error page returned) — check MAIMAI_LOGIN_SID/MAIMAI_LOGIN_PASSWORD.'
+        );
     }
 }
 
@@ -180,7 +199,8 @@ function getContext() {
     if (!contextPromise) {
         contextPromise = (async () => {
             const executablePath = resolveExecutablePath();
-            if (executablePath) logger.info('web', 'maimai account session using browser', { executablePath });
+            if (executablePath)
+                logger.info('web', 'maimai account session using browser', { executablePath });
             const browser = await chromium.launch({
                 headless: true,
                 args: ['--disable-dev-shm-usage'],
@@ -208,7 +228,10 @@ async function closeSession() {
     const context = await contextPromise.catch(() => null);
     contextPromise = null;
     if (context) {
-        await context.browser()?.close().catch((err) => logger.error('web', 'Error closing maimai account session', err));
+        await context
+            .browser()
+            ?.close()
+            .catch((err) => logger.error('web', 'Error closing maimai account session', err));
     }
 }
 
@@ -224,7 +247,9 @@ async function fetchAccountPage(path) {
         throw new Error(`Only paths under ${ALLOWED_PATH_PREFIX} are allowed.`);
     }
     if (BLOCKED_PATHS.has(path)) {
-        throw new Error(`${path} is known to break the login session for every page after it — not fetchable.`);
+        throw new Error(
+            `${path} is known to break the login session for every page after it — not fetchable.`
+        );
     }
     const url = new URL(path, HOME_URL).toString();
     await assertSafeUrl(url); // defense in depth even though the host is fixed
@@ -233,7 +258,10 @@ async function fetchAccountPage(path) {
         const context = await getContext();
         const page = await context.newPage();
         try {
-            const response = await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
+            const response = await page.goto(url, {
+                waitUntil: 'networkidle',
+                timeout: NAV_TIMEOUT_MS,
+            });
             if (!response) throw new Error('Navigation failed (no response).');
             const loggedOut = await isErrorPage(page);
             const html = await page.content();
@@ -250,15 +278,25 @@ async function fetchAccountPage(path) {
         // Session likely expired mid-conversation — relogin once and retry
         // this single page load, rather than surfacing a confusing error
         // for something a fresh login would silently fix.
-        logger.warn('web', 'maimai account session looked logged-out, relogging in and retrying once');
+        logger.warn(
+            'web',
+            'maimai account session looked logged-out, relogging in and retrying once'
+        );
         await closeSession();
         result = await load();
         if (result.loggedOut) {
-            throw new Error('Still logged out after a fresh login attempt — SEGA may have rejected the credentials.');
+            throw new Error(
+                'Still logged out after a fresh login attempt — SEGA may have rejected the credentials.'
+            );
         }
     }
 
     return { html: result.html, finalUrl: result.finalUrl };
 }
 
-module.exports = { fetchAccountPage, closeSession, MAIMAI_ACCOUNT_HOST, MAIMAI_ACCOUNT_PATH_PREFIX };
+module.exports = {
+    fetchAccountPage,
+    closeSession,
+    MAIMAI_ACCOUNT_HOST,
+    MAIMAI_ACCOUNT_PATH_PREFIX,
+};

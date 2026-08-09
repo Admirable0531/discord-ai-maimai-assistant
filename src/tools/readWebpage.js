@@ -8,14 +8,17 @@ const declaration = {
         'this returns success: true — on failure, say plainly that the page could not be accessed rather than ' +
         'guessing or substituting a different source. Large pages come back as section previews instead of ' +
         'full text (large_page: true) — call read_webpage_sections with the ids of the sections you actually ' +
-        "need. Also returns every image on the page (alt text + URL) — useful for \"show me X\" requests where " +
+        'need. Also returns every image on the page (alt text + URL) — useful for "show me X" requests where ' +
         'the page has a picture (e.g. a maimai collectible); pick the one whose alt text matches what was asked ' +
         'and include its exact URL as plain text in your reply so Discord embeds it — do not re-host, describe-' +
         'only, or invent an image URL.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
-            url: { type: 'string', description: 'The exact URL to fetch (must start with http:// or https://).' },
+            url: {
+                type: 'string',
+                description: 'The exact URL to fetch (must start with http:// or https://).',
+            },
         },
         required: ['url'],
     },

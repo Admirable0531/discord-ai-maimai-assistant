@@ -16,7 +16,8 @@ const declaration = {
             section_ids: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'Section ids from read_webpage\'s sections list, e.g. ["section-2", "section-3"].',
+                description:
+                    'Section ids from read_webpage\'s sections list, e.g. ["section-2", "section-3"].',
             },
         },
         required: ['url', 'section_ids'],
@@ -47,7 +48,8 @@ async function execute(args) {
         const missing = [];
         for (const id of requested) {
             const section = page.sections.find((s) => s.id === id);
-            if (section) found.push({ id: section.id, heading: section.heading, text: section.text });
+            if (section)
+                found.push({ id: section.id, heading: section.heading, text: section.text });
             else missing.push(id);
         }
 

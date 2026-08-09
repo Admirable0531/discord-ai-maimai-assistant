@@ -7,10 +7,16 @@ const logger = require('../utils/logger');
 // the confirmed live error. Kept as a separate copy rather than a shared
 // import since this file has no other dependency on that module.
 function resolveExecutablePath() {
-    let executablePath = process.env.CHROME_EXECUTABLE_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-    const isArmLinux = process.platform === 'linux' && (process.arch === 'arm' || process.arch === 'arm64');
+    let executablePath =
+        process.env.CHROME_EXECUTABLE_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    const isArmLinux =
+        process.platform === 'linux' && (process.arch === 'arm' || process.arch === 'arm64');
     if (!executablePath && isArmLinux) {
-        const candidates = ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'];
+        const candidates = [
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome',
+        ];
         executablePath = candidates.find((p) => fs.existsSync(p));
     }
     return executablePath;
@@ -40,7 +46,9 @@ function scheduleIdleClose() {
     if (IDLE_TIMEOUT_MS <= 0) return;
     clearIdleTimer();
     idleTimer = setTimeout(() => {
-        closeBrowser().catch((err) => logger.error('web', 'Error auto-closing idle Playwright browser', err));
+        closeBrowser().catch((err) =>
+            logger.error('web', 'Error auto-closing idle Playwright browser', err)
+        );
     }, IDLE_TIMEOUT_MS);
     idleTimer.unref?.(); // don't keep the process alive just for this timer
 }
@@ -90,9 +98,15 @@ async function fetchRendered(url) {
     });
 
     try {
-        const response = await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
+        const response = await page.goto(url, {
+            waitUntil: 'networkidle',
+            timeout: NAV_TIMEOUT_MS,
+        });
         if (!response) throw new Error('Navigation failed (no response).');
-        if (!response.ok()) throw new Error(`HTTP ${response.status()}: ${response.statusText() || 'request failed'}`);
+        if (!response.ok())
+            throw new Error(
+                `HTTP ${response.status()}: ${response.statusText() || 'request failed'}`
+            );
 
         const html = await page.content();
         return { html, finalUrl: page.url() };

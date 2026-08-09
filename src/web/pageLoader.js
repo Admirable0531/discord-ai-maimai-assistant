@@ -5,7 +5,11 @@ const { splitIntoSections } = require('./sectionSplitter');
 const { webpageCache, maimaiAccountCache } = require('./cache');
 const { getSiteConfig } = require('./siteConfig');
 const { parseFandomUrl, fetchFandomArticle } = require('./fandomApi');
-const { fetchAccountPage, MAIMAI_ACCOUNT_HOST, MAIMAI_ACCOUNT_PATH_PREFIX } = require('./maimaiAccountSession');
+const {
+    fetchAccountPage,
+    MAIMAI_ACCOUNT_HOST,
+    MAIMAI_ACCOUNT_PATH_PREFIX,
+} = require('./maimaiAccountSession');
 const logger = require('../utils/logger');
 
 // Above this, read_webpage returns section previews instead of full text.
@@ -56,7 +60,9 @@ async function loadPage(requestedUrl) {
 
     const siteConfig = getSiteConfig(hostnameOf(requestedUrl));
     if (siteConfig.blocked) {
-        throw new Error(siteConfig.reason || `${hostnameOf(requestedUrl)} is known to block automated access.`);
+        throw new Error(
+            siteConfig.reason || `${hostnameOf(requestedUrl)} is known to block automated access.`
+        );
     }
 
     let html;
@@ -87,7 +93,8 @@ async function loadPage(requestedUrl) {
         html != null &&
         meta.text.trim().length < MIN_STATIC_TEXT_CHARS &&
         Buffer.byteLength(html, 'utf8') >= MIN_HTML_BYTES_FOR_FALLBACK;
-    const shouldTryPlaywright = staticFetchError !== null || looksLikeJsShell || siteConfig.forcePlaywright === true;
+    const shouldTryPlaywright =
+        staticFetchError !== null || looksLikeJsShell || siteConfig.forcePlaywright === true;
 
     if (PLAYWRIGHT_FALLBACK_ENABLED && shouldTryPlaywright) {
         logger.info(
@@ -178,7 +185,9 @@ async function loadMaimaiAccountPage(requestedUrl) {
 
     const path = new URL(requestedUrl).pathname;
     if (!path.startsWith(MAIMAI_ACCOUNT_PATH_PREFIX)) {
-        throw new Error(`Only paths under ${MAIMAI_ACCOUNT_PATH_PREFIX} are supported on maimaidx-eng.com.`);
+        throw new Error(
+            `Only paths under ${MAIMAI_ACCOUNT_PATH_PREFIX} are supported on maimaidx-eng.com.`
+        );
     }
 
     const { html, finalUrl } = await fetchAccountPage(path);

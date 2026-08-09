@@ -6,11 +6,16 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('forget')
         .setDescription('Delete a saved memory')
-        .addStringOption((opt) => opt.setName('key').setDescription('The memory key to delete').setRequired(true)),
+        .addStringOption((opt) =>
+            opt.setName('key').setDescription('The memory key to delete').setRequired(true)
+        ),
 
     async execute(interaction) {
         if (!isAllowed(interaction.user.id)) {
-            await interaction.reply({ content: "You don't have permission to use this bot.", flags: MessageFlags.Ephemeral });
+            await interaction.reply({
+                content: "You don't have permission to use this bot.",
+                flags: MessageFlags.Ephemeral,
+            });
             return;
         }
 

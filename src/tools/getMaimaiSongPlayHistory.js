@@ -9,16 +9,19 @@ const declaration = {
         "Look up this tracked account's per-difficulty play count, last-played date, best achievement %, and " +
         'real clear-type badges for one specific song, by name — is_ap/is_ap_plus, is_fc/is_fc_plus, is_fs/' +
         'is_fs_plus/is_fsd (Full Sync tiers), is_sync, plus the raw badges array (every badge icon this play ' +
-        'actually has, in case something isn\'t covered by those flags). Read directly off the actual badge ' +
-        "icons, not guessed from the percentage — this is the only reliable way to know if a specific play was " +
-        "truly an AP: a percentage in the AP-range does NOT prove it was one (a non-Perfect regular-note " +
+        "actually has, in case something isn't covered by those flags). Read directly off the actual badge " +
+        'icons, not guessed from the percentage — this is the only reliable way to know if a specific play was ' +
+        'truly an AP: a percentage in the AP-range does NOT prove it was one (a non-Perfect regular-note ' +
         'judgment can cost less than the break bonus adds back, landing a non-AP play in that same range), so ' +
         'always check is_ap here rather than inferring AP status from achievement_percent alone, for this ' +
-        "tracked account. It only finds a chart the account has actually played at least once.",
+        'tracked account. It only finds a chart the account has actually played at least once.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
-            song_name: { type: 'string', description: 'The song title to look up (partial match is fine).' },
+            song_name: {
+                type: 'string',
+                description: 'The song title to look up (partial match is fine).',
+            },
         },
         required: ['song_name'],
     },
@@ -90,12 +93,19 @@ async function execute(args) {
         const song = findSongInLocalData(songData, songName);
         if (!song) return { success: false, error: `No song matching "${songName}" found.` };
         if (song.ambiguous) {
-            return { success: false, error: `Multiple songs match "${songName}" — be more specific.`, matches: song.ambiguous };
+            return {
+                success: false,
+                error: `Multiple songs match "${songName}" — be more specific.`,
+                matches: song.ambiguous,
+            };
         }
 
         const idx = await findPlayedSongIdx(song);
         if (!idx) {
-            return { success: false, error: `"${song.title}" doesn't appear in this account's play history — it hasn't been played (on any difficulty).` };
+            return {
+                success: false,
+                error: `"${song.title}" doesn't appear in this account's play history — it hasn't been played (on any difficulty).`,
+            };
         }
 
         const { html: detailHtml, finalUrl } = await fetchAccountPage(
@@ -103,7 +113,10 @@ async function execute(args) {
         );
         const difficulties = parseDifficultyBlocks(detailHtml);
         if (difficulties.length === 0) {
-            return { success: false, error: `Fetched "${song.title}"'s page but couldn't parse any play data from it — the session may have hiccupped, try again.` };
+            return {
+                success: false,
+                error: `Fetched "${song.title}"'s page but couldn't parse any play data from it — the session may have hiccupped, try again.`,
+            };
         }
 
         return {

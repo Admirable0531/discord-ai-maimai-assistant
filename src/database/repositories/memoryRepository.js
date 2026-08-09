@@ -8,8 +8,10 @@ const MAX_VALUE_LENGTH = 2000;
 function validate(key, value) {
     if (!key || !key.trim()) return 'Memory key cannot be empty.';
     if (!value || !value.trim()) return 'Memory value cannot be empty.';
-    if (key.length > MAX_KEY_LENGTH) return `Memory key is too long (max ${MAX_KEY_LENGTH} characters).`;
-    if (value.length > MAX_VALUE_LENGTH) return `Memory value is too long (max ${MAX_VALUE_LENGTH} characters).`;
+    if (key.length > MAX_KEY_LENGTH)
+        return `Memory key is too long (max ${MAX_KEY_LENGTH} characters).`;
+    if (value.length > MAX_VALUE_LENGTH)
+        return `Memory value is too long (max ${MAX_VALUE_LENGTH} characters).`;
     return null;
 }
 
@@ -70,14 +72,22 @@ function searchMemories(userId, query, limit = 5) {
               .where(
                   and(
                       eq(memories.userId, userId),
-                      or(like(memories.memoryKey, `%${trimmedQuery}%`), like(memories.memoryValue, `%${trimmedQuery}%`))
+                      or(
+                          like(memories.memoryKey, `%${trimmedQuery}%`),
+                          like(memories.memoryValue, `%${trimmedQuery}%`)
+                      )
                   )
               )
               .limit(limit)
               .all()
         : db.select().from(memories).where(eq(memories.userId, userId)).limit(limit).all();
 
-    return rows.map((row) => ({ id: row.id, key: row.memoryKey, value: row.memoryValue, category: row.category }));
+    return rows.map((row) => ({
+        id: row.id,
+        key: row.memoryKey,
+        value: row.memoryValue,
+        category: row.category,
+    }));
 }
 
 function listMemories(userId, limit = 25) {

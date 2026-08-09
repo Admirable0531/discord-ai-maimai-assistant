@@ -38,7 +38,12 @@ function categorize(titles) {
             regionalVariants.push({ title, url: pageUrl(title) });
         } else if (withoutNamespace.includes('/')) {
             versionSubpages.push({ title, url: pageUrl(title) });
-        } else if (/^(1st|PLUS|Splash|UNiVERSE|FESTiVAL|BUDDiES|PRiSM|CiRCLE)( PLUS)?$/.test(withoutNamespace) || /^\d{4}/.test(withoutNamespace)) {
+        } else if (
+            /^(1st|PLUS|Splash|UNiVERSE|FESTiVAL|BUDDiES|PRiSM|CiRCLE)( PLUS)?$/.test(
+                withoutNamespace
+            ) ||
+            /^\d{4}/.test(withoutNamespace)
+        ) {
             versionPages.push({ title, url: pageUrl(title) });
         } else {
             topicPages.push({ title, url: pageUrl(title) });
@@ -52,7 +57,10 @@ function categorize(titles) {
             pages: versionSubpages,
         },
         { label: 'General topic pages (not version-specific)', pages: topicPages },
-        { label: 'Regional variant pages (Asia/China release differences)', pages: regionalVariants },
+        {
+            label: 'Regional variant pages (Asia/China release differences)',
+            pages: regionalVariants,
+        },
     ].filter((c) => c.pages.length > 0);
 }
 
@@ -75,15 +83,22 @@ async function loadRemyWikiIndex() {
         try {
             response = await fetch(`${API_BASE}?${params.toString()}`, {
                 signal: AbortSignal.timeout(TIMEOUT_MS),
-                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; discord-ai-assistant/1.0)', Accept: 'application/json' },
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; discord-ai-assistant/1.0)',
+                    Accept: 'application/json',
+                },
             });
         } catch (err) {
             throw new Error(`Could not load the RemyWiki page index: ${err.message}`);
         }
-        if (!response.ok) throw new Error(`Could not load the RemyWiki page index: HTTP ${response.status}`);
+        if (!response.ok)
+            throw new Error(`Could not load the RemyWiki page index: HTTP ${response.status}`);
 
         const body = await response.json();
-        if (body.error) throw new Error(`Could not load the RemyWiki page index: ${body.error.info || body.error.code}`);
+        if (body.error)
+            throw new Error(
+                `Could not load the RemyWiki page index: ${body.error.info || body.error.code}`
+            );
 
         for (const p of body.query?.allpages || []) titles.push(p.title);
         apcontinue = body.continue?.apcontinue;

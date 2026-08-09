@@ -83,4 +83,11 @@ function findApBreakdown(noteCounts, targetPercent) {
     return null;
 }
 
-module.exports = { BASE_SCORE_PER_TYPE, BREAK_TIERS, AP_TIER_COUNT, totalBaseScore, truncationWindow, findApBreakdown };
+module.exports = {
+    BASE_SCORE_PER_TYPE,
+    BREAK_TIERS,
+    AP_TIER_COUNT,
+    totalBaseScore,
+    truncationWindow,
+    findApBreakdown,
+};

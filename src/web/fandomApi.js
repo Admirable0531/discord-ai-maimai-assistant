@@ -51,7 +51,9 @@ function parseFandomUrl(rawUrl) {
 async function fetchFandomArticle(rawUrl) {
     const parsed = parseFandomUrl(rawUrl);
     if (!parsed) {
-        throw new Error('Not a recognizable Fandom wiki article URL (expected /[lang/]wiki/PAGE_TITLE).');
+        throw new Error(
+            'Not a recognizable Fandom wiki article URL (expected /[lang/]wiki/PAGE_TITLE).'
+        );
     }
 
     const apiBase = `https://${parsed.hostname}/${parsed.lang ? `${parsed.lang}/` : ''}api.php`;

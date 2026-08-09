@@ -24,7 +24,7 @@ const REQUEST_MORE_TOOL_CALLS = 'request_more_tool_calls';
 const requestMoreToolCallsDeclaration = {
     name: REQUEST_MORE_TOOL_CALLS,
     description:
-        "Ask for more tool-call budget for this message. Each Discord message has a limited number of tool " +
+        'Ask for more tool-call budget for this message. Each Discord message has a limited number of tool ' +
         'calls; you get a low-budget warning in the tool results once you are close to running out. Call this ' +
         'ONLY if you are near/at that limit and genuinely still need more steps to finish (e.g. you are midway ' +
         'through reading several pages or synthesizing a large table) — not speculatively, and not on turn one.',
@@ -44,14 +44,21 @@ const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 2048;
 // a live key — if responses feel truncated or tool picks get worse, raise
 // this (or set to -1) before assuming something else is wrong.
 const THINKING_BUDGET =
-    process.env.GEMINI_THINKING_BUDGET !== undefined ? Number(process.env.GEMINI_THINKING_BUDGET) : 1024;
+    process.env.GEMINI_THINKING_BUDGET !== undefined
+        ? Number(process.env.GEMINI_THINKING_BUDGET)
+        : 1024;
 
 // The real tools plus the budget-extension escape hatch, declared together
 // so the function-call schema Gemini sees stays identical across every
 // request in a conversation (mixing tool sets mid-conversation is untested
 // and not worth risking).
 const TOOLS_FOR_REQUEST = [
-    { functionDeclarations: [...GEMINI_TOOLS[0].functionDeclarations, requestMoreToolCallsDeclaration] },
+    {
+        functionDeclarations: [
+            ...GEMINI_TOOLS[0].functionDeclarations,
+            requestMoreToolCallsDeclaration,
+        ],
+    },
 ];
 
 /**
@@ -119,8 +126,12 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             const text = extractText(response);
             if (!text) {
                 const finishReason = response.candidates?.[0]?.finishReason;
-                logger.warn('agent', 'Gemini returned no text and no function calls', { finishReason });
-                throw new Error(`Gemini returned an empty response (finishReason: ${finishReason ?? 'unknown'})`);
+                logger.warn('agent', 'Gemini returned no text and no function calls', {
+                    finishReason,
+                });
+                throw new Error(
+                    `Gemini returned an empty response (finishReason: ${finishReason ?? 'unknown'})`
+                );
             }
             return text;
         }
@@ -134,7 +145,9 @@ async function generateReply(history, userMessage, { userId, guildId }) {
         // before appending our results — contents must alternate user/model,
         // and Gemini needs to see its own call before the matching response.
         const modelContent = response.candidates?.[0]?.content;
-        contents.push(modelContent ?? { role: 'model', parts: calls.map((call) => ({ functionCall: call })) });
+        contents.push(
+            modelContent ?? { role: 'model', parts: calls.map((call) => ({ functionCall: call })) }
+        );
 
         // Parallel — Gemini can request multiple calls in one turn (e.g.
         // search_memory + search_web together), and search_web/read_webpage
@@ -151,11 +164,23 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                         };
                     } else {
                         const before = maxIterations;
-                        maxIterations = Math.min(HARD_MAX_TOOL_ITERATIONS, maxIterations + TOOL_BUDGET_EXTEND_STEP);
-                        logger.info('agent', `Gemini requested more tool-call budget: ${before} -> ${maxIterations}`);
+                        maxIterations = Math.min(
+                            HARD_MAX_TOOL_ITERATIONS,
+                            maxIterations + TOOL_BUDGET_EXTEND_STEP
+                        );
+                        logger.info(
+                            'agent',
+                            `Gemini requested more tool-call budget: ${before} -> ${maxIterations}`
+                        );
                         result = { success: true, granted: true, new_budget: maxIterations };
                     }
-                    return { functionResponse: { name: call.name, ...(call.id ? { id: call.id } : {}), response: result } };
+                    return {
+                        functionResponse: {
+                            name: call.name,
+                            ...(call.id ? { id: call.id } : {}),
+                            response: result,
+                        },
+                    };
                 }
 
                 const executor = executors[call.name];

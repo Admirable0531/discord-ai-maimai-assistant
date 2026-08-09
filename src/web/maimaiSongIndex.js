@@ -29,7 +29,8 @@ function levelToBucketLabel(levelValue) {
  */
 async function findPlayedSongIdx(song) {
     const orderedSheets = [...song.sheets].sort(
-        (a, b) => DIFFICULTY_PRIORITY.indexOf(a.difficulty) - DIFFICULTY_PRIORITY.indexOf(b.difficulty)
+        (a, b) =>
+            DIFFICULTY_PRIORITY.indexOf(a.difficulty) - DIFFICULTY_PRIORITY.indexOf(b.difficulty)
     );
     const checkedBuckets = new Set();
 
@@ -40,7 +41,9 @@ async function findPlayedSongIdx(song) {
         if (checkedBuckets.has(bucket)) continue;
         checkedBuckets.add(bucket);
 
-        const { html } = await fetchAccountPage(`/maimai-mobile/record/musicLevel/search/?level=${encodeURIComponent(bucket)}`);
+        const { html } = await fetchAccountPage(
+            `/maimai-mobile/record/musicLevel/search/?level=${encodeURIComponent(bucket)}`
+        );
         const $ = cheerio.load(html);
         let foundIdx = null;
         $('[class*="_score_back"]').each((_, block) => {

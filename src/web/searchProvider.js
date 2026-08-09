@@ -12,7 +12,11 @@ const MAX_RESULTS_CAP = 5;
  */
 async function searchWeb({ query, allowedDomains = [], maxResults = 5 }) {
     const cappedMaxResults = Math.min(Math.max(Number(maxResults) || 5, 1), MAX_RESULTS_CAP);
-    const cacheKey = JSON.stringify({ query, allowedDomains: [...allowedDomains].sort(), maxResults: cappedMaxResults });
+    const cacheKey = JSON.stringify({
+        query,
+        allowedDomains: [...allowedDomains].sort(),
+        maxResults: cappedMaxResults,
+    });
     const cached = searchCache.get(cacheKey);
     if (cached) return cached;
 

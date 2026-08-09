@@ -1,6 +1,7 @@
 const cheerio = require('cheerio');
 
-const NOISE_SELECTORS = 'script, style, noscript, nav, footer, header, iframe, svg, [aria-hidden="true"]';
+const NOISE_SELECTORS =
+    'script, style, noscript, nav, footer, header, iframe, svg, [aria-hidden="true"]';
 // Real collection pages (frames/avatars/nameplates on the maimai Fandom
 // wiki) run 139-198 <img> tags each — confirmed live. Capped well above
 // that so those pages aren't silently truncated, while still bounding a

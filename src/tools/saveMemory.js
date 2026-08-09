@@ -9,8 +9,14 @@ const declaration = {
         type: 'object',
         properties: {
             key: { type: 'string', description: 'Short label for the memory, e.g. a nickname.' },
-            value: { type: 'string', description: 'What the key refers to / the fact to remember.' },
-            category: { type: 'string', description: 'Optional short category, e.g. "song_nickname".' },
+            value: {
+                type: 'string',
+                description: 'What the key refers to / the fact to remember.',
+            },
+            category: {
+                type: 'string',
+                description: 'Optional short category, e.g. "song_nickname".',
+            },
         },
         required: ['key', 'value'],
     },

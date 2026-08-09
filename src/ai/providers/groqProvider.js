@@ -41,7 +41,7 @@ const OPENAI_TOOLS = [
         function: {
             name: REQUEST_MORE_TOOL_CALLS,
             description:
-                "Ask for more tool-call budget for this message. Each Discord message has a limited number of tool " +
+                'Ask for more tool-call budget for this message. Each Discord message has a limited number of tool ' +
                 'calls; you get a low-budget warning in the tool results once you are close to running out. Call this ' +
                 'ONLY if you are near/at that limit and genuinely still need more steps to finish (e.g. you are midway ' +
                 'through reading several pages or synthesizing a large table) — not speculatively, and not on turn one.',
@@ -113,7 +113,9 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             if (!text) {
                 const finishReason = data.choices?.[0]?.finish_reason;
                 logger.warn('agent', 'Groq returned no text and no tool calls', { finishReason });
-                throw new Error(`Groq returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`);
+                throw new Error(
+                    `Groq returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`
+                );
             }
             return text;
         }
@@ -145,8 +147,14 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                         };
                     } else {
                         const before = maxIterations;
-                        maxIterations = Math.min(HARD_MAX_TOOL_ITERATIONS, maxIterations + TOOL_BUDGET_EXTEND_STEP);
-                        logger.info('agent', `Groq requested more tool-call budget: ${before} -> ${maxIterations}`);
+                        maxIterations = Math.min(
+                            HARD_MAX_TOOL_ITERATIONS,
+                            maxIterations + TOOL_BUDGET_EXTEND_STEP
+                        );
+                        logger.info(
+                            'agent',
+                            `Groq requested more tool-call budget: ${before} -> ${maxIterations}`
+                        );
                         result = { success: true, granted: true, new_budget: maxIterations };
                     }
                 } else {

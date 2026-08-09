@@ -17,7 +17,9 @@ const PRIMARY_NAME = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
 // Empty string disables fallback entirely (AI_PROVIDER_FALLBACK=""), e.g. if
 // you want DeepSeek-only behavior instead of silently degrading to Gemini.
 const FALLBACK_NAME =
-    process.env.AI_PROVIDER_FALLBACK !== undefined ? process.env.AI_PROVIDER_FALLBACK.toLowerCase() : 'gemini';
+    process.env.AI_PROVIDER_FALLBACK !== undefined
+        ? process.env.AI_PROVIDER_FALLBACK.toLowerCase()
+        : 'gemini';
 
 const PROVIDERS = {
     gemini: () => require('./providers/geminiProvider'),
@@ -28,7 +30,9 @@ const PROVIDERS = {
 function loadProvider(name) {
     const factory = PROVIDERS[name];
     if (!factory) {
-        throw new Error(`Unknown AI provider "${name}" — available: ${Object.keys(PROVIDERS).join(', ')}`);
+        throw new Error(
+            `Unknown AI provider "${name}" — available: ${Object.keys(PROVIDERS).join(', ')}`
+        );
     }
     return factory();
 }

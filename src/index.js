@@ -24,7 +24,10 @@ function runRetentionSweep() {
     try {
         const deleted = pruneOlderThan(config.conversationRetentionDays);
         if (deleted > 0) {
-            logger.info('bot', `Pruned ${deleted} conversation row(s) older than ${config.conversationRetentionDays} days`);
+            logger.info(
+                'bot',
+                `Pruned ${deleted} conversation row(s) older than ${config.conversationRetentionDays} days`
+            );
         }
     } catch (err) {
         logger.error('bot', 'Conversation retention sweep failed', err);
@@ -65,7 +68,10 @@ client.on('interactionCreate', async (interaction) => {
         await command.execute(interaction);
     } catch (err) {
         logger.error('bot', `Command ${interaction.commandName} failed`, err);
-        const payload = { content: 'There was an error running that command.', flags: MessageFlags.Ephemeral };
+        const payload = {
+            content: 'There was an error running that command.',
+            flags: MessageFlags.Ephemeral,
+        };
         try {
             if (interaction.replied || interaction.deferred) await interaction.followUp(payload);
             else await interaction.reply(payload);
@@ -110,7 +116,9 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
         client.destroy();
         // No-op if the Playwright fallback was never triggered (no browser
         // was ever launched) — avoids leaving an orphaned Chromium process.
-        await closeBrowser().catch((err) => logger.error('bot', 'Error closing Playwright browser', err));
+        await closeBrowser().catch((err) =>
+            logger.error('bot', 'Error closing Playwright browser', err)
+        );
         process.exitCode = 0;
     });
 }

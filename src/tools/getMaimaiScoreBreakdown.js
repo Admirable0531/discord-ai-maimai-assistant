@@ -1,5 +1,5 @@
 const { loadSongData } = require('../web/maimaiSongData');
-const { totalBaseScore, findApBreakdown } = require('../web/maimaiScoreMath');
+const { findApBreakdown } = require('../web/maimaiScoreMath');
 
 const declaration = {
     name: 'get_maimai_score_breakdown',
@@ -37,7 +37,8 @@ async function execute(args) {
 
     if (!songQuery) return { success: false, error: 'song_name is required.' };
     if (!difficulty) return { success: false, error: 'difficulty is required.' };
-    if (targetPercent === null || Number.isNaN(targetPercent)) return { success: false, error: 'target_percent is required.' };
+    if (targetPercent === null || Number.isNaN(targetPercent))
+        return { success: false, error: 'target_percent is required.' };
 
     let data;
     try {
@@ -76,14 +77,20 @@ function checkChart(song, difficulty, targetPercent) {
         };
     }
     if (!sheet.noteCounts) {
-        return { success: false, error: `No note-count data available for "${song.title}" (${difficulty}).` };
+        return {
+            success: false,
+            error: `No note-count data available for "${song.title}" (${difficulty}).`,
+        };
     }
 
     const noteCounts = sheet.noteCounts;
     const breakdown = findApBreakdown(noteCounts, targetPercent);
 
     if (!breakdown) {
-        const fallbackRange = noteCounts.break > 0 ? { min_ap_percent: 100.5, max_ap_percent: 101 } : { min_ap_percent: 100, max_ap_percent: 100 };
+        const fallbackRange =
+            noteCounts.break > 0
+                ? { min_ap_percent: 100.5, max_ap_percent: 101 }
+                : { min_ap_percent: 100, max_ap_percent: 100 };
         return {
             success: true,
             song_title: song.title,

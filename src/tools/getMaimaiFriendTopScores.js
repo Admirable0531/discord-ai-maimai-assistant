@@ -12,22 +12,26 @@ const declaration = {
     name: 'get_maimai_friend_top_scores',
     description:
         "Get one of this tracked account's friends' REAL best-scoring charts and total rating, straight off " +
-        'SEGA\'s own rating-breakdown page for that friend (the same page the maimai bookmarklet\'s "Analyze ' +
+        "SEGA's own rating-breakdown page for that friend (the same page the maimai bookmarklet's \"Analyze " +
         'Rating" opens) — not a guess assembled from sampling a few charts. Returns two lists (new_version_top_plays ' +
         "and old_version_top_plays, matching the game's own rating-split categories, each entry with Song/Chart/" +
-        "Level/Achv/Rank/Rating) plus snapshot_rating, their total rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: " +
-        "this snapshot comes from a daily scraper that does not run reliably for every friend — snapshot_age_days " +
-        "can be months or even years for some friends even though the friend list itself (get_friend_leaderboard) " +
+        'Level/Achv/Rank/Rating) plus snapshot_rating, their total rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: ' +
+        'this snapshot comes from a daily scraper that does not run reliably for every friend — snapshot_age_days ' +
+        'can be months or even years for some friends even though the friend list itself (get_friend_leaderboard) ' +
         "updates daily. ALWAYS compare snapshot_rating against current_rating (this friend's live rating, included " +
-        "in the same result): if they differ, or snapshot_age_days is large, tell the user plainly that this is an " +
-        "old snapshot and their actual top plays may have changed since — never present it as current data without " +
-        "that caveat. Use this for \"what's Y's highest rated play / best scores\" — get_maimai_friend_scores " +
-        "answers a narrower but always-fresh question (one difficulty constant at a time), and get_maimai_song_" +
+        'in the same result): if they differ, or snapshot_age_days is large, tell the user plainly that this is an ' +
+        'old snapshot and their actual top plays may have changed since — never present it as current data without ' +
+        'that caveat. Use this for "what\'s Y\'s highest rated play / best scores" — get_maimai_friend_scores ' +
+        'answers a narrower but always-fresh question (one difficulty constant at a time), and get_maimai_song_' +
         "ranking answers a different direction entirely (who's best on one song, not one friend's best charts).",
     parametersJsonSchema: {
         type: 'object',
         properties: {
-            friend_name: { type: 'string', description: "The friend's name (partial match is fine, full-width or plain ASCII both work)." },
+            friend_name: {
+                type: 'string',
+                description:
+                    "The friend's name (partial match is fine, full-width or plain ASCII both work).",
+            },
         },
         required: ['friend_name'],
     },
@@ -41,7 +45,9 @@ function parseSnapshotDate(dateStr) {
     const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2}):(\d{2})$/.exec(dateStr.trim());
     if (!m) return null;
     const [, d, mo, y, h, mi, s] = m;
-    const dt = new Date(`${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}T${h.padStart(2, '0')}:${mi}:${s}`);
+    const dt = new Date(
+        `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}T${h.padStart(2, '0')}:${mi}:${s}`
+    );
     return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
@@ -67,17 +73,27 @@ async function execute(args) {
     try {
         const friend = await findFriend(friendName);
         if (!friend) {
-            return { success: false, error: `No friend matching "${friendName}" found on this account's friend list.` };
+            return {
+                success: false,
+                error: `No friend matching "${friendName}" found on this account's friend list.`,
+            };
         }
         if (friend.ambiguous) {
-            return { success: false, error: `Multiple friends match "${friendName}" — be more specific.`, matches: friend.ambiguous };
+            return {
+                success: false,
+                error: `Multiple friends match "${friendName}" — be more specific.`,
+                matches: friend.ambiguous,
+            };
         }
 
         const response = await fetch(`${API_URL}/users/${friend.user}/top-score`, {
             signal: AbortSignal.timeout(TIMEOUT_MS),
         });
         if (response.status === 404) {
-            return { success: false, error: `No top-score snapshot has ever been recorded for ${friend.name}.` };
+            return {
+                success: false,
+                error: `No top-score snapshot has ever been recorded for ${friend.name}.`,
+            };
         }
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -85,7 +101,9 @@ async function execute(args) {
         }
 
         const snapshotDate = parseSnapshotDate(body.Date);
-        const snapshotAgeDays = snapshotDate ? Math.floor((Date.now() - snapshotDate.getTime()) / 86400000) : null;
+        const snapshotAgeDays = snapshotDate
+            ? Math.floor((Date.now() - snapshotDate.getTime()) / 86400000)
+            : null;
 
         return {
             success: true,

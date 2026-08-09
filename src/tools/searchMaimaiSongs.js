@@ -16,7 +16,8 @@ const declaration = {
         properties: {
             query: {
                 type: 'string',
-                description: 'Song title or artist name to search for (partial match, case-insensitive).',
+                description:
+                    'Song title or artist name to search for (partial match, case-insensitive).',
             },
             artist: {
                 type: 'string',
@@ -30,12 +31,13 @@ const declaration = {
                 description:
                     'Only include songs in this genre category, e.g. "POPS＆アニメ", "niconico＆ボーカロイド", ' +
                     '"東方Project", "ゲーム＆バラエティ", "maimai", "オンゲキ＆CHUNITHM", "宴会場". Matching is ' +
-                    'flexible (partial, case-insensitive); if it doesn\'t resolve, the result lists the exact ' +
+                    "flexible (partial, case-insensitive); if it doesn't resolve, the result lists the exact " +
                     'category names to retry with.',
             },
             note_designer: {
                 type: 'string',
-                description: "Filter to charts credited to this note designer/chart maker (partial match). \"-\" in the data means uncredited.",
+                description:
+                    'Filter to charts credited to this note designer/chart maker (partial match). "-" in the data means uncredited.',
             },
             difficulty: {
                 type: 'string',
@@ -47,9 +49,15 @@ const declaration = {
                 enum: ['dx', 'std', 'utage'],
                 description: 'Only include charts of this type (DX vs standard vs utage).',
             },
-            min_level: { type: 'number', description: 'Minimum chart level, numeric (e.g. 12.6 for "12+").' },
+            min_level: {
+                type: 'number',
+                description: 'Minimum chart level, numeric (e.g. 12.6 for "12+").',
+            },
             max_level: { type: 'number', description: 'Maximum chart level, numeric.' },
-            min_bpm: { type: 'number', description: "Minimum BPM (the song's, not any one chart's)." },
+            min_bpm: {
+                type: 'number',
+                description: "Minimum BPM (the song's, not any one chart's).",
+            },
             max_bpm: { type: 'number', description: 'Maximum BPM.' },
             version: {
                 type: 'string',
@@ -99,7 +107,10 @@ function resolveVersion(rawVersion, allVersions) {
     const partial = allVersions.filter(
         (v) => normalizeVersion(v).includes(target) || target.includes(normalizeVersion(v))
     );
-    return { resolved: partial.length === 1 ? partial[0] : null, candidates: partial.length > 0 ? partial : allVersions };
+    return {
+        resolved: partial.length === 1 ? partial[0] : null,
+        candidates: partial.length > 0 ? partial : allVersions,
+    };
 }
 
 /** Same shape as resolveVersion, for the (shorter, less ambiguous) category list — no "+"/"plus" normalization needed. */
@@ -108,7 +119,9 @@ function resolveCategory(rawCategory, allCategories) {
     const exact = allCategories.find((c) => normalize(c) === target);
     if (exact) return { resolved: exact };
 
-    const partial = allCategories.filter((c) => normalize(c).includes(target) || target.includes(normalize(c)));
+    const partial = allCategories.filter(
+        (c) => normalize(c).includes(target) || target.includes(normalize(c))
+    );
     return {
         resolved: partial.length === 1 ? partial[0] : null,
         candidates: partial.length > 0 ? partial : allCategories,
@@ -118,7 +131,8 @@ function resolveCategory(rawCategory, allCategories) {
 async function execute(args) {
     const query = typeof args?.query === 'string' ? normalize(args.query.trim()) : '';
     const artist = typeof args?.artist === 'string' ? normalize(args.artist.trim()) : '';
-    const noteDesigner = typeof args?.note_designer === 'string' ? normalize(args.note_designer.trim()) : '';
+    const noteDesigner =
+        typeof args?.note_designer === 'string' ? normalize(args.note_designer.trim()) : '';
     const difficulty = typeof args?.difficulty === 'string' ? args.difficulty.toLowerCase() : null;
     const type = typeof args?.type === 'string' ? args.type.toLowerCase() : null;
     const minLevel = typeof args?.min_level === 'number' ? args.min_level : null;
@@ -126,7 +140,9 @@ async function execute(args) {
     const minBpm = typeof args?.min_bpm === 'number' ? args.min_bpm : null;
     const maxBpm = typeof args?.max_bpm === 'number' ? args.max_bpm : null;
     const random = args?.random === true;
-    const hasSheetFilter = Boolean(difficulty || type || minLevel !== null || maxLevel !== null || noteDesigner);
+    const hasSheetFilter = Boolean(
+        difficulty || type || minLevel !== null || maxLevel !== null || noteDesigner
+    );
 
     let data;
     try {
@@ -169,7 +185,12 @@ async function execute(args) {
     // after the full scan instead.
     const matches = [];
     for (const song of data.songs) {
-        if (query && !normalize(song.title).includes(query) && !normalize(song.artist).includes(query)) continue;
+        if (
+            query &&
+            !normalize(song.title).includes(query) &&
+            !normalize(song.artist).includes(query)
+        )
+            continue;
         if (artist && !normalize(song.artist).includes(artist)) continue;
         if (resolvedVersion && song.version !== resolvedVersion) continue;
         if (resolvedCategory && song.category !== resolvedCategory) continue;
@@ -209,7 +230,13 @@ async function execute(args) {
             return { success: true, result_count: 0, songs: [], data_updated_at: data.updateTime };
         }
         const pick = matches[Math.floor(Math.random() * matches.length)];
-        return { success: true, result_count: 1, picked_from: matches.length, songs: [pick], data_updated_at: data.updateTime };
+        return {
+            success: true,
+            result_count: 1,
+            picked_from: matches.length,
+            songs: [pick],
+            data_updated_at: data.updateTime,
+        };
     }
 
     return {

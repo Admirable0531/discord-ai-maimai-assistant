@@ -20,7 +20,8 @@ function extractUserId(token) {
 
 const SCOPE_DESCRIPTIONS = {
     web: 'wiki/search/song-data tools (search_web, read_webpage, list_maimai_*_pages, search_maimai_songs) — granted to everyone by default, no "allow" needed',
-    account: "this tracked account's own live maimai data (list_maimai_account_pages, and read_webpage for maimaidx-eng.com specifically)",
+    account:
+        "this tracked account's own live maimai data (list_maimai_account_pages, and read_webpage for maimaidx-eng.com specifically)",
     leaderboard: "this group's tracked friend ratings and circle rankings",
     memory: 'remembering/recalling things about the asking user',
 };
@@ -53,7 +54,8 @@ function tryHandleAdminCommand(text, guildId) {
 
     const allowServerMatch = /^allow\s+server(?:\s+(.+))?$/i.exec(trimmed);
     if (allowServerMatch) {
-        if (!guildId) return "There's no server here to grant access to — this only works inside a server, not DMs.";
+        if (!guildId)
+            return "There's no server here to grant access to — this only works inside a server, not DMs.";
 
         const scopeTokens = allowServerMatch[1] ? allowServerMatch[1].trim().split(/\s+/) : [];
         if (scopeTokens.length === 0) {
@@ -77,7 +79,8 @@ function tryHandleAdminCommand(text, guildId) {
 
     const revokeServerMatch = /^revoke\s+server$/i.exec(trimmed);
     if (revokeServerMatch) {
-        if (!guildId) return "There's no server here to revoke — this only works inside a server, not DMs.";
+        if (!guildId)
+            return "There's no server here to revoke — this only works inside a server, not DMs.";
         const removed = revokeGuild(guildId);
         return removed
             ? "Revoked this server's shared permission (members with their own personal grant still have it)."
@@ -87,12 +90,15 @@ function tryHandleAdminCommand(text, guildId) {
     const allowMatch = /^allow\s+(\S+)(?:\s+(.+))?$/i.exec(trimmed);
     if (allowMatch) {
         const userId = extractUserId(allowMatch[1]);
-        if (!userId) return `I couldn't read a user from "${allowMatch[1]}" — mention them or give their user ID.`;
+        if (!userId)
+            return `I couldn't read a user from "${allowMatch[1]}" — mention them or give their user ID.`;
 
         const scopeTokens = allowMatch[2] ? allowMatch[2].trim().split(/\s+/) : [];
         if (scopeTokens.length === 0) {
             const added = allowUser(userId);
-            return added ? `Granted <@${userId}> full permission to use this bot.` : `<@${userId}> already has full permission.`;
+            return added
+                ? `Granted <@${userId}> full permission to use this bot.`
+                : `<@${userId}> already has full permission.`;
         }
 
         const normalized = [...new Set(scopeTokens.map((s) => s.toLowerCase()))];
@@ -110,10 +116,13 @@ function tryHandleAdminCommand(text, guildId) {
     const revokeMatch = /^revoke\s+(\S+)$/i.exec(trimmed);
     if (revokeMatch) {
         const userId = extractUserId(revokeMatch[1]);
-        if (!userId) return `I couldn't read a user from "${revokeMatch[1]}" — mention them or give their user ID.`;
+        if (!userId)
+            return `I couldn't read a user from "${revokeMatch[1]}" — mention them or give their user ID.`;
         if (userId === getOwnerId()) return "I can't revoke the owner's permission.";
         const removed = revokeUser(userId);
-        return removed ? `Revoked <@${userId}>'s permission.` : `<@${userId}> didn't have permission to begin with.`;
+        return removed
+            ? `Revoked <@${userId}>'s permission.`
+            : `<@${userId}> didn't have permission to begin with.`;
     }
 
     if (/^scopes$/i.test(trimmed)) {

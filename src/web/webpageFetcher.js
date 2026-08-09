@@ -10,7 +10,8 @@ async function readBodyCapped(response, maxBytes) {
     const reader = response.body?.getReader?.();
     if (!reader) {
         const text = await response.text();
-        if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new Error('Webpage response was too large.');
+        if (Buffer.byteLength(text, 'utf8') > maxBytes)
+            throw new Error('Webpage response was too large.');
         return text;
     }
 
@@ -49,7 +50,8 @@ async function fetchWebpage(startUrl) {
 
         if ([301, 302, 303, 307, 308].includes(response.status)) {
             const location = response.headers.get('location');
-            if (!location) throw new Error(`HTTP ${response.status} redirect with no Location header.`);
+            if (!location)
+                throw new Error(`HTTP ${response.status} redirect with no Location header.`);
             if (hop === MAX_REDIRECTS) throw new Error('Too many redirects.');
             currentUrl = new URL(location, parsed).toString();
             continue;

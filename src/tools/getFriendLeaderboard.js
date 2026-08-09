@@ -8,12 +8,12 @@ const TIMEOUT_MS = 10000;
 const declaration = {
     name: 'get_friend_leaderboard',
     description:
-        'Get the current maimai DX rating leaderboard for one tracked account\'s in-game friend list — each ' +
-        "friend's name, rating, and rank. There are TWO separate real accounts tracked, \"fy\" and \"main\", each " +
-        "with their own distinct ~40-friend list — a friend on one is very often NOT on the other. account_type " +
+        "Get the current maimai DX rating leaderboard for one tracked account's in-game friend list — each " +
+        'friend\'s name, rating, and rank. There are TWO separate real accounts tracked, "fy" and "main", each ' +
+        'with their own distinct ~40-friend list — a friend on one is very often NOT on the other. account_type ' +
         'defaults to "fy" if omitted, so never assume that\'s the right pool: if the user says "main account" ' +
         'call with account_type: "main"; if you\'re searching for one specific friend by name and don\'t know ' +
-        'which account tracks them, call this tool twice (once per account_type) before concluding they\'re not ' +
+        "which account tracks them, call this tool twice (once per account_type) before concluding they're not " +
         'found — do not report "not found" after checking only one. Names on this leaderboard are often written ' +
         'in full-width Unicode characters (e.g. "Ｍｉｎｊｉｎ") — treat those as the same name as their plain-ASCII ' +
         'equivalent ("minjin") when matching, don\'t treat the different character width as a non-match. Use this ' +
@@ -26,7 +26,8 @@ const declaration = {
             account_type: {
                 type: 'string',
                 enum: ['fy', 'main'],
-                description: 'Which tracked account\'s friend list to read — "fy" or "main" (default "fy" if omitted; these are two different friend lists, see the tool description).',
+                description:
+                    'Which tracked account\'s friend list to read — "fy" or "main" (default "fy" if omitted; these are two different friend lists, see the tool description).',
             },
         },
     },
@@ -35,14 +36,22 @@ const declaration = {
 async function execute(args) {
     const accountType = args?.account_type === 'main' ? 'main' : 'fy';
     try {
-        const response = await fetch(`${API_URL}/api/friends-leaderboard?accountType=${accountType}`, {
-            signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
+        const response = await fetch(
+            `${API_URL}/api/friends-leaderboard?accountType=${accountType}`,
+            {
+                signal: AbortSignal.timeout(TIMEOUT_MS),
+            }
+        );
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !body.success) {
             return { success: false, error: body.error || `HTTP ${response.status}` };
         }
-        return { success: true, accountType: body.accountType, snapshotDate: body.snapshotDate, friends: body.friends };
+        return {
+            success: true,
+            accountType: body.accountType,
+            snapshotDate: body.snapshotDate,
+            friends: body.friends,
+        };
     } catch (err) {
         return { success: false, error: `Could not reach the maimai stats API: ${err.message}` };
     }

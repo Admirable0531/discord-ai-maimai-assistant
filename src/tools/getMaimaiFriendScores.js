@@ -20,15 +20,22 @@ const declaration = {
         '"what are Y\'s scores on 14.7" or similar per-friend-per-constant questions — get_maimai_song_ranking ' +
         "answers the opposite direction (who's best on one song), and get_friend_leaderboard only has DX Rating, " +
         'no per-song data at all. Only covers Master/Re:Master charts (constants roughly 1.0-15.0) — there is no ' +
-        "lower-difficulty equivalent on the site. A friend with no score on a chart shows friend_achievement: " +
-        'null (unplayed), not zero. IMPORTANT: this only gives percentage, never the friend\'s actual clear-type ' +
+        'lower-difficulty equivalent on the site. A friend with no score on a chart shows friend_achievement: ' +
+        "null (unplayed), not zero. IMPORTANT: this only gives percentage, never the friend's actual clear-type " +
         'badges — a high percentage does NOT prove AP (a non-AP play can land in the same range as a true AP, ' +
-        'confirmed live), so never claim/count a friend\'s AP or AP+ from this data, only report the percentage.',
+        "confirmed live), so never claim/count a friend's AP or AP+ from this data, only report the percentage.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
-            friend_name: { type: 'string', description: "The friend's name (partial match is fine, full-width or plain ASCII both work)." },
-            target_constant: { type: 'number', description: 'The exact difficulty constant to check, e.g. 14.3.' },
+            friend_name: {
+                type: 'string',
+                description:
+                    "The friend's name (partial match is fine, full-width or plain ASCII both work).",
+            },
+            target_constant: {
+                type: 'number',
+                description: 'The exact difficulty constant to check, e.g. 14.3.',
+            },
         },
         required: ['friend_name', 'target_constant'],
     },
@@ -69,16 +76,26 @@ async function execute(args) {
 
     const bucket = constantToLevelBucket(targetConstant);
     if (!bucket) {
-        return { success: false, error: `target_constant ${targetConstant} is out of the supported range (roughly 1.0-15.0).` };
+        return {
+            success: false,
+            error: `target_constant ${targetConstant} is out of the supported range (roughly 1.0-15.0).`,
+        };
     }
 
     try {
         const friend = await findFriend(friendName);
         if (!friend) {
-            return { success: false, error: `No friend matching "${friendName}" found on this account's friend list.` };
+            return {
+                success: false,
+                error: `No friend matching "${friendName}" found on this account's friend list.`,
+            };
         }
         if (friend.ambiguous) {
-            return { success: false, error: `Multiple friends match "${friendName}" — be more specific.`, matches: friend.ambiguous };
+            return {
+                success: false,
+                error: `Multiple friends match "${friendName}" — be more specific.`,
+                matches: friend.ambiguous,
+            };
         }
 
         const { html } = await fetchAccountPage(
@@ -92,7 +109,7 @@ async function execute(args) {
         for (const entry of entries) {
             const song = songData.songs.find((s) => s.title.trim() === entry.song_name.trim());
             const sheet = song?.sheets.find((sh) => sh.difficulty === entry.difficulty);
-            const level = sheet ? sheet.internalLevelValue ?? sheet.levelValue : null;
+            const level = sheet ? (sheet.internalLevelValue ?? sheet.levelValue) : null;
             if (level === null || Math.abs(level - targetConstant) >= 0.05) {
                 if (level === null) unmatchedCount++;
                 continue;

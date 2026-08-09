@@ -19,7 +19,8 @@ function parseRankingFormTokens(musicDetailHtml) {
     });
     const tokensByDifficulty = {};
     for (const [difficulty, num] of Object.entries(DIFF_NUM_BY_DIFFICULTY)) {
-        if (tokensByDiffNum[String(num)]) tokensByDifficulty[difficulty] = tokensByDiffNum[String(num)];
+        if (tokensByDiffNum[String(num)])
+            tokensByDifficulty[difficulty] = tokensByDiffNum[String(num)];
     }
     return tokensByDifficulty;
 }
@@ -63,4 +64,9 @@ function parseYourScore(html) {
     return match ? match[1] : null;
 }
 
-module.exports = { DIFF_NUM_BY_DIFFICULTY, parseRankingFormTokens, parseRankingEntries, parseYourScore };
+module.exports = {
+    DIFF_NUM_BY_DIFFICULTY,
+    parseRankingFormTokens,
+    parseRankingEntries,
+    parseYourScore,
+};

@@ -23,7 +23,10 @@ function splitIntoSections($) {
     const ancestors = []; // stack of { level, text }
 
     const flush = () => {
-        const text = current.parts.join(' ').replace(/[ \t]+/g, ' ').trim();
+        const text = current.parts
+            .join(' ')
+            .replace(/[ \t]+/g, ' ')
+            .trim();
         if (current.breadcrumb !== null || text) raw.push({ breadcrumb: current.breadcrumb, text });
     };
 

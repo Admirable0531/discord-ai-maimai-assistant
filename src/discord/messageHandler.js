@@ -49,7 +49,9 @@ async function buildReplyContext(message) {
     try {
         const referenced = await message.fetchReference();
         const author =
-            referenced.author?.id === message.client.user.id ? 'Atri (you)' : referenced.author?.tag || 'someone';
+            referenced.author?.id === message.client.user.id
+                ? 'Atri (you)'
+                : referenced.author?.tag || 'someone';
 
         let content = referenced.content?.trim() || '';
         if (!content && referenced.attachments.size > 0) content = '[attachment, no text]';
@@ -86,7 +88,9 @@ function registerMessageHandler(client, config) {
             if (adminReply !== null) {
                 await message
                     .reply({ content: adminReply, allowedMentions: { parse: [] } })
-                    .catch((err) => logger.error('discord', 'Could not send admin command reply', err));
+                    .catch((err) =>
+                        logger.error('discord', 'Could not send admin command reply', err)
+                    );
                 return;
             }
         }
@@ -125,7 +129,9 @@ function registerMessageHandler(client, config) {
             logger.error('discord', `Failed to answer ${message.author.tag}`, err);
             await message
                 .reply('Sorry, something went wrong answering that. Please try again in a moment.')
-                .catch((replyErr) => logger.error('discord', 'Could not send error reply', replyErr));
+                .catch((replyErr) =>
+                    logger.error('discord', 'Could not send error reply', replyErr)
+                );
         } finally {
             clearInterval(typingInterval);
         }

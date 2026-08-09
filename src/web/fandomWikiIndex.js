@@ -97,12 +97,16 @@ async function fetchNavigationWikitext() {
     });
     const response = await fetch(`https://maimai.fandom.com/zh/api.php?${params.toString()}`, {
         signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; discord-ai-assistant/1.0)', Accept: 'application/json' },
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; discord-ai-assistant/1.0)',
+            Accept: 'application/json',
+        },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = await response.json();
     if (body.error) throw new Error(body.error.info || body.error.code);
-    if (!body.parse || typeof body.parse.wikitext !== 'string') throw new Error('No wikitext in response.');
+    if (!body.parse || typeof body.parse.wikitext !== 'string')
+        throw new Error('No wikitext in response.');
     return body.parse.wikitext;
 }
 

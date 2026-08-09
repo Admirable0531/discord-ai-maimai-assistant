@@ -53,12 +53,14 @@ const HEAVY_REASONING_TOOLS = new Set([
 // trivial (short greetings/acknowledgements with no question content) drop
 // to "low". A false "low" costs quality; a missed "low" just costs a few
 // cents, so this only fires on the clear-cut cases.
-const TRIVIAL_MESSAGE_PATTERN = /^(hi|hey|hello|yo|sup|thanks|thank you|ty|ok|okay|lol|lmao|nice|cool|k)[!.\s]*$/i;
+const TRIVIAL_MESSAGE_PATTERN =
+    /^(hi|hey|hello|yo|sup|thanks|thank you|ty|ok|okay|lol|lmao|nice|cool|k)[!.\s]*$/i;
 
 /** Picks a reasoning_effort for the very first call of a turn, before any tool has run — from the raw message only. */
 function estimateInitialEffort(userMessage) {
     const trimmed = (userMessage || '').trim();
-    if (trimmed.length > 0 && trimmed.length <= 20 && TRIVIAL_MESSAGE_PATTERN.test(trimmed)) return 'low';
+    if (trimmed.length > 0 && trimmed.length <= 20 && TRIVIAL_MESSAGE_PATTERN.test(trimmed))
+        return 'low';
     return 'high'; // DeepSeek's own default — safe middle ground when intent isn't yet known
 }
 
@@ -95,7 +97,7 @@ const OPENAI_TOOLS = [
         function: {
             name: REQUEST_MORE_TOOL_CALLS,
             description:
-                "Ask for more tool-call budget for this message. Each Discord message has a limited number of tool " +
+                'Ask for more tool-call budget for this message. Each Discord message has a limited number of tool ' +
                 'calls; you get a low-budget warning in the tool results once you are close to running out. Call this ' +
                 'ONLY if you are near/at that limit and genuinely still need more steps to finish (e.g. you are midway ' +
                 'through reading several pages or synthesizing a large table) — not speculatively, and not on turn one.',
@@ -162,9 +164,14 @@ async function generateReply(history, userMessage, { userId, guildId }) {
     // to go on yet), then from iteration 2 onward reflects whichever tools
     // the model actually reached for on the previous turn.
     let reasoningEffort = estimateInitialEffort(userMessage);
-    const maxTokens = wantsHigherBudget(userId, userMessage) ? BOOSTED_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
+    const maxTokens = wantsHigherBudget(userId, userMessage)
+        ? BOOSTED_MAX_OUTPUT_TOKENS
+        : MAX_OUTPUT_TOKENS;
     if (maxTokens !== MAX_OUTPUT_TOKENS) {
-        logger.info('agent', `Owner asked for a deeper look — using boosted token budget (${maxTokens})`);
+        logger.info(
+            'agent',
+            `Owner asked for a deeper look — using boosted token budget (${maxTokens})`
+        );
     }
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
@@ -176,8 +183,12 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             const text = (message?.content || '').trim();
             if (!text) {
                 const finishReason = data.choices?.[0]?.finish_reason;
-                logger.warn('agent', 'DeepSeek returned no text and no tool calls', { finishReason });
-                throw new Error(`DeepSeek returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`);
+                logger.warn('agent', 'DeepSeek returned no text and no tool calls', {
+                    finishReason,
+                });
+                throw new Error(
+                    `DeepSeek returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`
+                );
             }
             return text;
         }
@@ -211,8 +222,14 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                         };
                     } else {
                         const before = maxIterations;
-                        maxIterations = Math.min(HARD_MAX_TOOL_ITERATIONS, maxIterations + TOOL_BUDGET_EXTEND_STEP);
-                        logger.info('agent', `DeepSeek requested more tool-call budget: ${before} -> ${maxIterations}`);
+                        maxIterations = Math.min(
+                            HARD_MAX_TOOL_ITERATIONS,
+                            maxIterations + TOOL_BUDGET_EXTEND_STEP
+                        );
+                        logger.info(
+                            'agent',
+                            `DeepSeek requested more tool-call budget: ${before} -> ${maxIterations}`
+                        );
                         result = { success: true, granted: true, new_budget: maxIterations };
                     }
                 } else {
@@ -249,7 +266,11 @@ async function generateReply(history, userMessage, { userId, guildId }) {
         'agent',
         `Hit ${maxIterations} tool-call iterations without a final answer — forcing a text-only reply`
     );
-    const finalData = await callDeepseek(messages, { toolChoice: 'none', reasoningEffort, maxTokens });
+    const finalData = await callDeepseek(messages, {
+        toolChoice: 'none',
+        reasoningEffort,
+        maxTokens,
+    });
     const finalText = (finalData.choices?.[0]?.message?.content || '').trim();
     if (finalText) return finalText;
 

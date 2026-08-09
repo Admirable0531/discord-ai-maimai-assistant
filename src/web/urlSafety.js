@@ -75,7 +75,9 @@ async function assertSafeUrl(rawUrl) {
     }
 
     if (addresses.length === 0 || addresses.some((a) => isPrivateOrReservedIp(a.address))) {
-        throw new Error('This URL resolves to a private or reserved address and cannot be fetched.');
+        throw new Error(
+            'This URL resolves to a private or reserved address and cannot be fetched.'
+        );
     }
 
     return parsed;

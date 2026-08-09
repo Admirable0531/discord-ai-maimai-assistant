@@ -38,12 +38,16 @@ function loadStore() {
         return {
             allowedUserIds: Array.isArray(parsed.allowedUserIds) ? parsed.allowedUserIds : [],
             scopedUserIds:
-                parsed.scopedUserIds && typeof parsed.scopedUserIds === 'object' && !Array.isArray(parsed.scopedUserIds)
+                parsed.scopedUserIds &&
+                typeof parsed.scopedUserIds === 'object' &&
+                !Array.isArray(parsed.scopedUserIds)
                     ? parsed.scopedUserIds
                     : {},
             allowedGuildIds: Array.isArray(parsed.allowedGuildIds) ? parsed.allowedGuildIds : [],
             scopedGuildIds:
-                parsed.scopedGuildIds && typeof parsed.scopedGuildIds === 'object' && !Array.isArray(parsed.scopedGuildIds)
+                parsed.scopedGuildIds &&
+                typeof parsed.scopedGuildIds === 'object' &&
+                !Array.isArray(parsed.scopedGuildIds)
                     ? parsed.scopedGuildIds
                     : {},
         };
@@ -77,7 +81,12 @@ function getGuildScopes(guildId) {
 }
 
 function isAllowed(userId, guildId) {
-    if (isOwner(userId) || store.allowedUserIds.includes(userId) || Boolean(store.scopedUserIds[userId])) return true;
+    if (
+        isOwner(userId) ||
+        store.allowedUserIds.includes(userId) ||
+        Boolean(store.scopedUserIds[userId])
+    )
+        return true;
     const guildScopes = getGuildScopes(guildId);
     return guildScopes === 'all' || guildScopes.length > 0;
 }

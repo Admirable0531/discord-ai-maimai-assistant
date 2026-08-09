@@ -4,7 +4,7 @@ const declaration = {
     name: 'search_web',
     description:
         'Search the web to discover pages that might answer the question. Returns titles, URLs, and short ' +
-        "snippets — call read_webpage on a result before treating its content as verified. If the user named " +
+        'snippets — call read_webpage on a result before treating its content as verified. If the user named ' +
         'a specific website or said to use only one source, pass its domain(s) in allowed_domains.',
     parametersJsonSchema: {
         type: 'object',
@@ -17,7 +17,10 @@ const declaration = {
                     'Restrict results to these domains only (e.g. ["silentblue.remywiki.com"]). Set this ' +
                     'whenever the user specified a source; leave empty otherwise.',
             },
-            max_results: { type: 'integer', description: 'Maximum results to return (default 5, max 5).' },
+            max_results: {
+                type: 'integer',
+                description: 'Maximum results to return (default 5, max 5).',
+            },
         },
         required: ['query'],
     },
