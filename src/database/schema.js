@@ -1,4 +1,4 @@
-const { sqliteTable, integer, text } = require('drizzle-orm/sqlite-core');
+const { sqliteTable, integer, text, real } = require('drizzle-orm/sqlite-core');
 const { sql } = require('drizzle-orm');
 
 const memories = sqliteTable('memories', {
@@ -28,4 +28,16 @@ const conversations = sqliteTable('conversations', {
         .default(sql`CURRENT_TIMESTAMP`),
 });
 
-module.exports = { memories, conversations };
+const aiUsage = sqliteTable('ai_usage', {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    promptTokens: integer('prompt_tokens').notNull(),
+    completionTokens: integer('completion_tokens').notNull(),
+    costUsd: real('cost_usd'),
+    createdAt: text('created_at')
+        .notNull()
+        .default(sql`CURRENT_TIMESTAMP`),
+});
+
+module.exports = { memories, conversations, aiUsage };

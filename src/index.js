@@ -7,11 +7,13 @@ const { createDiscordClient } = require('./discord/client');
 const { registerMessageHandler } = require('./discord/messageHandler');
 const { closeBrowser } = require('./web/playwrightFetcher');
 const { pruneOlderThan } = require('./database/repositories/conversationRepository');
+const { startServer } = require('./web/server');
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const config = loadEnv();
 const client = createDiscordClient();
+const httpServer = startServer(config.httpPort);
 
 /**
  * Keeps the conversations table (chat context only, never memories) from
@@ -113,6 +115,7 @@ client.login(config.discordToken).catch((err) => {
 for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, async () => {
         logger.info('bot', `${signal} received, shutting down`);
+        httpServer.close();
         client.destroy();
         // No-op if the Playwright fallback was never triggered (no browser
         // was ever launched) — avoids leaving an orphaned Chromium process.

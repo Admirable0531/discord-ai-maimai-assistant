@@ -2,6 +2,8 @@ const { FunctionCallingConfigMode } = require('@google/genai');
 const { getGeminiClient } = require('./geminiClient');
 const { buildSystemPrompt } = require('../systemPrompt');
 const { GEMINI_TOOLS, createToolExecutors } = require('../toolDefinitions');
+const { estimateCostUsd } = require('../pricing');
+const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
@@ -94,6 +96,25 @@ function extractText(response) {
         .trim();
 }
 
+/** Logs one row per actual Gemini call — a single generateReply() can make several across tool-call iterations. */
+function recordUsage(response) {
+    const usage = response.usageMetadata;
+    if (!usage) return;
+    const promptTokens = usage.promptTokenCount || 0;
+    const completionTokens = usage.candidatesTokenCount || 0;
+    try {
+        logUsage({
+            provider: 'gemini',
+            model: MODEL,
+            promptTokens,
+            completionTokens,
+            costUsd: estimateCostUsd('gemini', promptTokens, completionTokens),
+        });
+    } catch (err) {
+        logger.error('agent', 'Failed to log Gemini usage', err);
+    }
+}
+
 /**
  * Implements the AIProvider interface (see ../agent.js): generateReply(history,
  * userMessage, {userId, guildId}) -> Promise<string>. Sends the conversation
@@ -120,6 +141,7 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                 thinkingConfig: { thinkingBudget: THINKING_BUDGET },
             },
         });
+        recordUsage(response);
 
         const calls = response.functionCalls;
         if (!calls || calls.length === 0) {
@@ -249,6 +271,7 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             thinkingConfig: { thinkingBudget: THINKING_BUDGET },
         },
     });
+    recordUsage(finalResponse);
     const finalText = extractText(finalResponse);
     if (finalText) return finalText;
 

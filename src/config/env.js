@@ -28,6 +28,7 @@ function loadEnv() {
         maxHistoryMessages: Number(process.env.MAX_HISTORY_MESSAGES) || 4,
         replyCooldownMs: Number(process.env.REPLY_COOLDOWN_MS) || 3000,
         conversationRetentionDays: Number(process.env.CONVERSATION_RETENTION_DAYS) || 30,
+        httpPort: Number(process.env.HTTP_PORT) || 3002,
     };
 }
 

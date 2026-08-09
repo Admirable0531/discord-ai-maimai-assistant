@@ -1,6 +1,8 @@
 const { GEMINI_TOOLS, createToolExecutors } = require('../toolDefinitions');
 const { buildSystemPrompt } = require('../systemPrompt');
 const { isOwner } = require('../../permissions/permissionStore');
+const { estimateCostUsd } = require('../pricing');
+const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
@@ -148,7 +150,28 @@ async function callDeepseek(messages, { toolChoice, reasoningEffort, maxTokens }
         const body = await response.text().catch(() => '');
         throw new Error(`DeepSeek API returned HTTP ${response.status}: ${body.slice(0, 300)}`);
     }
-    return response.json();
+    const data = await response.json();
+    recordUsage(data);
+    return data;
+}
+
+/** Logs one row per actual DeepSeek call — a single generateReply() can make several across tool-call iterations. */
+function recordUsage(data) {
+    const usage = data?.usage;
+    if (!usage) return;
+    const promptTokens = usage.prompt_tokens || 0;
+    const completionTokens = usage.completion_tokens || 0;
+    try {
+        logUsage({
+            provider: 'deepseek',
+            model: MODEL,
+            promptTokens,
+            completionTokens,
+            costUsd: estimateCostUsd('deepseek', promptTokens, completionTokens),
+        });
+    } catch (err) {
+        logger.error('agent', 'Failed to log DeepSeek usage', err);
+    }
 }
 
 /**
