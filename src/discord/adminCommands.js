@@ -24,6 +24,8 @@ const SCOPE_DESCRIPTIONS = {
         "this tracked account's own live maimai data (list_maimai_account_pages, and read_webpage for maimaidx-eng.com specifically)",
     leaderboard: "this group's tracked friend ratings and circle rankings",
     memory: 'remembering/recalling things about the asking user',
+    knowledge:
+        "writing to this server's shared knowledge base (search_knowledge_base is already open to everyone — this is for save_knowledge_base, i.e. adding entries or correcting wrong ones from chat)",
 };
 
 /**

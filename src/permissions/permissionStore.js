@@ -12,7 +12,7 @@ const STORE_PATH = path.join(DATA_DIR, 'permissions.json');
  * owner to reason about when granting access ("web" vs "read_webpage vs
  * search_web vs list_maimai_fandom_wiki_pages vs...").
  */
-const VALID_SCOPES = ['web', 'account', 'leaderboard', 'memory'];
+const VALID_SCOPES = ['web', 'account', 'leaderboard', 'memory', 'knowledge'];
 
 /**
  * Flat JSON file for Phase 1 — this is auth data, not conversation history,

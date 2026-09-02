@@ -1,5 +1,7 @@
 const searchMemoryTool = require('../tools/searchMemory');
 const saveMemoryTool = require('../tools/saveMemory');
+const searchKnowledgeBaseTool = require('../tools/searchKnowledgeBase');
+const saveKnowledgeBaseTool = require('../tools/saveKnowledgeBase');
 const searchWebTool = require('../tools/searchWeb');
 const readWebpageTool = require('../tools/readWebpage');
 const readWebpageSectionsTool = require('../tools/readWebpageSections');
@@ -20,6 +22,8 @@ const { getAllowedScopes } = require('../permissions/permissionStore');
 const TOOLS = [
     searchMemoryTool,
     saveMemoryTool,
+    searchKnowledgeBaseTool,
+    saveKnowledgeBaseTool,
     searchWebTool,
     readWebpageTool,
     readWebpageSectionsTool,
@@ -62,6 +66,14 @@ const TOOL_SCOPES = {
     get_maimai_friend_top_scores: 'leaderboard',
     search_memory: 'memory',
     save_memory: 'memory',
+    save_knowledge_base: 'knowledge',
+    // search_knowledge_base is intentionally absent -> requiredScope() returns
+    // null for it, so reading it is available to anyone allowed to talk to
+    // the bot at all, same tier as the 'web' baseline. Writing (save_knowledge_base,
+    // and the /knowledge slash command) requires the 'knowledge' scope, which
+    // the owner has by default (like every scope) and can grant to trusted
+    // members the same way as 'account'/'leaderboard' — keeps a random
+    // allowed user from poisoning shared knowledge via a crafted chat message.
 };
 
 function requiredScope(toolName, args) {

@@ -28,6 +28,21 @@ const conversations = sqliteTable('conversations', {
         .default(sql`CURRENT_TIMESTAMP`),
 });
 
+const knowledgeBase = sqliteTable('knowledge_base', {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    guildId: text('guild_id'),
+    title: text('title').notNull(),
+    content: text('content').notNull(),
+    category: text('category'),
+    createdBy: text('created_by').notNull(),
+    createdAt: text('created_at')
+        .notNull()
+        .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+        .notNull()
+        .default(sql`CURRENT_TIMESTAMP`),
+});
+
 const aiUsage = sqliteTable('ai_usage', {
     id: integer('id').primaryKey({ autoIncrement: true }),
     provider: text('provider').notNull(),
@@ -40,4 +55,4 @@ const aiUsage = sqliteTable('ai_usage', {
         .default(sql`CURRENT_TIMESTAMP`),
 });
 
-module.exports = { memories, conversations, aiUsage };
+module.exports = { memories, conversations, aiUsage, knowledgeBase };
