@@ -8,6 +8,7 @@
 // 'ryan' (you can't be your own friend on maimai) — so this is the only
 // path to the tracked account's real B15/B35 breakdown, and it needed no
 // new scraping at all, just reading data that was already being collected.
+const { normalizeName } = require('../web/maimaiFriendLookup');
 
 const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
 const TIMEOUT_MS = 15000;
@@ -22,11 +23,14 @@ const declaration = {
         "(new_version_top_plays and old_version_top_plays, matching the game's own rating-split " +
         'categories, each entry with Song/Chart/Level/Achv/Rank/Rating) plus snapshot_rating, the total ' +
         'rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: this is a daily snapshot, not always fresh — ' +
-        'ALWAYS compare snapshot_rating against current_rating (this account\'s live rating, included in ' +
-        'the same result) and check snapshot_age_days; if they differ or the snapshot is old, tell the ' +
-        'user plainly that the top plays shown may be outdated rather than presenting them as current. ' +
-        'Use this for "what\'s my/its highest rated play / B50 breakdown" about the tracked account — not ' +
-        'about a friend, which is get_maimai_friend_top_scores instead.',
+        "current_rating is fetched independently (this account shows up as a friend on the \"fy\" " +
+        'account\'s daily-updated leaderboard, so that\'s used as the live source; current_rating_source: ' +
+        '"daily_friend_leaderboard"). Compare it against snapshot_rating: if they differ, or ' +
+        'snapshot_age_days is large, tell the user plainly the top plays shown may be outdated. If ' +
+        'current_rating_source is "unavailable" instead, current_rating is null — do NOT treat an old ' +
+        'snapshot as current just because there was nothing to compare it to; say plainly that freshness ' +
+        'could not be verified. Use this for "what\'s my/its highest rated play / B50 breakdown" about the ' +
+        'tracked account — not about a friend, which is get_maimai_friend_top_scores instead.',
     parametersJsonSchema: {
         type: 'object',
         properties: {},
@@ -45,6 +49,29 @@ function parseSnapshotDate(dateStr) {
         `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}T${h.padStart(2, '0')}:${mi}:${s}`
     );
     return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+/**
+ * The 'ryan' /users entry and the top-score snapshot are written together
+ * by the same update_user_data.js run, so /users' own `rating` field can
+ * never independently confirm the snapshot isn't stale (see the identical
+ * issue and longer explanation in getMaimaiFriendTopScores.js). This
+ * account shows up as a friend on the FY account's own friend list though
+ * (confirmed live), and that leaderboard is updated reliably every day by
+ * a separate scraper — so it's used as the independent live-rating source
+ * here, matched by this account's display name from /users.
+ */
+async function fetchLiveRating(selfName) {
+    if (!selfName) return null;
+    const response = await fetch(`${API_URL}/api/friends-leaderboard?accountType=fy`, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null);
+    if (!body?.success || !Array.isArray(body.friends)) return null;
+    const target = normalizeName(selfName);
+    const match = body.friends.find((f) => normalizeName(f.name) === target);
+    return match && match.rating != null ? match.rating : null;
 }
 
 async function execute() {
@@ -75,9 +102,12 @@ async function execute() {
             ? Math.floor((Date.now() - snapshotDate.getTime()) / 86400000)
             : null;
 
+        const liveRating = await fetchLiveRating(self?.name).catch(() => null);
+
         return {
             success: true,
-            current_rating: self ? Number(self.rating) || self.rating || null : null,
+            current_rating: liveRating,
+            current_rating_source: liveRating != null ? 'daily_friend_leaderboard' : 'unavailable',
             snapshot_date: body.Date || null,
             snapshot_age_days: snapshotAgeDays,
             snapshot_rating: body.rating ?? null,

@@ -18,12 +18,16 @@ const declaration = {
         'Level/Achv/Rank/Rating) plus snapshot_rating, their total rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: ' +
         'this snapshot comes from a daily scraper that does not run reliably for every friend — snapshot_age_days ' +
         'can be months or even years for some friends even though the friend list itself (get_friend_leaderboard) ' +
-        "updates daily. ALWAYS compare snapshot_rating against current_rating (this friend's live rating, included " +
-        'in the same result): if they differ, or snapshot_age_days is large, tell the user plainly that this is an ' +
-        'old snapshot and their actual top plays may have changed since — never present it as current data without ' +
-        'that caveat. Use this for "what\'s Y\'s highest rated play / best scores" — get_maimai_friend_scores ' +
-        'answers a narrower but always-fresh question (one difficulty constant at a time), and get_maimai_song_' +
-        "ranking answers a different direction entirely (who's best on one song, not one friend's best charts).",
+        "updates daily. current_rating is fetched independently from that same daily-updated leaderboard when " +
+        "possible (current_rating_source: \"daily_friend_leaderboard\") — compare it against snapshot_rating: if " +
+        "they differ, or snapshot_age_days is large, tell the user plainly this is an old snapshot and their " +
+        'actual top plays may have changed since. If current_rating_source is instead ' +
+        '"unavailable" (friend not found on that leaderboard), current_rating is null — do NOT fall back to ' +
+        'treating an old snapshot as current just because you have nothing to compare it to; still surface ' +
+        'snapshot_age_days and say plainly that freshness could not be verified. Use this for "what\'s Y\'s ' +
+        'highest rated play / best scores" — get_maimai_friend_scores answers a narrower but always-fresh ' +
+        'question (one difficulty constant at a time), and get_maimai_song_ranking answers a different direction ' +
+        "entirely (who's best on one song, not one friend's best charts).",
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -66,6 +70,32 @@ async function findFriend(friendName) {
     return null;
 }
 
+/**
+ * The top-score snapshot and /users' own `rating` field are written together
+ * by the SAME update_user_data.js run (see insertFriendUserInfo + getTopScore
+ * in that file) — so comparing snapshot_rating against /users' rating can
+ * never detect staleness, since a scraper run that hasn't fired in months
+ * writes both numbers identically stale, every time. get_friend_leaderboard's
+ * data source (friend_rating_daily_snapshots / _main, written by the separate
+ * discord-bot friend-list scraper) updates independently and reliably every
+ * day, so that's the only place a genuinely live rating can come from here.
+ * All of this account's friend_<idx>_top entries come from its "main"
+ * friend-list scrape specifically (confirmed against collectionNames.js /
+ * update_user_data.js), so "main" is the correct leaderboard to check
+ * regardless of which name was searched.
+ */
+async function fetchLiveRating(friendName) {
+    const response = await fetch(`${API_URL}/api/friends-leaderboard?accountType=main`, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null);
+    if (!body?.success || !Array.isArray(body.friends)) return null;
+    const target = normalizeName(friendName);
+    const match = body.friends.find((f) => normalizeName(f.name) === target);
+    return match && match.rating != null ? match.rating : null;
+}
+
 async function execute(args) {
     const friendName = typeof args?.friend_name === 'string' ? args.friend_name.trim() : '';
     if (!friendName) return { success: false, error: 'friend_name is required.' };
@@ -105,10 +135,13 @@ async function execute(args) {
             ? Math.floor((Date.now() - snapshotDate.getTime()) / 86400000)
             : null;
 
+        const liveRating = await fetchLiveRating(friend.name).catch(() => null);
+
         return {
             success: true,
             friend_name: friend.name,
-            current_rating: Number(friend.rating) || friend.rating || null,
+            current_rating: liveRating,
+            current_rating_source: liveRating != null ? 'daily_friend_leaderboard' : 'unavailable',
             snapshot_date: body.Date || null,
             snapshot_age_days: snapshotAgeDays,
             snapshot_rating: body.rating ?? null,
