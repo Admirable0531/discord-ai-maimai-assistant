@@ -1,6 +1,7 @@
 const { eq, and, like, or } = require('drizzle-orm');
 const { getDb } = require('../client');
 const { memories } = require('../schema');
+const { sqliteTimestamp } = require('../timestamp');
 
 const MAX_KEY_LENGTH = 200;
 const MAX_VALUE_LENGTH = 2000;
@@ -41,7 +42,7 @@ function saveMemory({ userId, guildId, key, value, category }) {
             .set({
                 memoryValue: value.trim(),
                 category: category || existing.category,
-                updatedAt: new Date().toISOString(),
+                updatedAt: sqliteTimestamp(),
             })
             .where(eq(memories.id, existing.id))
             .run();

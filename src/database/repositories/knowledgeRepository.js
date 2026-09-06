@@ -1,6 +1,7 @@
 const { eq, and, like, or, isNull } = require('drizzle-orm');
 const { getDb } = require('../client');
 const { knowledgeBase } = require('../schema');
+const { sqliteTimestamp } = require('../timestamp');
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 4000;
@@ -48,7 +49,7 @@ function addEntry({ guildId, title, content, category, createdBy }) {
                 content: content.trim(),
                 category: category || existing.category,
                 createdBy,
-                updatedAt: new Date().toISOString(),
+                updatedAt: sqliteTimestamp(),
             })
             .where(eq(knowledgeBase.id, existing.id))
             .run();
