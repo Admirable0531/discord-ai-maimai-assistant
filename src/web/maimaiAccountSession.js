@@ -236,13 +236,24 @@ async function closeSession() {
 }
 
 /**
- * Loads a maimai-mobile page within the authenticated session and returns
- * its rendered HTML + final URL. `path` must start with /maimai-mobile/ —
- * this deliberately never navigates anywhere else, since the whole point is
- * reusing one account's login cookies for maimai-mobile pages specifically,
- * not operating as a general authenticated browser.
+ * Opens a maimai-mobile page in the authenticated session, hands the live
+ * Playwright page to `visit`, and returns whatever that returns. `path` must
+ * start with /maimai-mobile/ — this deliberately never navigates anywhere
+ * else, since the whole point is reusing one account's login cookies for
+ * maimai-mobile pages specifically, not operating as a general authenticated
+ * browser.
+ *
+ * Callers that only need the finished HTML should use fetchAccountPage below.
+ * This lower-level form exists for pages that need something done to them
+ * before they're worth reading — injecting mai-tools to annotate a score page
+ * with chart constants, say (see maimaiLevelScores.js) — so that work happens
+ * inside the same session, error-page detection and relogin-once-and-retry as
+ * every other page load, instead of each caller reinventing them.
+ *
+ * `visit` may run twice: once on the original page, and again on a fresh page
+ * if the first attempt turned out to be logged out. Keep it side-effect free.
  */
-async function fetchAccountPage(path) {
+async function withAccountPage(path, visit) {
     if (typeof path !== 'string' || !path.startsWith(ALLOWED_PATH_PREFIX)) {
         throw new Error(`Only paths under ${ALLOWED_PATH_PREFIX} are allowed.`);
     }
@@ -263,10 +274,9 @@ async function fetchAccountPage(path) {
                 timeout: NAV_TIMEOUT_MS,
             });
             if (!response) throw new Error('Navigation failed (no response).');
-            const loggedOut = await isErrorPage(page);
-            const html = await page.content();
-            const finalUrl = page.url();
-            return { html, finalUrl, loggedOut };
+            if (await isErrorPage(page)) return { loggedOut: true };
+            const value = await visit(page);
+            return { loggedOut: false, value, finalUrl: page.url() };
         } finally {
             await page.close();
             scheduleIdleClose();
@@ -291,11 +301,21 @@ async function fetchAccountPage(path) {
         }
     }
 
-    return { html: result.html, finalUrl: result.finalUrl };
+    return { value: result.value, finalUrl: result.finalUrl };
+}
+
+/**
+ * Loads a maimai-mobile page within the authenticated session and returns
+ * its rendered HTML + final URL.
+ */
+async function fetchAccountPage(path) {
+    const { value, finalUrl } = await withAccountPage(path, (page) => page.content());
+    return { html: value, finalUrl };
 }
 
 module.exports = {
     fetchAccountPage,
+    withAccountPage,
     closeSession,
     MAIMAI_ACCOUNT_HOST,
     MAIMAI_ACCOUNT_PATH_PREFIX,
