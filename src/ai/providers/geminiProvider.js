@@ -39,6 +39,10 @@ const requestMoreToolCallsDeclaration = {
 // leaving the cap effectively unbounded — paying for output that gets cut
 // off client-side is pure waste.
 const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 2048;
+// Mirrors deepseekProvider.js's BOOSTED_MAX_OUTPUT_TOKENS: a continuation is
+// pure composition (the tool results it needs are already in history), so it
+// gets a wider dedicated budget up front instead of hitting the same cap twice.
+const BOOSTED_MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS_BOOSTED) || 4096;
 // thinkingBudget: -1 = automatic (model decides per-request), 0 = disabled.
 // Automatic sounds ideal but has no ceiling — a moderate fixed budget caps
 // worst-case spend on this casual-chat/tool-picking bot while still leaving
@@ -124,12 +128,17 @@ function recordUsage(response) {
  * runs out). `userId`/`guildId` come from the real Discord message, never from
  * the model — see toolDefinitions.createToolExecutors.
  */
-async function generateReply(history, userMessage, { userId, guildId }) {
+async function generateReply(history, userMessage, { userId, guildId, continuation }) {
     const ai = getGeminiClient();
     const executors = createToolExecutors({ userId, guildId });
     const contents = toGeminiContents(history, userMessage);
     const systemInstruction = buildSystemPrompt({ userId, guildId });
     let maxIterations = BASE_MAX_TOOL_ITERATIONS;
+    const maxOutputTokens = continuation ? BOOSTED_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
+    // A continuation is picking up an answer already in progress, not
+    // deciding what to say next — little to no thinking budget needed, which
+    // leaves more of the wider cap above for the answer text itself.
+    const thinkingBudget = continuation ? 0 : THINKING_BUDGET;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
         const response = await ai.models.generateContent({
@@ -138,8 +147,8 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             config: {
                 systemInstruction,
                 tools: TOOLS_FOR_REQUEST,
-                maxOutputTokens: MAX_OUTPUT_TOKENS,
-                thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+                maxOutputTokens,
+                thinkingConfig: { thinkingBudget },
             },
         });
         recordUsage(response);
@@ -163,7 +172,7 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             if (finishReason === 'MAX_TOKENS') {
                 logger.warn(
                     'agent',
-                    `Gemini reply hit the ${MAX_OUTPUT_TOKENS}-token cap mid-answer — returning it flagged`
+                    `Gemini reply hit the ${maxOutputTokens}-token cap mid-answer — returning it flagged`
                 );
                 return markTruncated(text);
             }
@@ -279,8 +288,8 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             systemInstruction,
             tools: TOOLS_FOR_REQUEST,
             toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } },
-            maxOutputTokens: MAX_OUTPUT_TOKENS,
-            thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+            maxOutputTokens,
+            thinkingConfig: { thinkingBudget },
         },
     });
     recordUsage(finalResponse);

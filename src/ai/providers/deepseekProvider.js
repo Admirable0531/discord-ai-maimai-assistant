@@ -180,21 +180,24 @@ function recordUsage(data) {
  * geminiProvider.js / groqProvider.js, so agent.js's primary/fallback chain
  * can use any of them interchangeably.
  */
-async function generateReply(history, userMessage, { userId, guildId }) {
+async function generateReply(history, userMessage, { userId, guildId, continuation }) {
     const executors = createToolExecutors({ userId, guildId });
     const messages = toDeepseekMessages(history, userMessage, { userId, guildId });
     let maxIterations = BASE_MAX_TOOL_ITERATIONS;
-    // Recomputed each iteration — starts from the raw message (nothing else
-    // to go on yet), then from iteration 2 onward reflects whichever tools
-    // the model actually reached for on the previous turn.
-    let reasoningEffort = estimateInitialEffort(userMessage);
-    let maxTokens = wantsHigherBudget(userId, userMessage)
-        ? BOOSTED_MAX_OUTPUT_TOKENS
-        : MAX_OUTPUT_TOKENS;
+    // A continuation (picking a reply back up after it hit the cap) is pure
+    // composition: the tool results it needs are already sitting in history,
+    // so it gets its own dedicated budget up front — the full boosted cap and
+    // low reasoning effort — instead of repeating the same low-budget attempt
+    // that just got the message stuck the first time.
+    let reasoningEffort = continuation ? 'low' : estimateInitialEffort(userMessage);
+    let maxTokens =
+        continuation || wantsHigherBudget(userId, userMessage)
+            ? BOOSTED_MAX_OUTPUT_TOKENS
+            : MAX_OUTPUT_TOKENS;
     if (maxTokens !== MAX_OUTPUT_TOKENS) {
         logger.info(
             'agent',
-            `Owner asked for a deeper look — using boosted token budget (${maxTokens})`
+            `${continuation ? 'Continuing a cut-off reply' : 'Owner asked for a deeper look'} — using boosted token budget (${maxTokens})`
         );
     }
     // Set once the budget has already been raised in response to a truncated
@@ -227,7 +230,13 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             // truncates does the reply go out, and then it says so rather than
             // pretending the last row was the end.
             if (finishReason === 'length') {
-                if (!retriedAfterTruncation) {
+                // A continuation already started at the boosted cap with the
+                // lowest reasoning effort — there is no wider budget or lower
+                // effort left to retry with, so retrying would just repeat
+                // the identical call.
+                const alreadyAtWidestBudget =
+                    maxTokens === BOOSTED_MAX_OUTPUT_TOKENS && reasoningEffort === 'low';
+                if (!retriedAfterTruncation && !alreadyAtWidestBudget) {
                     retriedAfterTruncation = true;
                     // Raising max_tokens alone barely helped in practice,
                     // because reasoning is billed against this same budget:

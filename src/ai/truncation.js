@@ -22,10 +22,23 @@ function isTruncated(text) {
     return typeof text === 'string' && text.trimEnd().endsWith(TRUNCATION_MARKER);
 }
 
+/** Removes the marker so a truncated segment can be concatenated with what continues it. */
+function stripTruncationMarker(text) {
+    if (!isTruncated(text)) return text;
+    const trimmed = text.trimEnd();
+    return trimmed.slice(0, trimmed.length - TRUNCATION_MARKER.length).trimEnd();
+}
+
 /** The prompt used to pick an answer back up where it was cut off. */
 const CONTINUE_PROMPT =
     'Your previous reply was cut off at the output limit. Continue it from exactly where it stopped — ' +
     'pick up mid-item if it stopped mid-item, and do not repeat anything you already sent or re-introduce ' +
     'the answer. If it was a list or table, just carry on with the remaining rows.';
 
-module.exports = { TRUNCATION_MARKER, markTruncated, isTruncated, CONTINUE_PROMPT };
+module.exports = {
+    TRUNCATION_MARKER,
+    markTruncated,
+    isTruncated,
+    stripTruncationMarker,
+    CONTINUE_PROMPT,
+};
