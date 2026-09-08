@@ -1,5 +1,6 @@
 const { fetchAccountPage } = require('../web/maimaiAccountSession');
 const { loadSongData } = require('../web/maimaiSongData');
+const { resolveChart } = require('../web/maimaiChartLookup');
 const {
     normalizeName,
     parseFriendListPage,
@@ -108,18 +109,27 @@ async function execute(args) {
 
         const songData = await loadSongData();
         const songs = [];
-        let unmatchedCount = 0;
+        const unresolved = [];
         for (const entry of entries) {
-            const song = songData.songs.find((s) => s.title.trim() === entry.song_name.trim());
-            const sheet = song?.sheets.find((sh) => sh.difficulty === entry.difficulty);
-            const level = sheet ? (sheet.internalLevelValue ?? sheet.levelValue) : null;
-            if (level === null || Math.abs(level - targetConstant) >= 0.05) {
-                if (level === null) unmatchedCount++;
+            // Goes through the shared resolver so a 宴会場/UTAGE namesake
+            // can't shadow the real song, and std/dx is matched on the row's
+            // own chart-type icon rather than guessed — see maimaiChartLookup.js.
+            const resolved = resolveChart(
+                songData.songs,
+                entry.song_name,
+                entry.difficulty,
+                entry.chart_type
+            );
+            const level = resolved.level ?? null;
+            if (level === null) {
+                unresolved.push(`${entry.song_name} (${entry.difficulty})`);
                 continue;
             }
+            if (Math.abs(level - targetConstant) >= 0.05) continue;
             songs.push({
                 song_name: entry.song_name,
                 difficulty: entry.difficulty,
+                chart_type: entry.chart_type,
                 friend_achievement: entry.friend_achievement,
                 friend_ap_fc: entry.friend_ap_fc,
                 friend_rank: entry.friend_rank,
@@ -136,7 +146,8 @@ async function execute(args) {
             songs,
             song_count: songs.length,
             played_count: songs.filter((s) => s.friend_achievement !== null).length,
-            unmatched_song_count: unmatchedCount,
+            unresolved_chart_count: unresolved.length,
+            unresolved_charts: unresolved.slice(0, 10),
         };
     } catch (err) {
         return { success: false, error: err.message };

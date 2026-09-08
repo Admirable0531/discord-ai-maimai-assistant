@@ -187,7 +187,7 @@ async function generateReply(history, userMessage, { userId, guildId }) {
     // to go on yet), then from iteration 2 onward reflects whichever tools
     // the model actually reached for on the previous turn.
     let reasoningEffort = estimateInitialEffort(userMessage);
-    const maxTokens = wantsHigherBudget(userId, userMessage)
+    let maxTokens = wantsHigherBudget(userId, userMessage)
         ? BOOSTED_MAX_OUTPUT_TOKENS
         : MAX_OUTPUT_TOKENS;
     if (maxTokens !== MAX_OUTPUT_TOKENS) {
@@ -196,6 +196,9 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             `Owner asked for a deeper look — using boosted token budget (${maxTokens})`
         );
     }
+    // Set once the budget has already been raised in response to a truncated
+    // answer, so one long reply can't ping-pong between retries.
+    let retriedAfterTruncation = false;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
         const data = await callDeepseek(messages, { reasoningEffort, maxTokens });
@@ -204,8 +207,8 @@ async function generateReply(history, userMessage, { userId, guildId }) {
 
         if (!toolCalls || toolCalls.length === 0) {
             const text = (message?.content || '').trim();
+            const finishReason = data.choices?.[0]?.finish_reason;
             if (!text) {
-                const finishReason = data.choices?.[0]?.finish_reason;
                 logger.warn('agent', 'DeepSeek returned no text and no tool calls', {
                     finishReason,
                 });
@@ -213,6 +216,32 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                     `DeepSeek returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`
                 );
             }
+
+            // finish_reason "length" means the answer stopped mid-sentence at
+            // the token cap, not that it finished. Returning it as-is is how a
+            // half-written table reached Discord looking complete — the long
+            // CJK per-constant tables are the usual trigger, since reasoning
+            // tokens are billed against this same budget before any text is
+            // written. Retry once with the wider budget; only if that still
+            // truncates does the reply go out, and then it says so rather than
+            // pretending the last row was the end.
+            if (finishReason === 'length') {
+                if (!retriedAfterTruncation && maxTokens < BOOSTED_MAX_OUTPUT_TOKENS) {
+                    retriedAfterTruncation = true;
+                    maxTokens = BOOSTED_MAX_OUTPUT_TOKENS;
+                    logger.warn(
+                        'agent',
+                        `DeepSeek reply hit the ${MAX_OUTPUT_TOKENS}-token cap mid-answer — retrying at ${maxTokens}`
+                    );
+                    continue;
+                }
+                logger.warn(
+                    'agent',
+                    `DeepSeek reply still truncated at ${maxTokens} tokens — returning it flagged`
+                );
+                return `${text}\n\n…(cut off — ask me to continue)`;
+            }
+
             return text;
         }
 

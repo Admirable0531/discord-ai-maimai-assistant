@@ -156,9 +156,15 @@ function parseLevelVsEntries(html) {
         };
         const ownBadges = readBadges($, $block, 'f_l');
         const friendBadges = readBadges($, $block, 'f_r');
+        // std vs dx matters: 71 of the 81 songs charted in both types carry a
+        // DIFFERENT constant per type, so the row's own chart-type icon is
+        // what keeps a chart from landing under the wrong constant.
+        const kindSrc = $block.find('img.music_kind_icon').attr('src') || '';
+        const chartType = kindSrc.includes('dx') ? 'dx' : kindSrc.includes('standard') ? 'std' : null;
         entries.push({
             song_name: songName,
             difficulty,
+            chart_type: chartType,
             own_achievement: parsePercent(own),
             own_ap_fc: ownBadges.ap_fc,
             own_rank: ownBadges.rank,

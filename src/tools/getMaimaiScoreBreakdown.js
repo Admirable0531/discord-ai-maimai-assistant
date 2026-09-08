@@ -1,4 +1,5 @@
 const { loadSongData } = require('../web/maimaiSongData');
+const { findSheet, isUtageSong } = require('../web/maimaiChartLookup');
 const { findApBreakdown } = require('../web/maimaiScoreMath');
 
 const declaration = {
@@ -48,7 +49,11 @@ async function execute(args) {
     }
 
     const q = songQuery.toLowerCase();
-    const songMatches = data.songs.filter((s) => s.title.toLowerCase().includes(q));
+    // Exclude 宴会場/UTAGE namesakes — they share titles with 65 real songs
+    // but carry only joke charts, never the standard difficulty asked for here.
+    const songMatches = data.songs.filter(
+        (s) => s.title.toLowerCase().includes(q) && !isUtageSong(s)
+    );
     if (songMatches.length === 0) {
         return { success: false, error: `No song matching "${songQuery}" found.` };
     }
@@ -68,14 +73,14 @@ async function execute(args) {
 }
 
 function checkChart(song, difficulty, targetPercent) {
-    const sheet = song.sheets.find((sh) => sh.difficulty === difficulty);
-    if (!sheet) {
-        return {
-            success: false,
-            error: `"${song.title}" has no ${difficulty} chart.`,
-            available_difficulties: song.sheets.map((sh) => sh.difficulty),
-        };
+    // Via the shared resolver: std and dx charts of one song can differ in
+    // note counts as well as constant, so this surfaces the ambiguity rather
+    // than silently taking whichever sheet came first.
+    const found = findSheet(song, difficulty);
+    if (found.error) {
+        return { success: false, ...found };
     }
+    const sheet = found.sheet;
     if (!sheet.noteCounts) {
         return {
             success: false,

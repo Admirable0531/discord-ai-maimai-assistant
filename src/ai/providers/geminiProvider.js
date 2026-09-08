@@ -146,14 +146,25 @@ async function generateReply(history, userMessage, { userId, guildId }) {
         const calls = response.functionCalls;
         if (!calls || calls.length === 0) {
             const text = extractText(response);
+            const finishReason = response.candidates?.[0]?.finishReason;
             if (!text) {
-                const finishReason = response.candidates?.[0]?.finishReason;
                 logger.warn('agent', 'Gemini returned no text and no function calls', {
                     finishReason,
                 });
                 throw new Error(
                     `Gemini returned an empty response (finishReason: ${finishReason ?? 'unknown'})`
                 );
+            }
+            // MAX_TOKENS means the answer stopped mid-sentence at the cap, not
+            // that it finished — returning it unmarked is how a half-written
+            // table reaches Discord looking complete. Flag it rather than
+            // passing a cut-off answer off as the whole thing.
+            if (finishReason === 'MAX_TOKENS') {
+                logger.warn(
+                    'agent',
+                    `Gemini reply hit the ${MAX_OUTPUT_TOKENS}-token cap mid-answer — returning it flagged`
+                );
+                return `${text}\n\n…(cut off — ask me to continue)`;
             }
             return text;
         }

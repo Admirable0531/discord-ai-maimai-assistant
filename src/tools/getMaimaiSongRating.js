@@ -1,4 +1,5 @@
 const { loadSongData } = require('../web/maimaiSongData');
+const { findSheet, sheetLevel, isUtageSong } = require('../web/maimaiChartLookup');
 const { getSongRating, findMinAchvForRating } = require('../web/maimaiRatingMath');
 
 const declaration = {
@@ -29,6 +30,12 @@ const declaration = {
                 description:
                     'Reverse direction: the rating to find the minimum required achievement % for.',
             },
+            chart_type: {
+                type: 'string',
+                enum: ['std', 'dx'],
+                description:
+                    'Which chart type, when the song has both. Most songs only have one, so omit it unless the tool comes back saying the two have different constants and asks which you meant.',
+            },
         },
         required: ['song_name', 'difficulty'],
     },
@@ -39,6 +46,7 @@ async function execute(args) {
     const difficulty = typeof args?.difficulty === 'string' ? args.difficulty.toLowerCase() : '';
     const achv = typeof args?.achievement_percent === 'number' ? args.achievement_percent : null;
     const targetRating = typeof args?.target_rating === 'number' ? args.target_rating : null;
+    const chartType = args?.chart_type === 'std' || args?.chart_type === 'dx' ? args.chart_type : null;
 
     if (!songQuery) return { success: false, error: 'song_name is required.' };
     if (!difficulty) return { success: false, error: 'difficulty is required.' };
@@ -60,7 +68,13 @@ async function execute(args) {
     }
 
     const q = songQuery.toLowerCase();
-    const songMatches = data.songs.filter((s) => s.title.toLowerCase().includes(q));
+    // 宴会場/UTAGE entries share titles with 65 real songs but hold only joke
+    // charts (【宴】/【狂】/…), so leaving them in makes a normal lookup either
+    // ambiguous or silently wrong. The difficulty enum here is always a
+    // standard one, so they can never be what's meant.
+    const songMatches = data.songs.filter(
+        (s) => s.title.toLowerCase().includes(q) && !isUtageSong(s)
+    );
     if (songMatches.length === 0) {
         return { success: false, error: `No song matching "${songQuery}" found.` };
     }
@@ -77,15 +91,16 @@ async function execute(args) {
         song = exact;
     }
 
-    const sheet = song.sheets.find((sh) => sh.difficulty === difficulty);
-    if (!sheet) {
-        return {
-            success: false,
-            error: `"${song.title}" has no ${difficulty} chart.`,
-            available_difficulties: song.sheets.map((sh) => sh.difficulty),
-        };
+    // Shared resolver rather than a bare sheets.find: std and dx charts of the
+    // same song often carry different constants (71 of the 81 songs charted in
+    // both), so an unqualified match can be over a point off. It reports the
+    // ambiguity instead of picking — see maimaiChartLookup.js.
+    const found = findSheet(song, difficulty, chartType);
+    if (found.error) {
+        return { success: false, ...found };
     }
-    const level = sheet.internalLevelValue ?? sheet.levelValue;
+    const sheet = found.sheet;
+    const level = sheetLevel(sheet);
     if (level == null) {
         return {
             success: false,
