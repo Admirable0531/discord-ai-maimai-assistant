@@ -3,10 +3,11 @@ const { addEntry } = require('../database/repositories/knowledgeRepository');
 const declaration = {
     name: 'save_knowledge_base',
     description:
-        "Add or correct an entry in this server's shared knowledge base — the same store " +
-        "search_knowledge_base reads from. Unlike save_memory (private, per-user), this is visible to " +
-        "everyone in the server, so only call it when someone is clearly stating something that should " +
-        'be true for the whole group going forward, not a personal preference or a one-off aside. Two ' +
+        'Add or correct an entry in the shared knowledge base — the same store search_knowledge_base ' +
+        'reads from. Unlike save_memory (private, per-user), this is visible to everyone, in every ' +
+        'server the bot is in and in DMs, so only call it when someone is clearly stating something ' +
+        'that should be true for the whole group going forward, not a personal preference or a ' +
+        'one-off aside. Two ' +
         'cases: (1) they explicitly ask you to save/remember something for the server/group/everyone, or ' +
         '(2) they correct a fact you just gave (especially one that came from search_knowledge_base) and ' +
         'the correction is clearly meant to stick, e.g. "no, that\'s outdated, it\'s actually X now" or ' +

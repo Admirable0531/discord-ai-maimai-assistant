@@ -16,7 +16,7 @@ function canWrite(userId, guildId) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('knowledge')
-        .setDescription("Manage this server's shared AI knowledge base")
+        .setDescription("Manage the bot's shared AI knowledge base (global, all servers)")
         .addSubcommand((sub) =>
             sub
                 .setName('add')
@@ -35,9 +35,7 @@ module.exports = {
                 )
         )
         .addSubcommand((sub) =>
-            sub
-                .setName('list')
-                .setDescription("List this server's knowledge base entries")
+            sub.setName('list').setDescription('List every knowledge base entry')
         )
         .addSubcommand((sub) =>
             sub
@@ -68,7 +66,7 @@ module.exports = {
         const sub = interaction.options.getSubcommand();
         const guildId = interaction.guildId;
 
-        // Shared/server-wide, unlike memories — writes require the
+        // Global and shared, unlike memories — writes require the
         // 'knowledge' scope (owner has it by default, others must be
         // granted it) so a random allowed user can't poison it. The AI's
         // save_knowledge_base tool is gated by the exact same scope check.
@@ -109,7 +107,7 @@ module.exports = {
 
         if (sub === 'remove') {
             const title = interaction.options.getString('title', true);
-            const result = removeEntry(guildId, title);
+            const result = removeEntry(title);
             await interaction.reply({
                 content: result.success ? `Removed "${result.title}".` : result.error,
                 flags: MessageFlags.Ephemeral,
@@ -118,10 +116,10 @@ module.exports = {
         }
 
         if (sub === 'list') {
-            const entries = listEntries(guildId, 50);
+            const entries = listEntries(50);
             if (entries.length === 0) {
                 await interaction.reply({
-                    content: "The knowledge base is empty for this server.",
+                    content: 'The knowledge base is empty.',
                     flags: MessageFlags.Ephemeral,
                 });
                 return;
@@ -135,7 +133,7 @@ module.exports = {
 
         if (sub === 'search') {
             const query = interaction.options.getString('query', true);
-            const entries = searchEntries(guildId, query, 5);
+            const entries = searchEntries(query, 5);
             if (entries.length === 0) {
                 await interaction.reply({
                     content: `No knowledge base entries matched "${query}".`,

@@ -50,7 +50,17 @@ const CATEGORIES = [
                 path: '/maimai-mobile/record/musicLevel/search/',
                 title: 'Song Scores by Level',
                 description:
-                    'Best scores filtered to one difficulty level. Needs a level query param, e.g. "?level=13+".',
+                    "EVERY best score at one displayed level — the account's complete scores at that " +
+                    'level, unlike get_maimai_own_top_scores which only ever shows the top 50 charts by ' +
+                    'rating. This is the page to use for "what\'s my best score at 14+/13/etc". The level ' +
+                    'query param is a NUMERIC bucket index from the page\'s own <select name="level">, ' +
+                    'not the printed level: 13 -> "?level=19", 13+ -> 20, 14 -> 21, 14+ -> 22, 15 -> 23 ' +
+                    '(the pattern runs 1..23 from level 1 upward, each "+" taking the next index). Never ' +
+                    'put a literal "+" in the URL — it decodes to a space and the site silently falls ' +
+                    'back to LEVEL 1, which looks like real results for the wrong level. Note these are ' +
+                    'DISPLAYED levels, not chart constants: "14" covers constants 14.0-14.5 and "14+" ' +
+                    'covers 14.6-14.9, so a per-constant question needs this page plus each chart\'s ' +
+                    'constant (get_maimai_score_breakdown / search_maimai_songs) to sort them out.',
             },
             {
                 path: '/maimai-mobile/record/nationalData/',

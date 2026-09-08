@@ -1,4 +1,4 @@
-const { eq, and, like, or, isNull } = require('drizzle-orm');
+const { eq, like, or } = require('drizzle-orm');
 const { getDb } = require('../client');
 const { knowledgeBase } = require('../schema');
 const { sqliteTimestamp } = require('../timestamp');
@@ -17,31 +17,30 @@ function validate(title, content) {
 }
 
 /**
- * Entries are shared server-wide (guildId), not per-user like memories.
- * guildId is nullable to also support DM-only deployments where every entry
- * is effectively global.
+ * Entries are GLOBAL — one shared knowledge base across every server the bot
+ * is in, plus DMs. This is a private bot for one group of people who follow
+ * it between servers, so per-guild scoping just meant the same correction had
+ * to be re-taught in each place (and anything taught in a DM was invisible
+ * everywhere). guild_id is still recorded on write as provenance — where a
+ * fact was first taught — it just isn't a filter any more.
+ *
+ * Titles are therefore unique globally: teaching "B50" in one server and
+ * again in another updates the one entry rather than creating a second.
  */
-function guildFilter(guildId) {
-    return guildId ? eq(knowledgeBase.guildId, guildId) : isNull(knowledgeBase.guildId);
-}
 
 /** SQLite's LIKE is case-insensitive for ASCII by default, so a plain (no wildcard) LIKE is an exact case-insensitive title match. */
-function findByTitle(guildId, title) {
+function findByTitle(title) {
     const db = getDb();
-    return db
-        .select()
-        .from(knowledgeBase)
-        .where(and(guildFilter(guildId), like(knowledgeBase.title, title.trim())))
-        .all()[0];
+    return db.select().from(knowledgeBase).where(like(knowledgeBase.title, title.trim())).all()[0];
 }
 
-/** Upserts by (guildId, title), case-insensitive — same "update if the key already exists" behavior as saveMemory. */
+/** Upserts by title, case-insensitive — same "update if the key already exists" behavior as saveMemory. */
 function addEntry({ guildId, title, content, category, createdBy }) {
     const error = validate(title, content);
     if (error) return { success: false, error };
 
     const db = getDb();
-    const existing = findByTitle(guildId, title);
+    const existing = findByTitle(title);
 
     if (existing) {
         db.update(knowledgeBase)
@@ -68,8 +67,8 @@ function addEntry({ guildId, title, content, category, createdBy }) {
     return { success: true, updated: false, title: title.trim() };
 }
 
-/** Free-text search over title + content, scoped to this guild (or global entries if guildId is falsy). */
-function searchEntries(guildId, query, limit = 5) {
+/** Free-text search over title + content, across every entry regardless of where it was taught. */
+function searchEntries(query, limit = 5) {
     const db = getDb();
     const trimmedQuery = (query || '').trim();
 
@@ -78,17 +77,14 @@ function searchEntries(guildId, query, limit = 5) {
               .select()
               .from(knowledgeBase)
               .where(
-                  and(
-                      guildFilter(guildId),
-                      or(
-                          like(knowledgeBase.title, `%${trimmedQuery}%`),
-                          like(knowledgeBase.content, `%${trimmedQuery}%`)
-                      )
+                  or(
+                      like(knowledgeBase.title, `%${trimmedQuery}%`),
+                      like(knowledgeBase.content, `%${trimmedQuery}%`)
                   )
               )
               .limit(limit)
               .all()
-        : db.select().from(knowledgeBase).where(guildFilter(guildId)).limit(limit).all();
+        : db.select().from(knowledgeBase).limit(limit).all();
 
     return rows.map((row) => ({
         id: row.id,
@@ -98,12 +94,12 @@ function searchEntries(guildId, query, limit = 5) {
     }));
 }
 
-function listEntries(guildId, limit = 50) {
-    return searchEntries(guildId, null, limit);
+function listEntries(limit = 50) {
+    return searchEntries(null, limit);
 }
 
-function removeEntry(guildId, title) {
-    const existing = findByTitle(guildId, title);
+function removeEntry(title) {
+    const existing = findByTitle(title);
     if (!existing) return { success: false, error: `No knowledge base entry found for "${title}".` };
 
     const db = getDb();

@@ -30,7 +30,13 @@ const declaration = {
         'current_rating_source is "unavailable" instead, current_rating is null — do NOT treat an old ' +
         'snapshot as current just because there was nothing to compare it to; say plainly that freshness ' +
         'could not be verified. Use this for "what\'s my/its highest rated play / B50 breakdown" about the ' +
-        'tracked account — not about a friend, which is get_maimai_friend_top_scores instead.',
+        'tracked account — not about a friend, which is get_maimai_friend_top_scores instead. ' +
+        'SCOPE LIMIT: this is only the 50 charts that currently feed the rating, NOT a complete score ' +
+        'list. Any chart outside the top 50 is absent, so it cannot answer "my best score at level/' +
+        'constant X" except by luck — for lower constants especially, the real best score is usually not ' +
+        'in here at all, and treating a gap as "no score" or the top entry as "my highest" is simply ' +
+        'wrong. For questions about best scores at a given level or constant, read the Song Scores by ' +
+        'Level page instead (see list_maimai_account_pages), which has every score.',
     parametersJsonSchema: {
         type: 'object',
         properties: {},
