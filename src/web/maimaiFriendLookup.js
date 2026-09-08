@@ -69,9 +69,71 @@ function parseFriendListPage(html) {
     return friends;
 }
 
+// Each VS row carries six h_30 badge images: three floated left (.f_l) for
+// this account and three floated right (.f_r) for the friend, confirmed live:
+//
+//   [f_l] music_icon_sss  music_icon_fc    music_icon_back    <- own
+//   [f_r] music_icon_back music_icon_back  music_icon_ssp     <- friend
+//
+// music_icon_back.png is the empty placeholder for "no badge". Rather than
+// relying on position within each group (the float reverses the visual order,
+// and an absent badge still occupies its slot), each icon is identified by
+// its own filename — so a layout reshuffle can't silently swap a rank badge
+// for a clear badge.
+const AP_FC_ICONS = { ap: 'AP', app: 'AP+', fc: 'FC', fcp: 'FC+' };
+const SYNC_ICONS = {
+    fs: 'FS',
+    fsp: 'FS+',
+    fsd: 'FSD',
+    fsdp: 'FSD+',
+    fdx: 'FSD',
+    fdxp: 'FSD+',
+    sync: 'SYNC',
+};
+const RANK_ICONS = {
+    sssp: 'SSS+',
+    sss: 'SSS',
+    ssp: 'SS+',
+    ss: 'SS',
+    sp: 'S+',
+    s: 'S',
+    aaa: 'AAA',
+    aa: 'AA',
+    a: 'A',
+    bbb: 'BBB',
+    bb: 'BB',
+    b: 'B',
+    c: 'C',
+    d: 'D',
+};
+
+/** "…/music_icon_fcp.png?ver=1.65" -> "fcp" */
+function iconName(src) {
+    if (!src) return null;
+    const file = src.split('/').pop().split('?')[0];
+    const m = /^music_icon_(.+)\.png$/.exec(file);
+    return m ? m[1] : null;
+}
+
+/** Reads one side's three badges (rank / AP-FC / sync) by icon filename. */
+function readBadges($, $block, side) {
+    const badges = { rank: null, ap_fc: null, sync: null };
+    $block.find(`img.h_30.${side}`).each((_, img) => {
+        const name = iconName($(img).attr('src'));
+        if (!name || name === 'back') return; // 'back' is the empty slot
+        if (AP_FC_ICONS[name]) badges.ap_fc = AP_FC_ICONS[name];
+        else if (SYNC_ICONS[name]) badges.sync = SYNC_ICONS[name];
+        else if (RANK_ICONS[name]) badges.rank = RANK_ICONS[name];
+    });
+    return badges;
+}
+
 /**
  * Parses a friendLevelVs/battleStart page (scoreType=2, i.e. ACHIEVEMENT)
- * into [{song_name, difficulty, own_achievement, friend_achievement}].
+ * into [{song_name, difficulty, own_*, friend_*}], including each side's
+ * real AP/FC and sync badges — the only trustworthy way to know a play is
+ * AP, since achievement %% alone never proves it.
+ *
  * Only Master/Re:Master charts are on this page at all (same scope
  * Discord_Bot's /constant already uses) — that's the whole point of the
  * level-bucket filter, which only spans the top of the difficulty curve.
@@ -92,11 +154,17 @@ function parseLevelVsEntries(html) {
             const n = parseFloat(s.replace('%', ''));
             return Number.isNaN(n) ? null : n;
         };
+        const ownBadges = readBadges($, $block, 'f_l');
+        const friendBadges = readBadges($, $block, 'f_r');
         entries.push({
             song_name: songName,
             difficulty,
             own_achievement: parsePercent(own),
+            own_ap_fc: ownBadges.ap_fc,
+            own_rank: ownBadges.rank,
             friend_achievement: parsePercent(friend),
+            friend_ap_fc: friendBadges.ap_fc,
+            friend_rank: friendBadges.rank,
         });
     });
     return entries;

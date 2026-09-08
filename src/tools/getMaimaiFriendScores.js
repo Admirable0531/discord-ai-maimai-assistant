@@ -21,9 +21,12 @@ const declaration = {
         "answers the opposite direction (who's best on one song), and get_friend_leaderboard only has DX Rating, " +
         'no per-song data at all. Only covers Master/Re:Master charts (constants roughly 1.0-15.0) — there is no ' +
         'lower-difficulty equivalent on the site. A friend with no score on a chart shows friend_achievement: ' +
-        "null (unplayed), not zero. IMPORTANT: this only gives percentage, never the friend's actual clear-type " +
-        'badges — a high percentage does NOT prove AP (a non-AP play can land in the same range as a true AP, ' +
-        "confirmed live), so never claim/count a friend's AP or AP+ from this data, only report the percentage.",
+        'null (unplayed), not zero. Each chart also carries the real clear badges read off the page: ' +
+        "friend_ap_fc / own_ap_fc (\"AP+\", \"AP\", \"FC+\", \"FC\", or null for none) and friend_rank / own_rank. " +
+        'Use friend_ap_fc — and ONLY friend_ap_fc — to say whether a friend AP\'d something: achievement %% never ' +
+        'proves AP, since a non-AP play can land in the same range as a true AP (confirmed live). Never call a ' +
+        'score AP because of its percentage, and never describe a score as being "in AP range" or similar — if ' +
+        'ap_fc is null, the play is simply not AP or FC, so say that or say nothing about its clear type.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -118,7 +121,11 @@ async function execute(args) {
                 song_name: entry.song_name,
                 difficulty: entry.difficulty,
                 friend_achievement: entry.friend_achievement,
+                friend_ap_fc: entry.friend_ap_fc,
+                friend_rank: entry.friend_rank,
                 own_achievement: entry.own_achievement,
+                own_ap_fc: entry.own_ap_fc,
+                own_rank: entry.own_rank,
             });
         }
 
