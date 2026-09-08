@@ -5,6 +5,7 @@ const { GEMINI_TOOLS, createToolExecutors } = require('../toolDefinitions');
 const { estimateCostUsd } = require('../pricing');
 const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
+const { markTruncated } = require('../truncation');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 // Bounds the tool-call round-trip loop below so a model stuck calling tools
@@ -164,7 +165,7 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                     'agent',
                     `Gemini reply hit the ${MAX_OUTPUT_TOKENS}-token cap mid-answer — returning it flagged`
                 );
-                return `${text}\n\n…(cut off — ask me to continue)`;
+                return markTruncated(text);
             }
             return text;
         }

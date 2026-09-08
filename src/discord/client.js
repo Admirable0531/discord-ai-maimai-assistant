@@ -12,8 +12,15 @@ function createDiscordClient() {
             GatewayIntentBits.GuildMessages,
             GatewayIntentBits.MessageContent,
             GatewayIntentBits.DirectMessages,
+            // Reactions drive "continue a reply that hit the output limit"
+            // (see messageHandler) — without these the ▶️ is never delivered.
+            GatewayIntentBits.GuildMessageReactions,
+            GatewayIntentBits.DirectMessageReactions,
         ],
-        partials: [Partials.Channel],
+        // Reaction/Message partials matter because the message being reacted
+        // to is usually older than the current cache, especially after a
+        // restart — without them the event arrives with nothing usable on it.
+        partials: [Partials.Channel, Partials.Message, Partials.Reaction],
     });
 }
 

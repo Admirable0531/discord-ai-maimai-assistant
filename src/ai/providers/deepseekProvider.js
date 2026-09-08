@@ -4,6 +4,7 @@ const { isOwner } = require('../../permissions/permissionStore');
 const { estimateCostUsd } = require('../pricing');
 const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
+const { markTruncated } = require('../truncation');
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 const TIMEOUT_MS = 30000;
@@ -226,20 +227,31 @@ async function generateReply(history, userMessage, { userId, guildId }) {
             // truncates does the reply go out, and then it says so rather than
             // pretending the last row was the end.
             if (finishReason === 'length') {
-                if (!retriedAfterTruncation && maxTokens < BOOSTED_MAX_OUTPUT_TOKENS) {
+                if (!retriedAfterTruncation) {
                     retriedAfterTruncation = true;
+                    // Raising max_tokens alone barely helped in practice,
+                    // because reasoning is billed against this same budget:
+                    // at effort "max" (which every heavy tool triggers) the
+                    // thinking can consume most of 8192 before a long table
+                    // has been written. By this point the tool results are
+                    // already gathered and the remaining work is composing
+                    // them, so stepping reasoning down to "high" hands those
+                    // tokens to the answer instead — that, not the larger
+                    // cap, is what actually fits the table.
                     maxTokens = BOOSTED_MAX_OUTPUT_TOKENS;
+                    const previousEffort = reasoningEffort;
+                    reasoningEffort = reasoningEffort === 'max' ? 'high' : 'low';
                     logger.warn(
                         'agent',
-                        `DeepSeek reply hit the ${MAX_OUTPUT_TOKENS}-token cap mid-answer — retrying at ${maxTokens}`
+                        `DeepSeek reply hit the token cap mid-answer — retrying at ${maxTokens} tokens with reasoning_effort ${previousEffort} -> ${reasoningEffort}`
                     );
                     continue;
                 }
                 logger.warn(
                     'agent',
-                    `DeepSeek reply still truncated at ${maxTokens} tokens — returning it flagged`
+                    `DeepSeek reply still truncated at ${maxTokens} tokens — returning it flagged for continuation`
                 );
-                return `${text}\n\n…(cut off — ask me to continue)`;
+                return markTruncated(text);
             }
 
             return text;

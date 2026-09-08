@@ -4,7 +4,7 @@ const { Collection, MessageFlags } = require('discord.js');
 const logger = require('./utils/logger');
 const { loadEnv } = require('./config/env');
 const { createDiscordClient } = require('./discord/client');
-const { registerMessageHandler } = require('./discord/messageHandler');
+const { registerMessageHandler, registerReactionHandler } = require('./discord/messageHandler');
 const { closeBrowser } = require('./web/playwrightFetcher');
 const { pruneOlderThan } = require('./database/repositories/conversationRepository');
 const { startServer } = require('./web/server');
@@ -56,6 +56,7 @@ for (const folder of fs.readdirSync(commandsRoot)) {
 logger.info('bot', `Loaded ${client.commands.size} slash command(s)`);
 
 registerMessageHandler(client, config);
+registerReactionHandler(client, config);
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
