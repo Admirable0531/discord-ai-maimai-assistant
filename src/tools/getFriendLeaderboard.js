@@ -2,6 +2,8 @@
 // maimaiscrape repo, not a database this bot owns — that server already
 // knows the MongoDB schema and does the same read the /latestfriendsleaderboard
 // slash command in Discord_Bot uses, just as JSON.
+const { ageInDays, isStale } = require('../utils/snapshotAge');
+
 const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
 const TIMEOUT_MS = 10000;
 
@@ -18,7 +20,11 @@ const declaration = {
         'in full-width Unicode characters (e.g. "Ｍｉｎｊｉｎ") — treat those as the same name as their plain-ASCII ' +
         'equivalent ("minjin") when matching, don\'t treat the different character width as a non-match. Use this ' +
         'for questions like "what is X\'s rating", "who has the highest rating", "is X a friend", or "top N ' +
-        'friends". This is live tracked data, not something to guess or look up on the web. If the asker is ' +
+        'friends". This is tracked data, not something to guess or look up on the web. FRESHNESS: this is the ' +
+        'most recent nightly snapshot, which is not always recent — check snapshot_age_days and is_stale on ' +
+        'every call. When is_stale is true the ratings and ranks are genuinely out of date (the scrape has been ' +
+        'failing), so state the snapshot date plainly instead of presenting the numbers as current, and never ' +
+        'describe a stale rank as someone\'s standing "now". If the asker is ' +
         "themselves one of the tracked friends, check search_memory first in case they've told you their in-game name before.",
     parametersJsonSchema: {
         type: 'object',
@@ -46,10 +52,25 @@ async function execute(args) {
         if (!response.ok || !body.success) {
             return { success: false, error: body.error || `HTTP ${response.status}` };
         }
+        const ageDays = ageInDays(body.snapshotDate);
+        const stale = isStale(body.snapshotDate);
+
         return {
             success: true,
             accountType: body.accountType,
             snapshotDate: body.snapshotDate,
+            snapshot_age_days: ageDays,
+            is_stale: stale,
+            ...(stale
+                ? {
+                      staleness_warning:
+                          `These ratings are from ${body.snapshotDate || 'an unknown date'}` +
+                          (ageDays !== null ? ` — ${ageDays} days old` : ' — age unknown') +
+                          `. The nightly scrape for the "${body.accountType}" account has not run since ` +
+                          'then, so these are NOT current ratings or ranks. Say so explicitly when you ' +
+                          'use them, and give the date rather than presenting them as up to date.',
+                  }
+                : {}),
             friends: body.friends,
         };
     } catch (err) {

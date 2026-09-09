@@ -4,6 +4,7 @@
 // through on SEGA's own site, see that file's getTopScore()). No live
 // browser session needed here, just reading what that pipeline already saved.
 const { normalizeName } = require('../web/maimaiFriendLookup');
+const { ageInDays, isStale } = require('../utils/snapshotAge');
 
 const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
 const TIMEOUT_MS = 15000;
@@ -17,14 +18,17 @@ const declaration = {
         "and old_version_top_plays, matching the game's own rating-split categories, each entry with Song/Chart/" +
         'Level/Achv/Rank/Rating) plus snapshot_rating, their total rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: ' +
         'this snapshot comes from a daily scraper that does not run reliably for every friend — snapshot_age_days ' +
-        'can be months or even years for some friends even though the friend list itself (get_friend_leaderboard) ' +
-        "updates daily. current_rating is fetched independently from that same daily-updated leaderboard when " +
-        "possible (current_rating_source: \"daily_friend_leaderboard\") — compare it against snapshot_rating: if " +
-        "they differ, or snapshot_age_days is large, tell the user plainly this is an old snapshot and their " +
-        'actual top plays may have changed since. If current_rating_source is instead ' +
-        '"unavailable" (friend not found on that leaderboard), current_rating is null — do NOT fall back to ' +
-        'treating an old snapshot as current just because you have nothing to compare it to; still surface ' +
-        'snapshot_age_days and say plainly that freshness could not be verified. Use this for "what\'s Y\'s ' +
+        'can be months or even years for some friends. current_rating is cross-checked against the friend-list ' +
+        'leaderboard, which is written by a separate job — but that job can ALSO be broken, so neither number is ' +
+        'automatically the current one. Read current_rating_source: "daily_friend_leaderboard" means the ' +
+        'cross-check is recent and current_rating can be treated as their rating now; "stale_friend_leaderboard" ' +
+        'means that leaderboard has not run in a long time and current_rating is NOT their rating now (its age is ' +
+        'in current_rating_age_days, its date in current_rating_date); "unavailable" means the friend was not ' +
+        'found there and current_rating is null. freshest_rating_source names which of the two numbers is ' +
+        'actually more recent, and any freshness_warnings spell out what is wrong — follow them, and never ' +
+        "present a stale rating or rank as someone's standing right now. Do NOT treat an old snapshot as current " +
+        'just because you have nothing to compare it to; surface snapshot_age_days and say plainly that ' +
+        "freshness could not be verified. Use this for \"what's Y's " +
         'highest rated play / best scores" — get_maimai_friend_scores answers a narrower but always-fresh ' +
         'question (one difficulty constant at a time), and get_maimai_song_ranking answers a different direction ' +
         "entirely (who's best on one song, not one friend's best charts).",
@@ -40,20 +44,6 @@ const declaration = {
         required: ['friend_name'],
     },
 };
-
-/** Handles both Date formats seen in stored snapshots: "DD/MM/YYYY HH:mm:ss" and "M/D/YYYY, h:mm:ss AM/PM". */
-function parseSnapshotDate(dateStr) {
-    if (!dateStr) return null;
-    const direct = new Date(dateStr);
-    if (!Number.isNaN(direct.getTime())) return direct;
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2}):(\d{2})$/.exec(dateStr.trim());
-    if (!m) return null;
-    const [, d, mo, y, h, mi, s] = m;
-    const dt = new Date(
-        `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}T${h.padStart(2, '0')}:${mi}:${s}`
-    );
-    return Number.isNaN(dt.getTime()) ? null : dt;
-}
 
 async function findFriend(friendName) {
     const response = await fetch(`${API_URL}/users`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -75,16 +65,24 @@ async function findFriend(friendName) {
  * by the SAME update_user_data.js run (see insertFriendUserInfo + getTopScore
  * in that file) — so comparing snapshot_rating against /users' rating can
  * never detect staleness, since a scraper run that hasn't fired in months
- * writes both numbers identically stale, every time. get_friend_leaderboard's
- * data source (friend_rating_daily_snapshots / _main, written by the separate
- * discord-bot friend-list scraper) updates independently and reliably every
- * day, so that's the only place a genuinely live rating can come from here.
- * All of this account's friend_<idx>_top entries come from its "main"
- * friend-list scrape specifically (confirmed against collectionNames.js /
- * update_user_data.js), so "main" is the correct leaderboard to check
- * regardless of which name was searched.
+ * writes both numbers identically stale, every time. The friend-list
+ * leaderboard (friend_rating_daily_snapshots / _main, written by the separate
+ * discord-bot friend-list scraper) is written independently, so it's the only
+ * cross-check available here. All of this account's friend_<idx>_top entries
+ * come from its "main" friend-list scrape specifically (confirmed against
+ * collectionNames.js / update_user_data.js), so "main" is the correct
+ * leaderboard to check regardless of which name was searched.
+ *
+ * What this function must NOT do is assume that leaderboard is current. It was
+ * previously treated as reliably daily and its rating returned as
+ * `current_rating` unconditionally — but the "main" scrape has failed every
+ * night since 2026-03-18, so it served ratings ~6 months old while the
+ * 2-day-old top-score snapshot beside it was the fresher number. That inverted
+ * the whole check: the stale value was labelled current and the fresh one
+ * flagged as suspect. The leaderboard's own age now comes back with it so the
+ * caller can tell which of the two is actually more recent.
  */
-async function fetchLiveRating(friendName) {
+async function fetchLeaderboardRating(friendName) {
     const response = await fetch(`${API_URL}/api/friends-leaderboard?accountType=main`, {
         signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -93,7 +91,12 @@ async function fetchLiveRating(friendName) {
     if (!body?.success || !Array.isArray(body.friends)) return null;
     const target = normalizeName(friendName);
     const match = body.friends.find((f) => normalizeName(f.name) === target);
-    return match && match.rating != null ? match.rating : null;
+    if (!match || match.rating == null) return null;
+    return {
+        rating: match.rating,
+        snapshotDate: body.snapshotDate ?? null,
+        ageDays: ageInDays(body.snapshotDate),
+    };
 }
 
 async function execute(args) {
@@ -130,21 +133,58 @@ async function execute(args) {
             return { success: false, error: body.error || `HTTP ${response.status}` };
         }
 
-        const snapshotDate = parseSnapshotDate(body.Date);
-        const snapshotAgeDays = snapshotDate
-            ? Math.floor((Date.now() - snapshotDate.getTime()) / 86400000)
-            : null;
+        const snapshotAgeDays = ageInDays(body.Date);
 
-        const liveRating = await fetchLiveRating(friend.name).catch(() => null);
+        const leaderboard = await fetchLeaderboardRating(friend.name).catch(() => null);
+        const leaderboardStale = leaderboard ? isStale(leaderboard.snapshotDate) : true;
+        // Which of the two independently-written numbers is actually more
+        // recent. Either can be the stale one, so this is compared rather than
+        // assumed — that assumption is exactly what broke before.
+        const leaderboardIsFresher =
+            leaderboard &&
+            leaderboard.ageDays !== null &&
+            (snapshotAgeDays === null || leaderboard.ageDays <= snapshotAgeDays);
+
+        let currentRatingSource;
+        if (!leaderboard) currentRatingSource = 'unavailable';
+        else if (leaderboardStale) currentRatingSource = 'stale_friend_leaderboard';
+        else currentRatingSource = 'daily_friend_leaderboard';
+
+        const warnings = [];
+        if (leaderboard && leaderboardStale) {
+            warnings.push(
+                `The friend leaderboard used to cross-check this is itself ${
+                    leaderboard.ageDays !== null
+                        ? `${leaderboard.ageDays} days old`
+                        : 'of unknown age'
+                } (${leaderboard.snapshotDate || 'no date'}), because the nightly "main" friend-list scrape ` +
+                    "has been failing. Do not present current_rating as this friend's rating right now."
+            );
+        }
+        if (leaderboard && !leaderboardIsFresher && snapshotAgeDays !== null) {
+            warnings.push(
+                `current_rating (${leaderboard.rating}) is OLDER than snapshot_rating (${
+                    body.rating ?? 'unknown'
+                }): the leaderboard is ${leaderboard.ageDays} days old versus the top-score snapshot's ` +
+                    `${snapshotAgeDays}. The snapshot is the more recent of the two here — do not describe ` +
+                    'the leaderboard number as the up-to-date one.'
+            );
+        }
 
         return {
             success: true,
             friend_name: friend.name,
-            current_rating: liveRating,
-            current_rating_source: liveRating != null ? 'daily_friend_leaderboard' : 'unavailable',
+            current_rating: leaderboard ? leaderboard.rating : null,
+            current_rating_source: currentRatingSource,
+            current_rating_age_days: leaderboard ? leaderboard.ageDays : null,
+            current_rating_date: leaderboard ? leaderboard.snapshotDate : null,
             snapshot_date: body.Date || null,
             snapshot_age_days: snapshotAgeDays,
             snapshot_rating: body.rating ?? null,
+            freshest_rating_source: leaderboardIsFresher
+                ? 'friend_leaderboard'
+                : 'top_score_snapshot',
+            ...(warnings.length > 0 ? { freshness_warnings: warnings } : {}),
             new_version_top_plays: body.new || [],
             old_version_top_plays: body.old || [],
         };
