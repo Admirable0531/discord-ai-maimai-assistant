@@ -54,6 +54,19 @@ const THINKING_BUDGET =
     process.env.GEMINI_THINKING_BUDGET !== undefined
         ? Number(process.env.GEMINI_THINKING_BUDGET)
         : 1024;
+// A continuation is picking up an answer already in progress, not deciding
+// what to say next, so it wants minimal thinking — that leaves more of the
+// (wider) output cap for the answer text itself.
+//
+// NOT zero, even though "no thinking needed" is the intent: gemini-3.5-flash-lite
+// rejects thinkingBudget: 0 outright with 400 INVALID_ARGUMENT (verified live
+// against this exact model — 0 fails, 128 and 1024 succeed). Thinking cannot be
+// disabled on it, only turned down, and a rejected request took out the whole
+// continuation rather than degrading it.
+const CONTINUATION_THINKING_BUDGET =
+    process.env.GEMINI_CONTINUATION_THINKING_BUDGET !== undefined
+        ? Number(process.env.GEMINI_CONTINUATION_THINKING_BUDGET)
+        : 128;
 
 // The real tools plus the budget-extension escape hatch, declared together
 // so the function-call schema Gemini sees stays identical across every
@@ -135,10 +148,7 @@ async function generateReply(history, userMessage, { userId, guildId, continuati
     const systemInstruction = buildSystemPrompt({ userId, guildId });
     let maxIterations = BASE_MAX_TOOL_ITERATIONS;
     const maxOutputTokens = continuation ? BOOSTED_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
-    // A continuation is picking up an answer already in progress, not
-    // deciding what to say next — little to no thinking budget needed, which
-    // leaves more of the wider cap above for the answer text itself.
-    const thinkingBudget = continuation ? 0 : THINKING_BUDGET;
+    const thinkingBudget = continuation ? CONTINUATION_THINKING_BUDGET : THINKING_BUDGET;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
         const response = await ai.models.generateContent({

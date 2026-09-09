@@ -69,9 +69,17 @@ function splitForDiscord(text) {
     return chunks;
 }
 
-/** Sends (possibly long) text as one or more messages, replying with the first. */
+/**
+ * Sends (possibly long) text as one or more messages, replying with the first.
+ * Empty text would otherwise split into zero chunks and send nothing at all,
+ * which reaches the user as silence rather than as an error.
+ */
 async function sendChunked(message, text) {
     const chunks = splitForDiscord(text);
+    if (chunks.length === 0) {
+        logger.warn('discord', 'Refusing to send an empty reply — nothing to say');
+        return null;
+    }
     let sent;
     for (let i = 0; i < chunks.length; i++) {
         sent =
@@ -314,17 +322,28 @@ function registerReactionHandler(client, config) {
             await sendReply(message, reply, { userId, channelId, guildId, accumulated });
         } catch (err) {
             logger.error('discord', `Failed to continue a reply for ${user.tag}`, err);
+            // Whatever went wrong upstream, the work already generated is still
+            // worth delivering — losing it here is what made a failed
+            // continuation look like the bot silently ignoring the ▶️.
             const fallback = accumulated.trim();
-            await (
-                fallback
-                    ? sendChunked(
-                          message,
-                          `Sorry, I couldn't pick that back up. Here's what I had:\n\n${fallback}`
-                      )
-                    : message.channel.send(
-                          "Sorry, I couldn't pick that back up — ask me to continue in a message instead."
-                      )
-            ).catch(() => {});
+            const notice = fallback
+                ? `Sorry, I couldn't finish that one. Here's what I had so far:\n\n${fallback}`
+                : "Sorry, I couldn't pick that back up — ask me to continue in a message instead.";
+            try {
+                await sendChunked(message, notice);
+            } catch (sendErr) {
+                // Never swallowed: when this failed quietly, the typing
+                // indicator just stopped with nothing posted, which from the
+                // outside is indistinguishable from the bot ignoring you.
+                // reply() can fail on its own (deleted/unreachable target)
+                // while a plain channel send still works, so try that too.
+                logger.error('discord', 'Could not deliver the continuation fallback', sendErr);
+                await message.channel
+                    .send(notice.slice(0, DISCORD_MESSAGE_LIMIT))
+                    .catch((lastErr) =>
+                        logger.error('discord', 'Could not send to the channel either', lastErr)
+                    );
+            }
         } finally {
             clearInterval(typingInterval);
         }

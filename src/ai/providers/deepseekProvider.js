@@ -7,7 +7,15 @@ const logger = require('../../utils/logger');
 const { markTruncated } = require('../truncation');
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = Number(process.env.DEEPSEEK_TIMEOUT_MS) || 30000;
+// Composing a long answer at the boosted cap takes materially longer than a
+// tool-picking round trip, and 30s was not enough for it: the two DeepSeek
+// failures in the logs were both timeouts, both on exactly the heavy requests
+// the wider budget exists for. Timing out isn't free — it falls through to
+// Gemini, whose cap is a quarter the size, so the very requests that need the
+// most room ended up answered with the least and truncated. Continuations get
+// a longer leash for that reason.
+const CONTINUATION_TIMEOUT_MS = Number(process.env.DEEPSEEK_CONTINUATION_TIMEOUT_MS) || 120000;
 // deepseek-v4-flash: OpenAI-compatible tool calling, cheaper than Gemini
 // 3.5 Flash-Lite on both input and output, and benchmarks well specifically
 // on agentic/tool-use tasks (unlike Llama-class models) — see agent.js for
@@ -120,7 +128,7 @@ function toDeepseekMessages(history, userMessage, context) {
     ];
 }
 
-async function callDeepseek(messages, { toolChoice, reasoningEffort, maxTokens } = {}) {
+async function callDeepseek(messages, { toolChoice, reasoningEffort, maxTokens, timeoutMs } = {}) {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
         throw new Error('DEEPSEEK_API_KEY is not set; cannot call DeepSeek.');
@@ -141,7 +149,7 @@ async function callDeepseek(messages, { toolChoice, reasoningEffort, maxTokens }
                 // Omitted entirely falls back to DeepSeek's own default ("high").
                 ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
             }),
-            signal: AbortSignal.timeout(TIMEOUT_MS),
+            signal: AbortSignal.timeout(timeoutMs || TIMEOUT_MS),
         });
     } catch (err) {
         throw new Error(`Could not reach the DeepSeek API: ${err.message}`);
@@ -194,6 +202,7 @@ async function generateReply(history, userMessage, { userId, guildId, continuati
         continuation || wantsHigherBudget(userId, userMessage)
             ? BOOSTED_MAX_OUTPUT_TOKENS
             : MAX_OUTPUT_TOKENS;
+    const timeoutMs = continuation ? CONTINUATION_TIMEOUT_MS : TIMEOUT_MS;
     if (maxTokens !== MAX_OUTPUT_TOKENS) {
         logger.info(
             'agent',
@@ -205,7 +214,7 @@ async function generateReply(history, userMessage, { userId, guildId, continuati
     let retriedAfterTruncation = false;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
-        const data = await callDeepseek(messages, { reasoningEffort, maxTokens });
+        const data = await callDeepseek(messages, { reasoningEffort, maxTokens, timeoutMs });
         const message = data.choices?.[0]?.message;
         const toolCalls = message?.tool_calls;
 
@@ -343,6 +352,7 @@ async function generateReply(history, userMessage, { userId, guildId, continuati
         toolChoice: 'none',
         reasoningEffort,
         maxTokens,
+        timeoutMs,
     });
     const finalText = (finalData.choices?.[0]?.message?.content || '').trim();
     if (finalText) return finalText;
