@@ -4,7 +4,13 @@ const { isOwner } = require('../../permissions/permissionStore');
 const { estimateCostUsd } = require('../pricing');
 const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
-const { markTruncated } = require('../truncation');
+const {
+    ANSWER_MAX_OUTPUT_TOKENS,
+    CONTINUE_PROMPT,
+    joinContinuation,
+    completeAnswer,
+    partialAnswer,
+} = require('../answerBudget');
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 const TIMEOUT_MS = 30000;
@@ -13,18 +19,24 @@ const TIMEOUT_MS = 30000;
 // on agentic/tool-use tasks (unlike Llama-class models) — see agent.js for
 // how this is wired as primary with Gemini as the fallback.
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+// Budget for the tool-calling rounds only — deciding what to call next and
+// reading results back. The final message is written under its own, larger
+// budget (see ../answerBudget.js), so a research phase that reasons hard can
+// no longer starve the answer of room to be written.
+//
 // Confirmed live (see conversation log 2026-08-04): reasoning_tokens alone
 // routinely ate 500-1500+ tokens per round at the old 2048 cap, leaving
-// uncomfortably little room for the actual tool call / answer — DeepSeek
-// returns an EMPTY response (finish_reason: "length", no text, no
-// tool_calls) when reasoning eats the whole budget, which throws and burns
-// the whole turn on a cold-restart fallback to Gemini. 4096 confirmed via
-// live testing to survive multiple rounds without hitting that failure.
-const MAX_OUTPUT_TOKENS = Number(process.env.DEEPSEEK_MAX_OUTPUT_TOKENS) || 4096;
+// uncomfortably little room for the actual tool call — DeepSeek returns an
+// EMPTY response (finish_reason: "length", no text, no tool_calls) when
+// reasoning eats the whole budget, which throws and burns the whole turn on
+// a cold-restart fallback to Gemini. 4096 confirmed via live testing to
+// survive multiple rounds without hitting that failure.
+const TOOL_PHASE_MAX_TOKENS = Number(process.env.DEEPSEEK_MAX_OUTPUT_TOKENS) || 4096;
 // Only the owner can ask for this (see wantsHigherBudget below) — a wider
 // budget raises real cost (reasoning tokens are billed) so it isn't the
 // default for every user on every message.
-const BOOSTED_MAX_OUTPUT_TOKENS = Number(process.env.DEEPSEEK_MAX_OUTPUT_TOKENS_BOOSTED) || 8192;
+const BOOSTED_TOOL_PHASE_MAX_TOKENS =
+    Number(process.env.DEEPSEEK_MAX_OUTPUT_TOKENS_BOOSTED) || 8192;
 // Deliberately loose phrasing match, not a fixed command — this is meant to
 // fire on natural asks ("can you think harder about this") without the
 // owner needing to remember exact syntax. False positives just cost a
@@ -136,7 +148,7 @@ async function callDeepseek(messages, { toolChoice, reasoningEffort, maxTokens }
                 messages,
                 tools: OPENAI_TOOLS,
                 tool_choice: toolChoice || 'auto',
-                max_tokens: maxTokens || MAX_OUTPUT_TOKENS,
+                max_tokens: maxTokens || TOOL_PHASE_MAX_TOKENS,
                 // low | high | max — see the effort-estimation comment above.
                 // Omitted entirely falls back to DeepSeek's own default ("high").
                 ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
@@ -176,9 +188,63 @@ function recordUsage(data) {
 }
 
 /**
+ * Writes (or finishes writing) the answer under the answer budget rather than
+ * the tool-phase one.
+ *
+ * Two things differ from a loop call on purpose. Tool calls are off: the
+ * research is done by the time this runs, and leaving them available is how a
+ * model talks itself into another round instead of writing. And reasoning
+ * drops to "low": DeepSeek bills reasoning against this same max_tokens, so
+ * at effort "max" (which every heavy tool triggers) the thinking can eat most
+ * of the budget before a long table has been written — those tokens belong to
+ * the answer now.
+ *
+ * `accumulated` is whatever has already been written across earlier attempts;
+ * the model is asked to carry on from exactly there, so nothing already paid
+ * for is re-generated. Resolves to a complete or partial Answer — partial
+ * carries a resume() for the next rung up, which is what the ▶️ reaction
+ * spends (see discord/messageHandler.js).
+ */
+async function composeAnswer(messages, accumulated, budget) {
+    const conversation = accumulated
+        ? [
+              ...messages,
+              { role: 'assistant', content: accumulated },
+              { role: 'user', content: CONTINUE_PROMPT },
+          ]
+        : messages;
+
+    const data = await callDeepseek(conversation, {
+        toolChoice: 'none',
+        reasoningEffort: 'low',
+        maxTokens: budget,
+    });
+    const chunk = data.choices?.[0]?.message?.content || '';
+    const finishReason = data.choices?.[0]?.finish_reason;
+    const text = joinContinuation(accumulated, chunk);
+
+    if (finishReason !== 'length') {
+        logger.info('agent', `DeepSeek finished the answer within its ${budget}-token budget`);
+        return completeAnswer(text.trim());
+    }
+
+    logger.warn(
+        'agent',
+        `DeepSeek answer still unfinished at a ${budget}-token answer budget (${text.length} chars written) — offering a continuation`
+    );
+    return partialAnswer(text.trim(), {
+        budget,
+        resume: (nextBudget) => composeAnswer(messages, text.trim(), nextBudget),
+    });
+}
+
+/**
  * Implements the AIProvider interface (see ../agent.js) — same contract as
  * geminiProvider.js / groqProvider.js, so agent.js's primary/fallback chain
- * can use any of them interchangeably.
+ * can use any of them interchangeably. Resolves to an Answer (see
+ * ../answerBudget.js), not a bare string: an answer that ran out of room to
+ * be written comes back marked incomplete, with a resume() rather than half a
+ * table passed off as the whole thing.
  */
 async function generateReply(history, userMessage, { userId, guildId }) {
     const executors = createToolExecutors({ userId, guildId });
@@ -188,18 +254,15 @@ async function generateReply(history, userMessage, { userId, guildId }) {
     // to go on yet), then from iteration 2 onward reflects whichever tools
     // the model actually reached for on the previous turn.
     let reasoningEffort = estimateInitialEffort(userMessage);
-    let maxTokens = wantsHigherBudget(userId, userMessage)
-        ? BOOSTED_MAX_OUTPUT_TOKENS
-        : MAX_OUTPUT_TOKENS;
-    if (maxTokens !== MAX_OUTPUT_TOKENS) {
+    const maxTokens = wantsHigherBudget(userId, userMessage)
+        ? BOOSTED_TOOL_PHASE_MAX_TOKENS
+        : TOOL_PHASE_MAX_TOKENS;
+    if (maxTokens !== TOOL_PHASE_MAX_TOKENS) {
         logger.info(
             'agent',
             `Owner asked for a deeper look — using boosted token budget (${maxTokens})`
         );
     }
-    // Set once the budget has already been raised in response to a truncated
-    // answer, so one long reply can't ping-pong between retries.
-    let retriedAfterTruncation = false;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
         const data = await callDeepseek(messages, { reasoningEffort, maxTokens });
@@ -218,43 +281,21 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                 );
             }
 
-            // finish_reason "length" means the answer stopped mid-sentence at
-            // the token cap, not that it finished. Returning it as-is is how a
-            // half-written table reached Discord looking complete — the long
-            // CJK per-constant tables are the usual trigger, since reasoning
-            // tokens are billed against this same budget before any text is
-            // written. Retry once with the wider budget; only if that still
-            // truncates does the reply go out, and then it says so rather than
-            // pretending the last row was the end.
+            // finish_reason "length" means the answer stopped mid-sentence
+            // at the tool-phase cap, not that it finished — the long CJK
+            // per-constant tables are the usual trigger, since reasoning is
+            // billed against that same budget before any text is written.
+            // Hand it to the answer budget to be finished properly instead of
+            // letting a half-written table reach Discord looking complete.
             if (finishReason === 'length') {
-                if (!retriedAfterTruncation) {
-                    retriedAfterTruncation = true;
-                    // Raising max_tokens alone barely helped in practice,
-                    // because reasoning is billed against this same budget:
-                    // at effort "max" (which every heavy tool triggers) the
-                    // thinking can consume most of 8192 before a long table
-                    // has been written. By this point the tool results are
-                    // already gathered and the remaining work is composing
-                    // them, so stepping reasoning down to "high" hands those
-                    // tokens to the answer instead — that, not the larger
-                    // cap, is what actually fits the table.
-                    maxTokens = BOOSTED_MAX_OUTPUT_TOKENS;
-                    const previousEffort = reasoningEffort;
-                    reasoningEffort = reasoningEffort === 'max' ? 'high' : 'low';
-                    logger.warn(
-                        'agent',
-                        `DeepSeek reply hit the token cap mid-answer — retrying at ${maxTokens} tokens with reasoning_effort ${previousEffort} -> ${reasoningEffort}`
-                    );
-                    continue;
-                }
                 logger.warn(
                     'agent',
-                    `DeepSeek reply still truncated at ${maxTokens} tokens — returning it flagged for continuation`
+                    `DeepSeek answer hit the ${maxTokens}-token tool-phase cap mid-sentence — finishing it under the ${ANSWER_MAX_OUTPUT_TOKENS}-token answer budget`
                 );
-                return markTruncated(text);
+                return composeAnswer(messages, text, ANSWER_MAX_OUTPUT_TOKENS);
             }
 
-            return text;
+            return completeAnswer(text);
         }
 
         reasoningEffort = estimateFollowUpEffort(toolCalls);
@@ -330,20 +371,13 @@ async function generateReply(history, userMessage, { userId, guildId }) {
         'agent',
         `Hit ${maxIterations} tool-call iterations without a final answer — forcing a text-only reply`
     );
-    const finalData = await callDeepseek(messages, {
-        toolChoice: 'none',
-        reasoningEffort,
-        maxTokens,
-    });
-    const finalText = (finalData.choices?.[0]?.message?.content || '').trim();
-    if (finalText) return finalText;
+    const forced = await composeAnswer(messages, '', ANSWER_MAX_OUTPUT_TOKENS);
+    if (forced.text) return forced;
 
-    const finishReason = finalData.choices?.[0]?.finish_reason;
-    logger.error(
-        'agent',
-        `DeepSeek produced no final text even with tool calls disabled (finish_reason: ${finishReason ?? 'unknown'})`
+    logger.error('agent', 'DeepSeek produced no final text even with tool calls disabled');
+    return completeAnswer(
+        "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific."
     );
-    return "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific.";
 }
 
 module.exports = { generateReply };

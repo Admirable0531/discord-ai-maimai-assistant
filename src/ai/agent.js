@@ -1,7 +1,14 @@
 // Single seam for swapping the LLM backend later. Every provider must
 // implement generateReply(history, userMessage, {userId, guildId}) ->
-// Promise<string> — see providers/geminiProvider.js for the reference
-// implementation and providers/geminiClient.js for its SDK client.
+// Promise<Answer> — see answerBudget.js for that shape and
+// providers/geminiProvider.js for the reference implementation
+// (providers/geminiClient.js holds its SDK client).
+//
+// An Answer is {text, complete, budget, resume}: `complete` false means the
+// model ran out of room mid-answer, and resume(nextBudget) carries on from
+// the text already written. Providers return that instead of a bare string so
+// the Discord layer can decide what to do about an unfinished answer — it
+// offers the asker more budget rather than posting half a table.
 //
 // This is a lightweight refactor, not a full multi-provider system: nothing
 // here abstracts the tool-declaration wire format (toolDefinitions.js still

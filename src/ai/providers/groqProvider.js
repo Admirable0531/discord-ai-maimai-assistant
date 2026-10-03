@@ -1,6 +1,13 @@
 const { GEMINI_TOOLS, createToolExecutors } = require('../toolDefinitions');
 const { buildSystemPrompt } = require('../systemPrompt');
 const logger = require('../../utils/logger');
+const {
+    ANSWER_MAX_OUTPUT_TOKENS,
+    CONTINUE_PROMPT,
+    joinContinuation,
+    completeAnswer,
+    partialAnswer,
+} = require('../answerBudget');
 
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const TIMEOUT_MS = 30000;
@@ -9,7 +16,9 @@ const TIMEOUT_MS = 30000;
 // models. For pure-chat-heavy usage llama-3.1-8b-instant is cheaper/faster
 // but noticeably weaker at picking the right tool.
 const MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-const MAX_OUTPUT_TOKENS = Number(process.env.GROQ_MAX_OUTPUT_TOKENS) || 2048;
+// Tool-calling rounds only; the final message gets the larger answer budget
+// in ../answerBudget.js, same split as the other two providers.
+const TOOL_PHASE_MAX_TOKENS = Number(process.env.GROQ_MAX_OUTPUT_TOKENS) || 2048;
 // Mirrors geminiProvider.js's elastic tool-call budget (see its comments for
 // the reasoning) so the two providers behave the same way under the same
 // budget knobs, and an A/B comparison isn't skewed by one provider being
@@ -61,7 +70,7 @@ function toGroqMessages(history, userMessage, context) {
     ];
 }
 
-async function callGroq(messages, { toolChoice } = {}) {
+async function callGroq(messages, { toolChoice, maxTokens } = {}) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
         throw new Error('GROQ_API_KEY is not set; cannot call Groq.');
@@ -77,7 +86,7 @@ async function callGroq(messages, { toolChoice } = {}) {
                 messages,
                 tools: OPENAI_TOOLS,
                 tool_choice: toolChoice || 'auto',
-                max_tokens: MAX_OUTPUT_TOKENS,
+                max_tokens: maxTokens || TOOL_PHASE_MAX_TOKENS,
             }),
             signal: AbortSignal.timeout(TIMEOUT_MS),
         });
@@ -90,6 +99,41 @@ async function callGroq(messages, { toolChoice } = {}) {
         throw new Error(`Groq API returned HTTP ${response.status}: ${body.slice(0, 300)}`);
     }
     return response.json();
+}
+
+/**
+ * Writes (or finishes writing) the answer under the answer budget rather than
+ * the tool-phase one. Mirrors deepseekProvider.js's composeAnswer — see that
+ * file for why the phases get separate budgets. Tool calls are off: the
+ * research is done, and leaving them available is how a model talks itself
+ * into another round instead of writing.
+ */
+async function composeAnswer(messages, accumulated, budget) {
+    const conversation = accumulated
+        ? [
+              ...messages,
+              { role: 'assistant', content: accumulated },
+              { role: 'user', content: CONTINUE_PROMPT },
+          ]
+        : messages;
+
+    const data = await callGroq(conversation, { toolChoice: 'none', maxTokens: budget });
+    const finishReason = data.choices?.[0]?.finish_reason;
+    const text = joinContinuation(accumulated, data.choices?.[0]?.message?.content || '');
+
+    if (finishReason !== 'length') {
+        logger.info('agent', `Groq finished the answer within its ${budget}-token budget`);
+        return completeAnswer(text.trim());
+    }
+
+    logger.warn(
+        'agent',
+        `Groq answer still unfinished at a ${budget}-token answer budget (${text.length} chars written) — offering a continuation`
+    );
+    return partialAnswer(text.trim(), {
+        budget,
+        resume: (nextBudget) => composeAnswer(messages, text.trim(), nextBudget),
+    });
 }
 
 /**
@@ -110,14 +154,23 @@ async function generateReply(history, userMessage, { userId, guildId }) {
 
         if (!toolCalls || toolCalls.length === 0) {
             const text = (message?.content || '').trim();
+            const finishReason = data.choices?.[0]?.finish_reason;
             if (!text) {
-                const finishReason = data.choices?.[0]?.finish_reason;
                 logger.warn('agent', 'Groq returned no text and no tool calls', { finishReason });
                 throw new Error(
                     `Groq returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`
                 );
             }
-            return text;
+            // Stopped at the tool-phase cap rather than finishing — hand it to
+            // the answer budget to be completed instead of sending half.
+            if (finishReason === 'length') {
+                logger.warn(
+                    'agent',
+                    `Groq answer hit the ${TOOL_PHASE_MAX_TOKENS}-token tool-phase cap mid-sentence — finishing it under the ${ANSWER_MAX_OUTPUT_TOKENS}-token answer budget`
+                );
+                return composeAnswer(messages, text, ANSWER_MAX_OUTPUT_TOKENS);
+            }
+            return completeAnswer(text);
         }
 
         logger.info(
@@ -191,16 +244,13 @@ async function generateReply(history, userMessage, { userId, guildId }) {
         'agent',
         `Hit ${maxIterations} tool-call iterations without a final answer — forcing a text-only reply`
     );
-    const finalData = await callGroq(messages, { toolChoice: 'none' });
-    const finalText = (finalData.choices?.[0]?.message?.content || '').trim();
-    if (finalText) return finalText;
+    const forced = await composeAnswer(messages, '', ANSWER_MAX_OUTPUT_TOKENS);
+    if (forced.text) return forced;
 
-    const finishReason = finalData.choices?.[0]?.finish_reason;
-    logger.error(
-        'agent',
-        `Groq produced no final text even with tool calls disabled (finish_reason: ${finishReason ?? 'unknown'})`
+    logger.error('agent', 'Groq produced no final text even with tool calls disabled');
+    return completeAnswer(
+        "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific."
     );
-    return "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific.";
 }
 
 module.exports = { generateReply };

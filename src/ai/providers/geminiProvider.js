@@ -5,7 +5,13 @@ const { GEMINI_TOOLS, createToolExecutors } = require('../toolDefinitions');
 const { estimateCostUsd } = require('../pricing');
 const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
-const { markTruncated } = require('../truncation');
+const {
+    ANSWER_MAX_OUTPUT_TOKENS,
+    CONTINUE_PROMPT,
+    joinContinuation,
+    completeAnswer,
+    partialAnswer,
+} = require('../answerBudget');
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 // Bounds the tool-call round-trip loop below so a model stuck calling tools
@@ -33,11 +39,15 @@ const requestMoreToolCallsDeclaration = {
         'through reading several pages or synthesizing a large table) — not speculatively, and not on turn one.',
     parametersJsonSchema: { type: 'object', properties: {} },
 };
-// Discord truncates at 2000 chars; a reply anywhere near that is already
-// unusual for a chat message. 2048 tokens gives headroom for dense CJK text
-// (this community mostly deals in Japanese/Chinese song names) without
-// leaving the cap effectively unbounded — paying for output that gets cut
-// off client-side is pure waste.
+// Budget for the tool-calling rounds only — picking the next call and reading
+// results back. The final message is written under its own, larger budget
+// (see ../answerBudget.js): a reply long enough to need more than this is
+// composed rather than cut off, instead of the cap deciding how much of the
+// answer the asker gets.
+//
+// 2048 tokens gives headroom for dense CJK text (this community mostly deals
+// in Japanese/Chinese song names) without leaving the cap effectively
+// unbounded.
 const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 2048;
 // thinkingBudget: -1 = automatic (model decides per-request), 0 = disabled.
 // Automatic sounds ideal but has no ceiling — a moderate fixed budget caps
@@ -117,6 +127,61 @@ function recordUsage(response) {
 }
 
 /**
+ * Writes (or finishes writing) the answer under the answer budget rather than
+ * the tool-phase one. Mirrors deepseekProvider.js's composeAnswer — see that
+ * file for why the two phases get separate budgets.
+ *
+ * Function calling is forced to NONE: the research is done by the time this
+ * runs, and leaving tools available is how a model talks itself into another
+ * round instead of writing. thinkingBudget drops to 0 for the same reason the
+ * DeepSeek path steps reasoning down — the work left is composition, so the
+ * budget belongs to the text.
+ *
+ * `accumulated` is whatever earlier attempts already wrote; the model carries
+ * on from exactly there rather than re-generating it.
+ */
+async function composeAnswer(ai, contents, systemInstruction, accumulated, budget) {
+    const conversation = accumulated
+        ? [
+              ...contents,
+              { role: 'model', parts: [{ text: accumulated }] },
+              { role: 'user', parts: [{ text: CONTINUE_PROMPT }] },
+          ]
+        : contents;
+
+    const response = await ai.models.generateContent({
+        model: MODEL,
+        contents: conversation,
+        config: {
+            systemInstruction,
+            tools: TOOLS_FOR_REQUEST,
+            toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } },
+            maxOutputTokens: budget,
+            thinkingConfig: { thinkingBudget: 0 },
+        },
+    });
+    recordUsage(response);
+
+    const finishReason = response.candidates?.[0]?.finishReason;
+    const text = joinContinuation(accumulated, extractText(response));
+
+    if (finishReason !== 'MAX_TOKENS') {
+        logger.info('agent', `Gemini finished the answer within its ${budget}-token budget`);
+        return completeAnswer(text.trim());
+    }
+
+    logger.warn(
+        'agent',
+        `Gemini answer still unfinished at a ${budget}-token answer budget (${text.length} chars written) — offering a continuation`
+    );
+    return partialAnswer(text.trim(), {
+        budget,
+        resume: (nextBudget) =>
+            composeAnswer(ai, contents, systemInstruction, text.trim(), nextBudget),
+    });
+}
+
+/**
  * Implements the AIProvider interface (see ../agent.js): generateReply(history,
  * userMessage, {userId, guildId}) -> Promise<string>. Sends the conversation
  * to Gemini, executing tool calls (memory + web search/read) locally and
@@ -156,18 +221,24 @@ async function generateReply(history, userMessage, { userId, guildId }) {
                     `Gemini returned an empty response (finishReason: ${finishReason ?? 'unknown'})`
                 );
             }
-            // MAX_TOKENS means the answer stopped mid-sentence at the cap, not
-            // that it finished — returning it unmarked is how a half-written
-            // table reaches Discord looking complete. Flag it rather than
-            // passing a cut-off answer off as the whole thing.
+            // MAX_TOKENS means the answer stopped mid-sentence at the
+            // tool-phase cap, not that it finished — returning it as-is is how
+            // a half-written table reached Discord looking complete. Hand it
+            // to the answer budget to be finished properly.
             if (finishReason === 'MAX_TOKENS') {
                 logger.warn(
                     'agent',
-                    `Gemini reply hit the ${MAX_OUTPUT_TOKENS}-token cap mid-answer — returning it flagged`
+                    `Gemini answer hit the ${MAX_OUTPUT_TOKENS}-token tool-phase cap mid-sentence — finishing it under the ${ANSWER_MAX_OUTPUT_TOKENS}-token answer budget`
                 );
-                return markTruncated(text);
+                return composeAnswer(
+                    ai,
+                    contents,
+                    systemInstruction,
+                    text,
+                    ANSWER_MAX_OUTPUT_TOKENS
+                );
             }
-            return text;
+            return completeAnswer(text);
         }
 
         logger.info(
@@ -272,30 +343,22 @@ async function generateReply(history, userMessage, { userId, guildId }) {
         'agent',
         `Hit ${maxIterations} tool-call iterations without a final answer — forcing a text-only reply`
     );
-    const finalResponse = await ai.models.generateContent({
-        model: MODEL,
+    const forced = await composeAnswer(
+        ai,
         contents,
-        config: {
-            systemInstruction,
-            tools: TOOLS_FOR_REQUEST,
-            toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } },
-            maxOutputTokens: MAX_OUTPUT_TOKENS,
-            thinkingConfig: { thinkingBudget: THINKING_BUDGET },
-        },
-    });
-    recordUsage(finalResponse);
-    const finalText = extractText(finalResponse);
-    if (finalText) return finalText;
+        systemInstruction,
+        '',
+        ANSWER_MAX_OUTPUT_TOKENS
+    );
+    if (forced.text) return forced;
 
     // Belt-and-suspenders: even with tool calls barred, still fall back to a
     // real (if generic) answer instead of an opaque error reaching Discord —
     // this exact path has now misfired live more than once.
-    const finishReason = finalResponse.candidates?.[0]?.finishReason;
-    logger.error(
-        'agent',
-        `Gemini produced no final text even with tool calls disabled (finishReason: ${finishReason ?? 'unknown'})`
+    logger.error('agent', 'Gemini produced no final text even with tool calls disabled');
+    return completeAnswer(
+        "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific."
     );
-    return "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific.";
 }
 
 module.exports = { generateReply };
