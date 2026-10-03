@@ -1,4 +1,8 @@
-// See getFriendLeaderboard.js — same Express API, different endpoint.
+// See getFriendLeaderboard.js — same Express API, different endpoint, and the
+// same caveat: this is the newest STORED snapshot, scraped once a day at
+// 06:30 MYT, not the ranking page read when the question is asked.
+const { snapshotAgeDays } = require('../utils/snapshotAge');
+
 const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
 const TIMEOUT_MS = 10000;
 
@@ -7,7 +11,10 @@ const declaration = {
     description:
         'Get the latest circle (team) points leaderboard from maimai DX CiRCLE mode — circle name, points, ' +
         'and rank. Use this for questions like "who is #1 circle" or "what rank is [circle name]". This is ' +
-        'live tracked data, not something to guess or look up on the web.',
+        'tracked data, not something to guess or look up on the web, but it is a STORED SNAPSHOT scraped ' +
+        'once a day, not the page read when you ask: the result carries scrapedAt and snapshot_age_days, and ' +
+        'when snapshot_age_days is 1 or more say when the points were measured instead of calling them ' +
+        'current. Only the last 7 days of snapshots are kept, so per-day history beyond that does not exist.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -29,7 +36,12 @@ async function execute(args) {
         if (!response.ok || !body.success) {
             return { success: false, error: body.error || `HTTP ${response.status}` };
         }
-        return { success: true, scrapedAt: body.scrapedAt, rankings: body.rankings };
+        return {
+            success: true,
+            scrapedAt: body.scrapedAt,
+            snapshot_age_days: snapshotAgeDays(body.scrapedAt),
+            rankings: body.rankings,
+        };
     } catch (err) {
         return { success: false, error: `Could not reach the maimai stats API: ${err.message}` };
     }

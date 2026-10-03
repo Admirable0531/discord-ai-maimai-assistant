@@ -2,6 +2,15 @@
 // maimaiscrape repo, not a database this bot owns — that server already
 // knows the MongoDB schema and does the same read the /latestfriendsleaderboard
 // slash command in Discord_Bot uses, just as JSON.
+//
+// What comes back is the NEWEST STORED SNAPSHOT, written once a night by that
+// repo's friend-list scraper — not a page fetched when the question is asked.
+// The description used to call it "live tracked data", which is how a rating
+// from a snapshot taken before a failed nightly run got reported as somebody's
+// current rating. snapshot_age_days is returned alongside it so the answer can
+// say how old the number is.
+const { snapshotAgeDays } = require('../utils/snapshotAge');
+
 const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
 const TIMEOUT_MS = 10000;
 
@@ -18,7 +27,10 @@ const declaration = {
         'in full-width Unicode characters (e.g. "Ｍｉｎｊｉｎ") — treat those as the same name as their plain-ASCII ' +
         'equivalent ("minjin") when matching, don\'t treat the different character width as a non-match. Use this ' +
         'for questions like "what is X\'s rating", "who has the highest rating", "is X a friend", or "top N ' +
-        'friends". This is live tracked data, not something to guess or look up on the web. If the asker is ' +
+        'friends". This is tracked data, not something to guess or look up on the web, but it is a STORED ' +
+        'SNAPSHOT scraped once a night, not a page read when you ask: the result carries snapshotDate and ' +
+        'snapshot_age_days, and when snapshot_age_days is 1 or more you must say which day the ratings are ' +
+        'from rather than presenting them as current. If the asker is ' +
         "themselves one of the tracked friends, check search_memory first in case they've told you their in-game name before.",
     parametersJsonSchema: {
         type: 'object',
@@ -50,6 +62,7 @@ async function execute(args) {
             success: true,
             accountType: body.accountType,
             snapshotDate: body.snapshotDate,
+            snapshot_age_days: snapshotAgeDays(body.snapshotDate),
             friends: body.friends,
         };
     } catch (err) {
