@@ -93,12 +93,18 @@ function isAllowed(userId, guildId) {
 
 /**
  * 'all' for the owner, a fully-allowed user, or a fully-allowed guild;
- * otherwise an array of granted scope names — always including 'web' (see
- * BASELINE_SCOPES below), plus the union of the user's own grant and their
+ * otherwise an array of granted scope names — always including
+ * BASELINE_SCOPES, plus the union of the user's own grant and their
  * server's grant, if any. Callers gating a specific tool should treat 'all'
  * as "every scope granted" rather than comparing arrays.
+ *
+ * 'memory' is baseline, not granted: each user's memories are stored and
+ * read strictly under their own userId, so letting everyone remember things
+ * about themselves exposes nothing of anyone else's. Gating it meant only
+ * the owner ever had a single memory saved, and the bot could not tell
+ * anyone else apart from one conversation to the next.
  */
-const BASELINE_SCOPES = ['web'];
+const BASELINE_SCOPES = ['web', 'memory'];
 
 function getAllowedScopes(userId, guildId) {
     if (isOwner(userId) || store.allowedUserIds.includes(userId)) return 'all';
@@ -106,6 +112,11 @@ function getAllowedScopes(userId, guildId) {
     if (guildScopes === 'all') return 'all';
     const userScopes = store.scopedUserIds[userId] || [];
     return [...new Set([...BASELINE_SCOPES, ...userScopes, ...guildScopes])];
+}
+
+function hasScope(userId, guildId, scope) {
+    const scopes = getAllowedScopes(userId, guildId);
+    return scopes === 'all' || scopes.includes(scope);
 }
 
 /**
@@ -191,6 +202,8 @@ module.exports = {
     revokeGuild,
     listAllowedGuilds,
     getAllowedScopes,
+    hasScope,
     getOwnerId,
     VALID_SCOPES,
+    BASELINE_SCOPES,
 };

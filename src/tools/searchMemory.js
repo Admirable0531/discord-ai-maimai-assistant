@@ -4,8 +4,8 @@ const declaration = {
     name: 'search_memory',
     description:
         "Search the current user's saved memories (nicknames, facts they've asked you to remember) by a " +
-        "free-text query. Only ever returns this user's own memories. Use it before answering a question " +
-        'that might depend on something they told you earlier.',
+        "free-text query. Only ever returns this user's own memories. Their most recent memories are already " +
+        'listed in your instructions under "Who you are talking to" — use this only for anything not listed there.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

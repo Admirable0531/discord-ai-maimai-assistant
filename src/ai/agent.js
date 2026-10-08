@@ -1,5 +1,5 @@
 // Single seam for swapping the LLM backend later. Every provider must
-// implement generateReply(history, userMessage, {userId, guildId}) ->
+// implement generateReply(history, userMessage, {userId, guildId, speaker}) ->
 // Promise<string> — see providers/geminiProvider.js for the reference
 // implementation and providers/geminiClient.js for its SDK client.
 //

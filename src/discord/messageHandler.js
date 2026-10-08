@@ -38,6 +38,14 @@ function shouldRespond(message, clientUserId) {
     return message.mentions.has(clientUserId);
 }
 
+/** How the speaker appears in Discord, so the model knows who it's talking to (see systemPrompt.describeSpeaker). */
+function describeUser(user, member) {
+    return {
+        username: user.username,
+        displayName: member?.displayName || user.globalName || user.username,
+    };
+}
+
 function isOnCooldown(userId, cooldownMs) {
     const last = lastReplyAtByUser.get(userId);
     if (last === undefined) return false;
@@ -224,7 +232,11 @@ function registerMessageHandler(client, config) {
 
         try {
             await message.channel.sendTyping().catch(() => {});
-            const reply = await generateReply(history, promptText, { userId, guildId });
+            const reply = await generateReply(history, promptText, {
+                userId,
+                guildId,
+                speaker: describeUser(message.author, message.member),
+            });
 
             appendMessage({ userId, guildId, channelId, role: 'user', content: promptText });
             appendMessage({ userId, guildId, channelId, role: 'assistant', content: reply });
@@ -304,9 +316,11 @@ function registerReactionHandler(client, config) {
         try {
             await message.channel.sendTyping().catch(() => {});
             const history = getHistory(channelId, userId);
+            const member = message.guild?.members.cache.get(user.id);
             const reply = await generateReply(history, CONTINUE_PROMPT, {
                 userId,
                 guildId,
+                speaker: describeUser(user, member),
                 continuation: true,
             });
 

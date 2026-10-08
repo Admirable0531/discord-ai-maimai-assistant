@@ -188,9 +188,9 @@ function recordUsage(data) {
  * geminiProvider.js / groqProvider.js, so agent.js's primary/fallback chain
  * can use any of them interchangeably.
  */
-async function generateReply(history, userMessage, { userId, guildId, continuation }) {
+async function generateReply(history, userMessage, { userId, guildId, speaker, continuation }) {
     const executors = createToolExecutors({ userId, guildId });
-    const messages = toDeepseekMessages(history, userMessage, { userId, guildId });
+    const messages = toDeepseekMessages(history, userMessage, { userId, guildId, speaker });
     let maxIterations = BASE_MAX_TOOL_ITERATIONS;
     // A continuation (picking a reply back up after it hit the cap) is pure
     // composition: the tool results it needs are already sitting in history,

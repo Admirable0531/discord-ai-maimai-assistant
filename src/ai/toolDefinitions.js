@@ -82,6 +82,13 @@ const TOOL_SCOPES = {
     // allowed user from poisoning shared knowledge via a crafted chat message.
 };
 
+/** Tool names gated by `scope`, for telling the model up front what a user can't use. */
+function toolsRequiringScope(scope) {
+    const names = Object.keys(TOOL_SCOPES).filter((name) => TOOL_SCOPES[name] === scope);
+    if (scope === 'account') names.push('read_webpage/read_webpage_sections on maimaidx-eng.com');
+    return names;
+}
+
 function requiredScope(toolName, args) {
     if (toolName === 'read_webpage' || toolName === 'read_webpage_sections') {
         const url = typeof args?.url === 'string' ? args.url : '';
@@ -123,4 +130,4 @@ function createToolExecutors(context) {
     return executors;
 }
 
-module.exports = { GEMINI_TOOLS, createToolExecutors };
+module.exports = { GEMINI_TOOLS, createToolExecutors, toolsRequiringScope };

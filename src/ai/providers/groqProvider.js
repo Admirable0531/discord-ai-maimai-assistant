@@ -98,9 +98,9 @@ async function callGroq(messages, { toolChoice } = {}) {
  * touching messageHandler.js. See geminiProvider.js for the reasoning behind
  * the elastic tool-call budget mirrored here.
  */
-async function generateReply(history, userMessage, { userId, guildId }) {
+async function generateReply(history, userMessage, { userId, guildId, speaker }) {
     const executors = createToolExecutors({ userId, guildId });
-    const messages = toGroqMessages(history, userMessage, { userId, guildId });
+    const messages = toGroqMessages(history, userMessage, { userId, guildId, speaker });
     let maxIterations = BASE_MAX_TOOL_ITERATIONS;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {

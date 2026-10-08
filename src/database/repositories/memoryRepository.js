@@ -1,10 +1,14 @@
-const { eq, and, like, or } = require('drizzle-orm');
+const { eq, and, like, or, sql } = require('drizzle-orm');
 const { getDb } = require('../client');
 const { memories } = require('../schema');
 const { sqliteTimestamp } = require('../timestamp');
 
 const MAX_KEY_LENGTH = 200;
 const MAX_VALUE_LENGTH = 2000;
+// Memory is open to every user (see permissionStore's BASELINE_SCOPES), so
+// this bounds what any one of them can pile up. Updating an existing key
+// never counts against it.
+const MAX_MEMORIES_PER_USER = 50;
 
 function validate(key, value) {
     if (!key || !key.trim()) return 'Memory key cannot be empty.';
@@ -47,6 +51,18 @@ function saveMemory({ userId, guildId, key, value, category }) {
             .where(eq(memories.id, existing.id))
             .run();
         return { success: true, updated: true, key: existing.memoryKey };
+    }
+
+    const [{ count }] = db
+        .select({ count: sql`count(*)` })
+        .from(memories)
+        .where(eq(memories.userId, userId))
+        .all();
+    if (count >= MAX_MEMORIES_PER_USER) {
+        return {
+            success: false,
+            error: `This user already has ${MAX_MEMORIES_PER_USER} memories saved, the limit — update an existing key or /forget one first.`,
+        };
     }
 
     db.insert(memories)

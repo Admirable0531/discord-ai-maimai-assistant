@@ -3,8 +3,10 @@ const { saveMemory } = require('../database/repositories/memoryRepository');
 const declaration = {
     name: 'save_memory',
     description:
-        'Save a fact the user explicitly asked you to remember, as a key/value pair. Only call this when ' +
-        'they are clearly asking you to remember something (e.g. "remember that X means Y"), not for casual mentions.',
+        "Save a fact about the user you're talking to, as a key/value pair, under their own Discord id. Call it " +
+        'when they ask you to remember something ("remember that X means Y"), or when they tell you a lasting fact ' +
+        'about themselves: their in-game name, which tracked account or friend is them, what to call them. Not ' +
+        'for casual mentions, and never for facts about someone else. Reusing a key overwrites it.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

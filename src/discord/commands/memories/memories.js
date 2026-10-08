@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { listMemories } = require('../../../database/repositories/memoryRepository');
-const { isAllowed } = require('../../../permissions/permissionStore');
+const { hasScope } = require('../../../permissions/permissionStore');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,9 +8,9 @@ module.exports = {
         .setDescription('List everything I remember about you'),
 
     async execute(interaction) {
-        if (!isAllowed(interaction.user.id)) {
+        if (!hasScope(interaction.user.id, interaction.guildId, 'memory')) {
             await interaction.reply({
-                content: "You don't have permission to use this bot.",
+                content: "You don't have permission to use this bot's memory.",
                 flags: MessageFlags.Ephemeral,
             });
             return;

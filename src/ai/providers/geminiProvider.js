@@ -141,11 +141,11 @@ function recordUsage(response) {
  * runs out). `userId`/`guildId` come from the real Discord message, never from
  * the model — see toolDefinitions.createToolExecutors.
  */
-async function generateReply(history, userMessage, { userId, guildId, continuation }) {
+async function generateReply(history, userMessage, { userId, guildId, speaker, continuation }) {
     const ai = getGeminiClient();
     const executors = createToolExecutors({ userId, guildId });
     const contents = toGeminiContents(history, userMessage);
-    const systemInstruction = buildSystemPrompt({ userId, guildId });
+    const systemInstruction = buildSystemPrompt({ userId, guildId, speaker });
     let maxIterations = BASE_MAX_TOOL_ITERATIONS;
     const maxOutputTokens = continuation ? BOOSTED_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
     const thinkingBudget = continuation ? CONTINUATION_THINKING_BUDGET : THINKING_BUDGET;
