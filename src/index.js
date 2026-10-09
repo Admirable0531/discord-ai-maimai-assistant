@@ -60,6 +60,14 @@ registerMessageHandler(client, config);
 registerReactionHandler(client, config);
 
 client.on('interactionCreate', async (interaction) => {
+    // Autocomplete (friend names in /b50 and /history) has to answer within 3
+    // seconds and has nothing to report on failure — the command does its own
+    // catching.
+    if (interaction.isAutocomplete()) {
+        const command = client.commands.get(interaction.commandName);
+        if (command?.autocomplete) await command.autocomplete(interaction);
+        return;
+    }
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);

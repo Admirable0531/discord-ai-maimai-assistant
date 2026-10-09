@@ -20,9 +20,14 @@ module.exports = {
         .addSubcommand((sub) =>
             sub
                 .setName('add')
-                .setDescription('Add or update a knowledge base entry (requires "knowledge" access)')
+                .setDescription(
+                    'Add or update a knowledge base entry (requires "knowledge" access)'
+                )
                 .addStringOption((opt) =>
-                    opt.setName('title').setDescription('Short label for the entry').setRequired(true)
+                    opt
+                        .setName('title')
+                        .setDescription('Short label for the entry')
+                        .setRequired(true)
                 )
                 .addStringOption((opt) =>
                     opt
@@ -31,7 +36,10 @@ module.exports = {
                         .setRequired(true)
                 )
                 .addStringOption((opt) =>
-                    opt.setName('category').setDescription('Optional category label').setRequired(false)
+                    opt
+                        .setName('category')
+                        .setDescription('Optional category label')
+                        .setRequired(false)
                 )
         )
         .addSubcommand((sub) =>
@@ -50,7 +58,10 @@ module.exports = {
                 .setName('remove')
                 .setDescription('Remove a knowledge base entry (requires "knowledge" access)')
                 .addStringOption((opt) =>
-                    opt.setName('title').setDescription('The entry title to delete').setRequired(true)
+                    opt
+                        .setName('title')
+                        .setDescription('The entry title to delete')
+                        .setRequired(true)
                 )
         ),
 
@@ -127,7 +138,10 @@ module.exports = {
             const lines = entries.map(
                 (e) => `• **${e.title}** — ${e.content}${e.category ? ` _(${e.category})_` : ''}`
             );
-            await interaction.reply({ content: lines.join('\n').slice(0, 2000), flags: MessageFlags.Ephemeral });
+            await interaction.reply({
+                content: lines.join('\n').slice(0, 2000),
+                flags: MessageFlags.Ephemeral,
+            });
             return;
         }
 
@@ -144,7 +158,10 @@ module.exports = {
             const lines = entries.map(
                 (e) => `• **${e.title}** — ${e.content}${e.category ? ` _(${e.category})_` : ''}`
             );
-            await interaction.reply({ content: lines.join('\n').slice(0, 2000), flags: MessageFlags.Ephemeral });
+            await interaction.reply({
+                content: lines.join('\n').slice(0, 2000),
+                flags: MessageFlags.Ephemeral,
+            });
         }
     },
 };
