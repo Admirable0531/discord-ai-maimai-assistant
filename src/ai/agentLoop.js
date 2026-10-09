@@ -41,7 +41,8 @@ const GAVE_UP_REPLY =
  *   afterToolCalls(opts, names)   knobs for the call that reads those tools' results
  *   onTruncated(opts)             knobs for one retry after a cut-off answer, or null
  *                                 to return it flagged for continuation instead
- *   createConversation({systemPrompt, history, userMessage, tools})
+ *   supportsImages                true if createConversation can take `images`
+ *   createConversation({systemPrompt, history, userMessage, tools, images})
  *   send(conversation, opts, {forceText}) ->
  *       {text, toolCalls: [{id, name, args}], finishReason, truncated}
  *   appendToolResults(conversation, response, [{call, result}], note)
@@ -49,11 +50,25 @@ const GAVE_UP_REPLY =
 async function runAgent(adapter, history, userMessage, context) {
     const { userId, continuation } = context;
     const executors = createToolExecutors(context);
+    // Images go only to a provider that can see them; any other is told they
+    // exist so it says so instead of answering as if there were nothing there.
+    const attached = context.images || [];
+    const canSee = adapter.supportsImages && attached.length > 0;
+    if (attached.length > 0 && !adapter.supportsImages) {
+        logger.warn(
+            'agent',
+            `${adapter.name} can't read images — ${attached.length} attached image(s) left out`
+        );
+    }
     const conversation = adapter.createConversation({
         systemPrompt: buildSystemPrompt(context),
         history,
-        userMessage,
+        userMessage:
+            attached.length > 0 && !canSee
+                ? `${userMessage}\n[System note: the image(s) above could not be passed to you, so you cannot see them — say so rather than guessing at their content.]`
+                : userMessage,
         tools: [...toolDeclarationsFor(context), requestMoreToolCallsDeclaration],
+        images: canSee ? attached : [],
     });
     const { base, hard, step } = adapter.toolBudget;
     let maxIterations = base;

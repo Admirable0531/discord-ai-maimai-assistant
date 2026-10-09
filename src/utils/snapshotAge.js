@@ -10,7 +10,9 @@
 const STALE_AFTER_DAYS = 2;
 
 /**
- * Whole days between `date` and now, or null when it can't be parsed.
+ * A Date for a timestamp from these pipelines, or null when it can't be parsed.
+ * Day-first slash dates, ISO dates and the localized month-first shape are all
+ * understood — see below for why that needs care.
  *
  * Slash dates from these pipelines are DAY-first ("07/09/2026 22:46:41" is
  * 7 September, confirmed against the leaderboard's own ISO snapshotDate of
@@ -24,7 +26,7 @@ const STALE_AFTER_DAYS = 2;
  * "M/D/YYYY, h:mm:ss AM/PM" shape, which is distinguishable by its comma /
  * meridiem and so is left to `new Date()`.
  */
-function ageInDays(date) {
+function parseSnapshotDate(date) {
     if (!date) return null;
     const raw = String(date).trim();
 
@@ -43,8 +45,13 @@ function ageInDays(date) {
             parsed = new Date(raw);
         }
     }
+    return !parsed || Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
-    if (!parsed || Number.isNaN(parsed.getTime())) return null;
+/** Whole days between `date` and now, or null when it can't be parsed. */
+function ageInDays(date) {
+    const parsed = parseSnapshotDate(date);
+    if (!parsed) return null;
     const days = Math.floor((Date.now() - parsed.getTime()) / 86400000);
     return days < 0 ? 0 : days;
 }
@@ -55,4 +62,4 @@ function isStale(date) {
     return days === null || days > STALE_AFTER_DAYS;
 }
 
-module.exports = { STALE_AFTER_DAYS, ageInDays, isStale };
+module.exports = { STALE_AFTER_DAYS, parseSnapshotDate, ageInDays, isStale };

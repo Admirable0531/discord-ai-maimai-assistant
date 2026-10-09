@@ -3,6 +3,8 @@ const { getHistory, appendMessage } = require('../conversation/historyStore');
 const { generateReply } = require('../ai/agent');
 const { isOwner } = require('../permissions/permissionStore');
 const { tryHandleAdminCommand } = require('./adminCommands');
+const { collectImages, describeImages } = require('./imageInputs');
+const { createOutputs } = require('../utils/outputs');
 const { isTruncated, stripTruncationMarker, CONTINUE_PROMPT } = require('../ai/truncation');
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -107,26 +109,69 @@ function splitForDiscord(text) {
 }
 
 /**
- * Sends (possibly long) text as one or more messages, replying with the first.
- * Empty text would otherwise split into zero chunks and send nothing at all,
- * which reaches the user as silence rather than as an error.
+ * Fixes an unbalanced ``` in model text, which Discord shows as a broken block.
+ * A stray fence that ends the message is dropped; an unclosed block that runs to
+ * the end is closed. Balanced text — including a reply that ends in a finished
+ * code block — is returned unchanged.
  */
-async function sendChunked(message, text) {
-    const chunks = splitForDiscord(text);
-    if (chunks.length === 0) {
+function balanceCodeFences(text) {
+    if (((text.match(/```/g) || []).length & 1) === 0) return text;
+    const trimmed = text.trimEnd();
+    return trimmed.endsWith('```') ? trimmed.slice(0, -3).trimEnd() : `${text}\n\`\`\``;
+}
+
+/** discord.js attachment objects for files a tool produced (see utils/outputs.js). */
+function toDiscordFiles(files) {
+    return files.map((f) => ({ attachment: f.data, name: f.name }));
+}
+
+// Discord error codes for "can't upload this": missing Attach Files permission,
+// and the file being over the upload limit.
+const FILE_REFUSED_CODES = new Set([50013, 40005]);
+const FILES_REFUSED_NOTE =
+    "\n\n_(I couldn't attach the image — I may be missing the Attach Files permission here.)_";
+
+/**
+ * Sends (possibly long) text as one or more messages, replying with the first
+ * (which carries any files). Empty text would otherwise split into zero
+ * chunks and send nothing at all, which reaches the user as silence rather
+ * than as an error — unless there are files to send, which is a reply on its
+ * own. If Discord refuses the files, the text still goes out, with a note.
+ */
+async function sendChunked(message, text, files = []) {
+    const chunks = splitForDiscord(balanceCodeFences(text));
+    if (chunks.length === 0 && files.length === 0) {
         logger.warn('discord', 'Refusing to send an empty reply — nothing to say');
         return null;
     }
-    let sent;
-    for (let i = 0; i < chunks.length; i++) {
-        sent =
-            i === 0
-                ? await message.reply({
-                      content: chunks[0],
-                      allowedMentions: { repliedUser: false },
-                  })
-                : await message.channel.send(chunks[i]);
+    const replyOptions = { allowedMentions: { repliedUser: false } };
+    const attachments = toDiscordFiles(files);
+
+    async function replyFirst(content) {
+        try {
+            return await message.reply({
+                ...replyOptions,
+                ...(content ? { content } : {}),
+                ...(attachments.length ? { files: attachments } : {}),
+            });
+        } catch (err) {
+            if (!attachments.length || !FILE_REFUSED_CODES.has(err.code)) throw err;
+            logger.warn(
+                'discord',
+                'Discord refused the attachment — sending the text without it',
+                err
+            );
+            return message.reply({
+                ...replyOptions,
+                content: ((content || '') + FILES_REFUSED_NOTE)
+                    .trim()
+                    .slice(0, DISCORD_MESSAGE_LIMIT),
+            });
+        }
     }
+
+    let sent = await replyFirst(chunks[0]);
+    for (let i = 1; i < chunks.length; i++) sent = await message.channel.send(chunks[i]);
     return sent;
 }
 
@@ -148,16 +193,19 @@ function registerContinuable(messageId, state) {
  * registerReactionHandler). Only that notice gets reactions — a finished
  * answer needs neither.
  */
-async function sendReply(message, reply, { userId, channelId, guildId, accumulated = '' }) {
+async function sendReply(
+    message,
+    reply,
+    { userId, channelId, guildId, accumulated = '', files = [] }
+) {
     if (!isTruncated(reply)) {
-        return sendChunked(message, accumulated + reply);
+        return sendChunked(message, accumulated + reply, files);
     }
 
     const nextAccumulated = accumulated + stripTruncationMarker(reply) + '\n\n';
-    const notice = await message.reply({
-        content: NOT_ENOUGH_CONTEXT_NOTICE,
-        allowedMentions: { repliedUser: false },
-    });
+    // Any image goes out with the notice: it would otherwise wait on a
+    // continuation that rebuilds the text from scratch and has no file.
+    const notice = await sendChunked(message, NOT_ENOUGH_CONTEXT_NOTICE, files);
 
     try {
         await notice.react(CONTINUE_EMOJI);
@@ -207,7 +255,7 @@ async function buildReplyContext(message) {
             content = `${content.slice(0, REPLY_CONTEXT_MAX_LENGTH)}...(truncated)`;
         }
 
-        return { author, content };
+        return { author, content, referenced };
     } catch (err) {
         logger.warn('discord', 'Could not fetch replied-to message', err);
         return null;
@@ -222,13 +270,11 @@ function registerMessageHandler(client, config) {
         const guildId = message.guild?.id || null;
 
         const userText = stripMention(message.content, client.user.id);
-        if (!userText) return;
+        // An image with no words is still a question ("what song is this?").
+        if (!userText && message.attachments.size === 0) return;
 
         const replyContext = await buildReplyContext(message);
         const resolvedText = resolveMentions(userText, message);
-        const promptText = replyContext
-            ? `[Replying to a message from ${replyContext.author}: "${replyContext.content}"]\n${resolvedText}`
-            : resolvedText;
 
         if (isOwner(userId)) {
             const adminReply = tryHandleAdminCommand(userText, guildId);
@@ -248,6 +294,16 @@ function registerMessageHandler(client, config) {
         }
         lastReplyAtByUser.set(userId, Date.now());
 
+        // After the cooldown check, so a message that's ignored doesn't cost a download.
+        const inputImages = await collectImages([replyContext?.referenced, message]);
+        const imageNote = describeImages(inputImages);
+        const body = [resolvedText || '(no text — just the attachment)', imageNote]
+            .filter(Boolean)
+            .join('\n');
+        const promptText = replyContext
+            ? `[Replying to a message from ${replyContext.author}: "${replyContext.content}"]\n${body}`
+            : body;
+
         const channelId = message.channel.id;
         const history = getHistory(channelId, userId);
 
@@ -263,16 +319,19 @@ function registerMessageHandler(client, config) {
 
         try {
             await message.channel.sendTyping().catch(() => {});
+            const outputs = createOutputs();
             const reply = await generateReply(history, promptText, {
                 userId,
                 guildId,
                 speaker: describeUser(message.author, message.member),
+                images: inputImages.images,
+                outputs,
             });
 
             appendMessage({ userId, guildId, channelId, role: 'user', content: promptText });
             appendMessage({ userId, guildId, channelId, role: 'assistant', content: reply });
 
-            await sendReply(message, reply, { userId, channelId, guildId });
+            await sendReply(message, reply, { userId, channelId, guildId, files: outputs.files });
         } catch (err) {
             logger.error('discord', `Failed to answer ${message.author.tag}`, err);
             await message
@@ -348,11 +407,13 @@ function registerReactionHandler(client, config) {
             await message.channel.sendTyping().catch(() => {});
             const history = getHistory(channelId, userId);
             const member = message.guild?.members.cache.get(user.id);
+            const outputs = createOutputs();
             const reply = await generateReply(history, CONTINUE_PROMPT, {
                 userId,
                 guildId,
                 speaker: describeUser(user, member),
                 continuation: true,
+                outputs,
             });
 
             appendMessage({
@@ -364,7 +425,13 @@ function registerReactionHandler(client, config) {
             });
             appendMessage({ userId, guildId, channelId, role: 'assistant', content: reply });
 
-            await sendReply(message, reply, { userId, channelId, guildId, accumulated });
+            await sendReply(message, reply, {
+                userId,
+                channelId,
+                guildId,
+                accumulated,
+                files: outputs.files,
+            });
         } catch (err) {
             logger.error('discord', `Failed to continue a reply for ${user.tag}`, err);
             // Whatever went wrong upstream, the work already generated is still

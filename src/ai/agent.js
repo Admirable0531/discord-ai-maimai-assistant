@@ -35,15 +35,34 @@ function loadAdapter(name) {
  */
 async function generateReply(history, userMessage, context) {
     const { provider, fallback } = config.ai;
+    let first = provider;
+    let second = fallback && fallback !== provider ? fallback : null;
+
+    // A message with images goes to a provider that can read them first,
+    // whichever is the usual primary; the other is the fallback, and is told
+    // about the images it can't see (agentLoop.js).
+    if (context.images?.length > 0 && second && !loadAdapter(first).supportsImages) {
+        if (loadAdapter(second).supportsImages) {
+            logger.info(
+                'agent',
+                `Message has ${context.images.length} image(s) — using "${second}" (vision) instead of "${first}"`
+            );
+            [first, second] = [second, first];
+        }
+    }
+
     try {
-        return await runAgent(loadAdapter(provider), history, userMessage, context);
+        return await runAgent(loadAdapter(first), history, userMessage, context);
     } catch (err) {
-        if (!fallback || fallback === provider) throw err;
+        if (!second) throw err;
         logger.warn(
             'agent',
-            `Primary provider "${provider}" failed, falling back to "${fallback}": ${err.message}`
+            `Provider "${first}" failed, falling back to "${second}": ${err.message}`
         );
-        return runAgent(loadAdapter(fallback), history, userMessage, context);
+        // Files the failed run already made would otherwise come out twice,
+        // once from each run's tool calls.
+        if (context.outputs) context.outputs.files.length = 0;
+        return runAgent(loadAdapter(second), history, userMessage, context);
     }
 }
 

@@ -2,7 +2,12 @@
 # HTTP (MAIMAI_API_URL), not via direct requires, so unlike Discord_Bot's
 # Dockerfile it doesn't need the rest of the monorepo copied in; the build
 # context is this directory alone (see docker-compose.yml).
-FROM node:22-bullseye
+# Debian 12 (bookworm), not 11: bullseye reached end of life in 2026 and its
+# security repository now 404s for the .deb files it still lists, so the apt
+# step below could no longer build from scratch — it only kept working while
+# Docker's layer cache held it, and any change to that step (or a pruned
+# cache) would have failed the deploy.
+FROM node:22-bookworm
 
 # better-sqlite3 is a native module — it ships prebuilt binaries for common
 # platforms, but python3/make/g++ are the fallback if no prebuild matches
@@ -22,6 +27,8 @@ RUN apt-get update && apt-get install -y \
   g++ \
   chromium \
   fonts-liberation \
+  fonts-noto-cjk \
+  fonts-noto-color-emoji \
   libappindicator3-1 \
   libasound2 \
   libatk-bridge2.0-0 \
@@ -51,7 +58,7 @@ RUN npm ci --omit=dev
 # fetched at install time), and its own binding.js loads whichever one
 # matches the current arch unconditionally — env vars like
 # npm_config_build_from_source never come into play. Those bundled
-# prebuilds are built against a newer glibc than bullseye ships (confirmed
+# prebuilds are built against a newer glibc than this Debian ships (confirmed
 # live: "GLIBC_2.38 not found" on a Pi's arm64 prebuild, "GLIBC_2.33 not
 # found" on an x86_64 box's linux-x64 one — not an arm64-specific problem),
 # so delete whichever one shipped and compile from source against the

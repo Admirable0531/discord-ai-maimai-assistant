@@ -124,4 +124,6 @@ async function closeBrowser() {
     await browser.close();
 }
 
-module.exports = { fetchRendered, closeBrowser };
+// getBrowser/scheduleIdleClose are shared with render/browserRenderer.js so the
+// bot only ever holds one resident Chromium.
+module.exports = { fetchRendered, closeBrowser, getBrowser, scheduleIdleClose };

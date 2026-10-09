@@ -50,6 +50,7 @@ function recordUsage(response) {
 const adapter = {
     name: 'Gemini',
     toolBudget: settings.toolBudget,
+    supportsImages: true,
 
     initialOptions({ continuation }) {
         return continuation
@@ -74,7 +75,7 @@ const adapter = {
      * ai.chats.create()'s opaque session), so history can come from SQLite
      * and tool round trips append to it.
      */
-    createConversation({ systemPrompt, history, userMessage, tools }) {
+    createConversation({ systemPrompt, history, userMessage, tools, images = [] }) {
         return {
             systemInstruction: systemPrompt,
             tools: [{ functionDeclarations: tools }],
@@ -83,7 +84,15 @@ const adapter = {
                     role: entry.role === 'assistant' ? 'model' : 'user',
                     parts: [{ text: entry.content }],
                 })),
-                { role: 'user', parts: [{ text: userMessage }] },
+                {
+                    role: 'user',
+                    parts: [
+                        ...images.map((image) => ({
+                            inlineData: { mimeType: image.mimeType, data: image.data },
+                        })),
+                        { text: userMessage },
+                    ],
+                },
             ],
         };
     },

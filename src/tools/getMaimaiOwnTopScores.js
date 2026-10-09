@@ -9,6 +9,7 @@
 // path to the tracked account's real B15/B35 breakdown, and it needed no
 // new scraping at all, just reading data that was already being collected.
 const { normalizeName } = require('../web/maimaiFriendLookup');
+const { ageInDays } = require('../utils/snapshotAge');
 const { config } = require('../config/env');
 
 const API_URL = config.tools.maimaiApiUrl;
@@ -43,20 +44,6 @@ const declaration = {
         properties: {},
     },
 };
-
-/** Handles both Date formats seen in stored snapshots: "DD/MM/YYYY HH:mm:ss" and "M/D/YYYY, h:mm:ss AM/PM". */
-function parseSnapshotDate(dateStr) {
-    if (!dateStr) return null;
-    const direct = new Date(dateStr);
-    if (!Number.isNaN(direct.getTime())) return direct;
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2}):(\d{2})$/.exec(dateStr.trim());
-    if (!m) return null;
-    const [, d, mo, y, h, mi, s] = m;
-    const dt = new Date(
-        `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}T${h.padStart(2, '0')}:${mi}:${s}`
-    );
-    return Number.isNaN(dt.getTime()) ? null : dt;
-}
 
 /**
  * The 'ryan' /users entry and the top-score snapshot are written together
@@ -104,10 +91,10 @@ async function execute() {
             return { success: false, error: body.error || `HTTP ${response.status}` };
         }
 
-        const snapshotDate = parseSnapshotDate(body.Date);
-        const snapshotAgeDays = snapshotDate
-            ? Math.floor((Date.now() - snapshotDate.getTime()) / 86400000)
-            : null;
+        // Stored dates are day-first ("09/10/2026" is 9 October). This used to have
+        // its own parser that handed them to new Date(), which reads them
+        // month-first, so every snapshot looked a month older than it was.
+        const snapshotAgeDays = ageInDays(body.Date);
 
         const liveRating = await fetchLiveRating(self?.name).catch(() => null);
 
@@ -118,6 +105,10 @@ async function execute() {
             snapshot_date: body.Date || null,
             snapshot_age_days: snapshotAgeDays,
             snapshot_rating: body.rating ?? null,
+            // The rating SEGA itself displayed on that run; when it differs from
+            // snapshot_rating (the breakdown's own total), the breakdown is
+            // probably missing a recent play.
+            sega_rating: body.sega_rating ?? null,
             new_version_top_plays: body.new || [],
             old_version_top_plays: body.old || [],
         };
