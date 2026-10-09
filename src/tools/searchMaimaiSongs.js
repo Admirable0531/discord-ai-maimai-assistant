@@ -1,4 +1,5 @@
 const { loadSongData } = require('../web/maimaiSongData');
+const { directMatch, fallbackMatch, loadAliases } = require('../web/maimaiSongMatch');
 
 const MAX_RESULTS = 15;
 
@@ -7,7 +8,11 @@ const declaration = {
     description:
         "Search the maimai DX song database for exact chart data: each difficulty's level (including the " +
         'precise decimal internal level, not just the displayed rounded level like "13+"), BPM, artist, ' +
-        'category, note designer, and which game version a song was added in. Use this instead of ' +
+        'category, note designer, note counts (tap/hold/slide/touch/break/total per chart), and which game ' +
+        'version a song was added in (intl_version when International got it in a different version). ' +
+        'Nicknames and loose spellings are handled: when nothing matches the title directly, it also tries ' +
+        'romanised kana ("apoc" finds アポカリプス…) and community aliases (mostly Chinese, e.g. 反逆焰), and ' +
+        "says which via matched_via — confirm a matched_via result with the user if it isn't obvious. Use this instead of " +
         "search_web/read_webpage for any question about a specific song's difficulty, level, chart details, " +
         "or release version — it's exact structured data pulled directly from the game data, not something " +
         'read off a wiki page.',
@@ -17,7 +22,8 @@ const declaration = {
             query: {
                 type: 'string',
                 description:
-                    'Song title or artist name to search for (partial match, case-insensitive).',
+                    'Song title, artist, nickname or romanised title to search for (partial match; case, ' +
+                    'full-width and accents are ignored, so "rondo" finds RONDØ).',
             },
             artist: {
                 type: 'string',
@@ -129,7 +135,7 @@ function resolveCategory(rawCategory, allCategories) {
 }
 
 async function execute(args) {
-    const query = typeof args?.query === 'string' ? normalize(args.query.trim()) : '';
+    const query = typeof args?.query === 'string' ? args.query.trim() : '';
     const artist = typeof args?.artist === 'string' ? normalize(args.artist.trim()) : '';
     const noteDesigner =
         typeof args?.note_designer === 'string' ? normalize(args.note_designer.trim()) : '';
@@ -183,46 +189,64 @@ async function execute(args) {
     // every real match, not just whichever happened to appear first in the
     // source data — truncation to MAX_RESULTS (when not random) happens
     // after the full scan instead.
-    const matches = [];
-    for (const song of data.songs) {
-        if (
-            query &&
-            !normalize(song.title).includes(query) &&
-            !normalize(song.artist).includes(query)
-        )
-            continue;
-        if (artist && !normalize(song.artist).includes(artist)) continue;
-        if (resolvedVersion && song.version !== resolvedVersion) continue;
-        if (resolvedCategory && song.category !== resolvedCategory) continue;
-        if (minBpm !== null && (song.bpm == null || song.bpm < minBpm)) continue;
-        if (maxBpm !== null && (song.bpm == null || song.bpm > maxBpm)) continue;
+    function collect(matchQuery) {
+        const found = [];
+        for (const song of data.songs) {
+            let matchedVia = null;
+            if (query) {
+                matchedVia = matchQuery(song);
+                if (!matchedVia) continue;
+            }
+            if (artist && !normalize(song.artist).includes(artist)) continue;
+            if (resolvedVersion && song.version !== resolvedVersion) continue;
+            if (resolvedCategory && song.category !== resolvedCategory) continue;
+            if (minBpm !== null && (song.bpm == null || song.bpm < minBpm)) continue;
+            if (maxBpm !== null && (song.bpm == null || song.bpm > maxBpm)) continue;
 
-        const matchingSheets = song.sheets.filter((sheet) => {
-            if (difficulty && sheet.difficulty !== difficulty) return false;
-            if (type && sheet.type !== type) return false;
-            if (noteDesigner && !normalize(sheet.noteDesigner).includes(noteDesigner)) return false;
-            const level = sheet.internalLevelValue ?? sheet.levelValue;
-            if (minLevel !== null && level < minLevel) return false;
-            if (maxLevel !== null && level > maxLevel) return false;
-            return true;
-        });
-        if (hasSheetFilter && matchingSheets.length === 0) continue;
+            const matchingSheets = song.sheets.filter((sheet) => {
+                if (difficulty && sheet.difficulty !== difficulty) return false;
+                if (type && sheet.type !== type) return false;
+                if (noteDesigner && !normalize(sheet.noteDesigner).includes(noteDesigner))
+                    return false;
+                const level = sheet.internalLevelValue ?? sheet.levelValue;
+                if (minLevel !== null && level < minLevel) return false;
+                if (maxLevel !== null && level > maxLevel) return false;
+                return true;
+            });
+            if (hasSheetFilter && matchingSheets.length === 0) continue;
 
-        matches.push({
-            title: song.title,
-            artist: song.artist,
-            category: song.category,
-            bpm: song.bpm,
-            version: song.version,
-            releaseDate: song.releaseDate,
-            charts: (hasSheetFilter ? matchingSheets : song.sheets).map((sheet) => ({
-                type: sheet.type,
-                difficulty: sheet.difficulty,
-                level: sheet.level,
-                internalLevel: sheet.internalLevel,
-                noteDesigner: sheet.noteDesigner,
-            })),
-        });
+            const intlVersion = song.sheets.find((sh) => sh.regionOverrides?.intl?.version)
+                ?.regionOverrides.intl.version;
+            found.push({
+                title: song.title,
+                artist: song.artist,
+                category: song.category,
+                bpm: song.bpm,
+                version: song.version,
+                ...(intlVersion && intlVersion !== song.version
+                    ? { intl_version: intlVersion }
+                    : {}),
+                releaseDate: song.releaseDate,
+                ...(matchedVia === true ? {} : matchedVia ? { matched_via: matchedVia } : {}),
+                charts: (hasSheetFilter ? matchingSheets : song.sheets).map((sheet) => ({
+                    type: sheet.type,
+                    difficulty: sheet.difficulty,
+                    level: sheet.level,
+                    internalLevel: sheet.internalLevel,
+                    noteDesigner: sheet.noteDesigner,
+                    ...(sheet.noteCounts ? { notes: sheet.noteCounts } : {}),
+                })),
+            });
+        }
+        return found;
+    }
+
+    let matches = collect((song) => directMatch(song, query));
+    // Only when the title/artist found nothing: loose matching on a short or
+    // common query would bury the real answer under false positives.
+    if (query && matches.length === 0) {
+        const aliasesByTitle = await loadAliases();
+        matches = collect((song) => fallbackMatch(song, query, aliasesByTitle));
     }
 
     if (random) {

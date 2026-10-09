@@ -52,6 +52,35 @@ function isOnCooldown(userId, cooldownMs) {
     return Date.now() - last < cooldownMs;
 }
 
+/**
+ * Rewrites Discord's raw mention syntax into names the model can use:
+ * <@123> -> @Name (<@123>), and the same for roles and channels. The model
+ * only ever saw the bare ids, so "what is <@123>" or "should <@123> play
+ * valo" got "I can't resolve Discord ids". The id stays alongside the name so
+ * the model can still mention that person back. Uses the names Discord sent
+ * with the message, so no extra API calls.
+ */
+function resolveMentions(text, message) {
+    if (!text || !message) return text;
+    const clientId = message.client?.user?.id;
+    return text
+        .replace(/<@!?(\d+)>/g, (raw, id) => {
+            if (id === clientId) return '@Atri (you)';
+            const member = message.mentions?.members?.get(id);
+            const user = message.mentions?.users?.get(id);
+            const name = member?.displayName || user?.globalName || user?.username;
+            return name ? `@${name} (${raw})` : raw;
+        })
+        .replace(/<@&(\d+)>/g, (raw, id) => {
+            const role = message.mentions?.roles?.get(id);
+            return role ? `@${role.name} (role)` : raw;
+        })
+        .replace(/<#(\d+)>/g, (raw, id) => {
+            const channel = message.mentions?.channels?.get(id);
+            return channel?.name ? `#${channel.name}` : raw;
+        });
+}
+
 /** Strips a leading bot mention so it doesn't pollute the prompt sent to Gemini. */
 function stripMention(content, clientUserId) {
     return content.replace(new RegExp(`^<@!?${clientUserId}>\\s*`), '').trim();
@@ -173,6 +202,7 @@ async function buildReplyContext(message) {
         if (!content && referenced.attachments.size > 0) content = '[attachment, no text]';
         else if (!content && referenced.embeds.length > 0) content = '[embed, no text]';
         else if (!content) content = '[no text content]';
+        content = resolveMentions(content, referenced);
         if (content.length > REPLY_CONTEXT_MAX_LENGTH) {
             content = `${content.slice(0, REPLY_CONTEXT_MAX_LENGTH)}...(truncated)`;
         }
@@ -195,9 +225,10 @@ function registerMessageHandler(client, config) {
         if (!userText) return;
 
         const replyContext = await buildReplyContext(message);
+        const resolvedText = resolveMentions(userText, message);
         const promptText = replyContext
-            ? `[Replying to a message from ${replyContext.author}: "${replyContext.content}"]\n${userText}`
-            : userText;
+            ? `[Replying to a message from ${replyContext.author}: "${replyContext.content}"]\n${resolvedText}`
+            : resolvedText;
 
         if (isOwner(userId)) {
             const adminReply = tryHandleAdminCommand(userText, guildId);

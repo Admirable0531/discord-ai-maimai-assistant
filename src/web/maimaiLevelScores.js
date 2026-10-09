@@ -16,14 +16,19 @@
 // because it OVERWRITES the visible level text with the constant.
 //
 // mai-tools is third-party and its README says it's no longer actively
-// developed, so treat the annotation as best-effort: if it doesn't land in
+// developed (hence the fork), so treat the annotation as best-effort: if it doesn't land in
 // time we still return every score at the level, just with constant: null,
 // rather than failing the whole lookup.
 const { LEVEL_BUCKETS } = require('./maimaiFriendLookup');
 const { withAccountPage } = require('./maimaiAccountSession');
 const logger = require('../utils/logger');
 
-const MAI_TOOLS_SCRIPT = 'https://myjian.github.io/mai-tools/scripts/all-in-one.js';
+// The Admirable0531 fork, not upstream: it syncs with upstream daily and also
+// fills in charts upstream's song data doesn't have yet (OV3RCLOCK, 2026-10),
+// which upstream leaves without a constant. Same default as maimaiscrape.
+const MAI_TOOLS_SCRIPT =
+    process.env.MAI_TOOLS_SCRIPT_URL ||
+    'https://admirable0531.github.io/mai-tools/scripts/all-in-one.js';
 // The script fetches a game version and a song database over the network
 // before it can annotate anything, so this is deliberately generous.
 const ANNOTATION_TIMEOUT_MS = 25000;
@@ -87,7 +92,6 @@ function extractRows() {
         };
     });
 }
-
 
 /**
  * Every score at `level` ("14+", "13", …), each with its constant where
