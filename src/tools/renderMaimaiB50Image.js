@@ -1,13 +1,12 @@
 const { findPlayer } = require('../web/maimaiPlayers');
 const getOwnTopScores = require('./getMaimaiOwnTopScores');
 const getFriendTopScores = require('./getMaimaiFriendTopScores');
-const { loadSongData } = require('../web/maimaiSongData');
-const { findSongByTitle } = require('../web/maimaiChartLookup');
+const { loadCoverMap } = require('../web/maimaiCovers');
 const { buildB50Html, WIDTH, sumRatings } = require('../render/b50Card');
 const { renderHtmlToPng } = require('../render/browserRenderer');
 const { COVER_HOST } = require('../render/theme');
 const { attachFile } = require('../utils/outputs');
-const { isStale, parseSnapshotDate } = require('../utils/snapshotAge');
+const { isStale, formatSnapshotStamp } = require('../utils/snapshotAge');
 
 const declaration = {
     name: 'render_maimai_b50_image',
@@ -34,14 +33,6 @@ const declaration = {
     },
 };
 
-/** "09/10/2026 22:45:10" (day-first, ambiguous to a reader) -> "2026-10-09 22:45". */
-function readableStamp(raw) {
-    const d = parseSnapshotDate(raw);
-    if (!d) return raw || null;
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 function lowest(plays) {
     if (plays.length === 0) return null;
     const p = plays.reduce((min, cur) =>
@@ -55,21 +46,6 @@ function lowest(plays) {
         achievement: p.Achv,
         rating: p.Rating,
     };
-}
-
-/** song title -> cover image name, from arcade-songs; missing songs just get no cover. */
-async function loadCovers(plays) {
-    const covers = new Map();
-    try {
-        const { songs } = await loadSongData();
-        for (const play of plays) {
-            const song = findSongByTitle(songs, play.Song);
-            if (song?.imageName) covers.set(play.Song, song.imageName);
-        }
-    } catch {
-        // The card is still worth drawing without covers.
-    }
-    return covers;
 }
 
 async function execute(args, context) {
@@ -100,12 +76,12 @@ async function execute(args, context) {
         playerName: player.name,
         rating: data.snapshot_rating,
         segaRating: data.sega_rating ?? null,
-        snapshotDate: readableStamp(data.snapshot_date),
+        snapshotDate: formatSnapshotStamp(data.snapshot_date),
         ageDays: data.snapshot_age_days,
         stale,
         newPlays,
         oldPlays,
-        covers: await loadCovers([...newPlays, ...oldPlays]),
+        covers: await loadCoverMap([...newPlays, ...oldPlays].map((p) => p.Song)),
     });
 
     let png;

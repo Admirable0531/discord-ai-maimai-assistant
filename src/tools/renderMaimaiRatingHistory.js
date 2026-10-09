@@ -137,9 +137,12 @@ async function execute(args, context) {
 
     let png;
     try {
-        png = await renderHtmlToPng(buildRatingChartHtml({ playerName: player.name, points, excluded: cleaned.dropped }), {
-            width: WIDTH,
-        });
+        png = await renderHtmlToPng(
+            buildRatingChartHtml({ playerName: player.name, points, excluded: cleaned.dropped }),
+            {
+                width: WIDTH,
+            }
+        );
     } catch (err) {
         return { success: false, error: err.message };
     }

@@ -5,7 +5,7 @@
 // title names it) and, being a static image, no hover layer: the figures a
 // tooltip would have carried go back to the model in the tool result.
 // Pure: data in, HTML out (see browserRenderer.js for the PNG).
-const { TOKENS, BASE_CSS, FONT_STACK, escapeHtml, formatInt } = require('./theme');
+const { TOKENS, BASE_CSS, FONT_STACK, escapeHtml, displayName, formatInt } = require('./theme');
 
 const WIDTH = 1200;
 const DAY = 86400000;
@@ -181,7 +181,7 @@ function buildRatingChartHtml({ playerName, points, excluded = 0 }) {
       <div class="delta" style="color:${deltaColor}"><span class="icon">${deltaIcon}</span>${escapeHtml(deltaText)}</div>
     </div>
     <div class="who">
-      <div class="name">${escapeHtml(playerName)}</div>
+      <div class="name">${escapeHtml(displayName(playerName))}</div>
       <div class="sub">${escapeHtml(formatDay(first.t))} – ${escapeHtml(formatDay(last.t))} · ${points.length} day${points.length === 1 ? '' : 's'} recorded</div>
     </div>
   </div>

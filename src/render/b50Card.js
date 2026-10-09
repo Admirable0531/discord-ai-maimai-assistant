@@ -2,7 +2,7 @@
 // as a grid of tiles (cover, title, difficulty + constant, achievement, rank,
 // rating), under a header with the rating and how fresh the data is.
 // Pure: data in, HTML out (see browserRenderer.js for the PNG).
-const { TOKENS, BASE_CSS, escapeHtml, formatInt, coverUrl } = require('./theme');
+const { TOKENS, BASE_CSS, escapeHtml, displayName, formatInt, coverUrl } = require('./theme');
 
 // Wide enough that the bottom row of a tile (achievement, rank, rating) fits next to
 // the cover: at 1280 the rating, the number that matters most, was clipped.
@@ -119,7 +119,7 @@ function buildB50Html(model) {
     <div>
       <div class="label">Rating</div>
       <div class="hero">${formatInt(total)}</div>
-      <div class="player">${escapeHtml(playerName)}</div>
+      <div class="player">${escapeHtml(displayName(playerName))}</div>
     </div>
     <div>
       <div class="stats">

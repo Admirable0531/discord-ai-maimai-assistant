@@ -5,7 +5,6 @@
 // label — never colour alone.
 
 const COVER_HOST = 'dp4p6x0xfi5o9.cloudfront.net';
-const COVER_PATH = '/maimai/img/cover-m/';
 
 const TOKENS = {
     surface: '#1a1a19',
@@ -39,13 +38,38 @@ function escapeHtml(value) {
     );
 }
 
+/**
+ * A player or circle name for reading: full-width forms folded to normal width
+ * ("Ｍｉｎｊｉｎ" -> "Minjin") and runs of space collapsed. Names are stored in the
+ * full-width form the game uses, which renders letter-spaced and is hard to
+ * read; this is for display only, never for matching.
+ */
+function displayName(name) {
+    return String(name ?? '')
+        .normalize('NFKC')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 /** 16407 -> "16,407". */
 function formatInt(n) {
     return Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '–';
 }
 
-function coverUrl(imageName) {
-    return imageName ? `https://${COVER_HOST}${COVER_PATH}${encodeURIComponent(imageName)}` : null;
+/** Cover art URL: the small version (12 KB, for tiles) by default, the full-size one (~75 KB) for a feature image. */
+function coverUrl(imageName, full = false) {
+    return imageName
+        ? `https://${COVER_HOST}/maimai/img/${full ? 'cover' : 'cover-m'}/${encodeURIComponent(imageName)}`
+        : null;
 }
 
-module.exports = { TOKENS, FONT_STACK, BASE_CSS, COVER_HOST, escapeHtml, formatInt, coverUrl };
+module.exports = {
+    TOKENS,
+    FONT_STACK,
+    BASE_CSS,
+    COVER_HOST,
+    escapeHtml,
+    displayName,
+    formatInt,
+    coverUrl,
+};

@@ -56,10 +56,21 @@ function ageInDays(date) {
     return days < 0 ? 0 : days;
 }
 
+/** "09/10/2026 22:45:10" (day-first, ambiguous to a reader) -> "2026-10-09 22:45"; the raw text if it can't be parsed. */
+function formatSnapshotStamp(date) {
+    const raw = date ? String(date).trim() : '';
+    // A date with no time of day stays a date: converting it would invent a time (08:00 here).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const d = /^\d{4}-\d{2}-\d{2}T/.test(raw) ? new Date(raw) : parseSnapshotDate(date);
+    if (!d || Number.isNaN(d.getTime())) return date ? String(date) : null;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** True when a snapshot is old enough that nights were missed — or when its age is unknown, which is no safer. */
 function isStale(date) {
     const days = ageInDays(date);
     return days === null || days > STALE_AFTER_DAYS;
 }
 
-module.exports = { STALE_AFTER_DAYS, parseSnapshotDate, ageInDays, isStale };
+module.exports = { STALE_AFTER_DAYS, parseSnapshotDate, formatSnapshotStamp, ageInDays, isStale };

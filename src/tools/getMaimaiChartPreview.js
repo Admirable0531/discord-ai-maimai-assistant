@@ -4,6 +4,8 @@ const { fold, fallbackMatch, loadAliases } = require('../web/maimaiSongMatch');
 const { searchWeb } = require('../web/searchProvider');
 const { attachFile } = require('../utils/outputs');
 const { COVER_HOST } = require('../render/theme');
+const { buildSongCardHtml, WIDTH } = require('../render/songCard');
+const { drawCard } = require('../render/drawCard');
 const logger = require('../utils/logger');
 
 const MAX_COVER_BYTES = 3 * 1024 * 1024;
@@ -20,13 +22,13 @@ const DIFFICULTY_ORDER = ['remaster', 'master', 'expert', 'advanced', 'basic'];
 const declaration = {
     name: 'get_maimai_chart_preview',
     description:
-        "Preview a maimai chart: the song's cover art (attached to your reply as an image), its chart " +
-        'details for one difficulty (level, exact constant, charter, note counts), and LINKS to watch the ' +
+        "Preview a maimai chart: a song card (cover art plus every chart's level, exact constant, note " +
+        'counts and charter) attached to your reply as an image, the details of one difficulty, and LINKS to watch the ' +
         'chart — video search results (YouTube / niconico, "譜面確認"-style chart-confirmation videos) and the ' +
         'song\'s RemyWiki page when it has one. Use it for "show me X", "how does X look / play", "chart ' +
         'preview / video of X". It cannot render the chart itself — the videos are search results from other ' +
         'people, so say they are results to check rather than guaranteed matches (title_matches: false ones ' +
-        'especially). Put the best video URL in your reply on its own line so Discord embeds it. The cover is ' +
+        'especially). Put the best video URL in your reply on its own line so Discord embeds it. The card is ' +
         "attached automatically and you can't see it. Takes a song title or a nickname; it asks you to pick " +
         'when several songs fit. Defaults: master difficulty, the DX chart when a song has both.',
     parametersJsonSchema: {
@@ -128,6 +130,26 @@ async function findVideos(song, sheet) {
     }
 }
 
+/** Every real chart of the song, DX before standard, easiest to hardest, in the shape the song card draws. */
+function cardCharts(song) {
+    const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+    return song.sheets
+        .filter((s) => s.type === 'dx' || s.type === 'std')
+        .sort(
+            (a, b) =>
+                (a.type === b.type ? 0 : a.type === 'dx' ? -1 : 1) ||
+                order.indexOf(a.difficulty) - order.indexOf(b.difficulty)
+        )
+        .map((s) => ({
+            type: s.type,
+            difficulty: s.difficulty,
+            level: s.level,
+            constant: s.internalLevel,
+            designer: s.noteDesigner,
+            notes: s.noteCounts,
+        }));
+}
+
 async function execute(args, context) {
     const query = typeof args?.song === 'string' ? args.song.trim() : '';
     if (!query) return { success: false, error: 'song is required.' };
@@ -160,25 +182,46 @@ async function execute(args, context) {
     const sheet = pickSheet(song, args?.difficulty, args?.type);
     if (!sheet) return { success: false, error: `"${song.title}" has no charts to preview.` };
 
-    const [cover, videos, remywiki] = await Promise.all([
-        fetchCover(song.imageName),
+    const intlVersion = song.sheets.find((s) => s.regionOverrides?.intl?.version)?.regionOverrides
+        .intl.version;
+
+    const [card, videos, remywiki] = await Promise.all([
+        drawCard(context, {
+            html: buildSongCardHtml({
+                title: song.title,
+                artist: song.artist,
+                category: song.category,
+                bpm: song.bpm,
+                version: song.version,
+                intlVersion,
+                releaseDate: song.releaseDate,
+                cover: song.imageName,
+                charts: cardCharts(song),
+                highlight: { type: sheet.type, difficulty: sheet.difficulty },
+            }),
+            width: WIDTH,
+            filename: 'song-card.png',
+        }),
         findVideos(song, sheet),
         remyWikiPage(song.title),
     ]);
 
-    let coverAttached = false;
-    if (cover) coverAttached = attachFile(context, { name: 'cover.png', data: cover }).ok;
+    // The card didn't draw: the bare cover is still better than nothing.
+    let imageAttached = card.ok;
+    if (!imageAttached) {
+        logger.warn('tools', `Song card failed (${card.error}); attaching the cover alone`);
+        const cover = await fetchCover(song.imageName);
+        if (cover) imageAttached = attachFile(context, { name: 'cover.png', data: cover }).ok;
+    }
 
     const label = DIFFICULTY_LABELS[sheet.difficulty] || sheet.difficulty;
     const youtubeSearch = `https://www.youtube.com/results?search_query=${encodeURIComponent(
         `maimai ${song.title} ${label} 譜面確認`
     )}`;
-    const intlVersion = song.sheets.find((s) => s.regionOverrides?.intl?.version)?.regionOverrides
-        .intl.version;
 
     return {
         success: true,
-        cover_attached: coverAttached,
+        image_attached: imageAttached,
         title: song.title,
         artist: song.artist,
         category: song.category,
@@ -201,7 +244,8 @@ async function execute(args, context) {
         youtube_search_url: youtubeSearch,
         remywiki_url: remywiki,
         note:
-            'The cover is attached automatically. The videos are search results by other people — check ' +
+            'A card with the cover and every chart (levels, constants, note counts, charters) is attached ' +
+            "automatically — you can't see it, so don't re-list the charts. The videos are search results by other people — check " +
             'title_matches, and say they are results to look at, not guaranteed to be this exact chart.',
     };
 }

@@ -2,7 +2,11 @@
 // maimaiscrape repo, not a database this bot owns — that server already
 // knows the MongoDB schema and does the same read the /latestfriendsleaderboard
 // slash command in Discord_Bot uses, just as JSON.
-const { ageInDays, isStale } = require('../utils/snapshotAge');
+const { ageInDays, isStale, formatSnapshotStamp } = require('../utils/snapshotAge');
+const { buildLeaderboardHtml, WIDTH } = require('../render/leaderboardCard');
+const { drawCard } = require('../render/drawCard');
+const { fetchUsers, TRACKED_ID } = require('../web/maimaiPlayers');
+const { normalizeName } = require('../web/maimaiFriendLookup');
 const { config } = require('../config/env');
 
 const API_URL = config.tools.maimaiApiUrl;
@@ -26,7 +30,10 @@ const declaration = {
         'every call. When is_stale is true the ratings and ranks are genuinely out of date (the scrape has been ' +
         'failing), so state the snapshot date plainly instead of presenting the numbers as current, and never ' +
         'describe a stale rank as someone\'s standing "now". If the asker is ' +
-        "themselves one of the tracked friends, check search_memory first in case they've told you their in-game name before.",
+        "themselves one of the tracked friends, check search_memory first in case they've told you their in-game name before. " +
+        'IMAGE: pass as_image: true when the user wants to SEE the leaderboard (show / post / send / a picture or ' +
+        "card of it) — a ranked chart is attached to your reply automatically; you can't see it, so add a short " +
+        'comment from the data and don\'t re-list the rows. Leave it off for a specific lookup ("what is X\'s rating").',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -36,11 +43,16 @@ const declaration = {
                 description:
                     'Which tracked account\'s friend list to read — "fy" or "main" (default "fy" if omitted; these are two different friend lists, see the tool description).',
             },
+            as_image: {
+                type: 'boolean',
+                description:
+                    'Also draw the leaderboard as an image and attach it to the reply (see the tool description).',
+            },
         },
     },
 };
 
-async function execute(args) {
+async function execute(args, context) {
     const accountType = args?.account_type === 'main' ? 'main' : 'fy';
     try {
         const response = await fetch(
@@ -56,7 +68,7 @@ async function execute(args) {
         const ageDays = ageInDays(body.snapshotDate);
         const stale = isStale(body.snapshotDate);
 
-        return {
+        const result = {
             success: true,
             accountType: body.accountType,
             snapshotDate: body.snapshotDate,
@@ -74,8 +86,53 @@ async function execute(args) {
                 : {}),
             friends: body.friends,
         };
+        if (args?.as_image === true) await addImage(result, body, ageDays, stale, context);
+        return result;
     } catch (err) {
         return { success: false, error: `Could not reach the maimai stats API: ${err.message}` };
+    }
+}
+
+/**
+ * Draws the card for `result` and notes it there. The tracked account's own
+ * row (it sits on the fy list) is marked "you". A failure to draw leaves the
+ * data intact and says why.
+ */
+async function addImage(result, body, ageDays, stale, context) {
+    const friends = Array.isArray(body.friends) ? body.friends : [];
+    if (friends.length === 0) {
+        result.image_error = 'There are no friends in this snapshot to draw.';
+        return;
+    }
+    let highlightIndex = -1;
+    try {
+        const self = (await fetchUsers()).find((u) => u.user === TRACKED_ID);
+        if (self?.name) {
+            highlightIndex = friends.findIndex(
+                (f) => normalizeName(f.name) === normalizeName(self.name)
+            );
+        }
+    } catch {
+        // No highlight is fine.
+    }
+    const drawn = await drawCard(context, {
+        html: buildLeaderboardHtml({
+            accountLabel: body.accountType,
+            snapshotDate: formatSnapshotStamp(body.snapshotDate),
+            ageDays,
+            stale,
+            friends,
+            highlightIndex,
+        }),
+        width: WIDTH,
+        filename: `leaderboard-${body.accountType}.png`,
+    });
+    if (drawn.ok) {
+        result.image_attached = true;
+        result.note =
+            "The image is attached to your reply automatically and you can't see it — add a short comment from the data, and don't re-list the rows.";
+    } else {
+        result.image_error = drawn.error;
     }
 }
 

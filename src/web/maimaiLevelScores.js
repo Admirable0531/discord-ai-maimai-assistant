@@ -83,7 +83,18 @@ function extractRows() {
         return {
             song: nameBlock ? nameBlock.innerText.trim() : null,
             difficulty: diffMatch ? diffMatch[1] : innerMatch ? innerMatch[1] : null,
-            chart_type: row.querySelector('.music_kind_icon_dx') ? 'dx' : 'standard',
+            // The kind is an image (music_dx.png / music_standard.png), not a class: this
+            // used to look for a `.music_kind_icon_dx` class that no row has, so every
+            // chart was reported as standard, DX ones included. Same detection and the
+            // same 'dx' / 'std' values as maimaiFriendLookup.js.
+            chart_type: (() => {
+                const src = (row.querySelector('img.music_kind_icon') || {}).src || '';
+                return src.includes('music_dx')
+                    ? 'dx'
+                    : src.includes('music_standard')
+                      ? 'std'
+                      : null;
+            })(),
             level: printed || (lvBlock ? lvBlock.innerText.trim() : null),
             constant: inlv ? parseFloat(inlv) : null,
             achievement: Number.isNaN(achievement) ? null : achievement,
