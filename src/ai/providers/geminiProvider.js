@@ -1,108 +1,23 @@
+// Gemini adapter (see ../agentLoop.js for the interface).
+//
+// thinkingBudget (config/env.js): -1 = automatic, which has no ceiling, so a
+// moderate fixed 1024 caps worst-case spend while leaving room for tool
+// selection. Continuations use 128, NOT 0: gemini-3.5-flash-lite rejects
+// thinkingBudget 0 with 400 INVALID_ARGUMENT (verified live — 0 fails, 128
+// and 1024 succeed), and a rejected request took out the whole continuation.
 const { FunctionCallingConfigMode } = require('@google/genai');
 const { getGeminiClient } = require('./geminiClient');
-const { buildSystemPrompt } = require('../systemPrompt');
-const { GEMINI_TOOLS, createToolExecutors } = require('../toolDefinitions');
 const { estimateCostUsd } = require('../pricing');
 const { logUsage } = require('../../database/repositories/usageRepository');
+const { config } = require('../../config/env');
 const logger = require('../../utils/logger');
-const { markTruncated } = require('../truncation');
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-// Bounds the tool-call round-trip loop below so a model stuck calling tools
-// forever can't turn one Discord message into an unbounded number of Gemini
-// requests. This is a *starting* budget, not a hard wall — see
-// request_more_tool_calls below, which lets the model extend it per-message
-// when a question genuinely needs more round-trips (multi-page synthesis,
-// checking 2+ candidate pages) rather than raising the default for every
-// message, most of which finish in 1-2 calls.
-const BASE_MAX_TOOL_ITERATIONS = Number(process.env.GEMINI_MAX_TOOL_ITERATIONS) || 6;
-// Absolute ceiling even after extensions — keeps a pathological back-and-forth
-// from turning into an unbounded API bill for one Discord message.
-const HARD_MAX_TOOL_ITERATIONS = Number(process.env.GEMINI_MAX_TOOL_ITERATIONS_HARD) || 16;
-const TOOL_BUDGET_EXTEND_STEP = Number(process.env.GEMINI_TOOL_BUDGET_EXTEND_STEP) || 4;
-
-const REQUEST_MORE_TOOL_CALLS = 'request_more_tool_calls';
-// Handled inline in the loop below (it mutates loop-local budget state), not
-// via toolDefinitions.js's generic executor map — it isn't a real data tool.
-const requestMoreToolCallsDeclaration = {
-    name: REQUEST_MORE_TOOL_CALLS,
-    description:
-        'Ask for more tool-call budget for this message. Each Discord message has a limited number of tool ' +
-        'calls; you get a low-budget warning in the tool results once you are close to running out. Call this ' +
-        'ONLY if you are near/at that limit and genuinely still need more steps to finish (e.g. you are midway ' +
-        'through reading several pages or synthesizing a large table) — not speculatively, and not on turn one.',
-    parametersJsonSchema: { type: 'object', properties: {} },
-};
-// Discord truncates at 2000 chars; a reply anywhere near that is already
-// unusual for a chat message. 2048 tokens gives headroom for dense CJK text
-// (this community mostly deals in Japanese/Chinese song names) without
-// leaving the cap effectively unbounded — paying for output that gets cut
-// off client-side is pure waste.
-const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 2048;
-// Mirrors deepseekProvider.js's BOOSTED_MAX_OUTPUT_TOKENS: a continuation is
-// pure composition (the tool results it needs are already in history), so it
-// gets a wider dedicated budget up front instead of hitting the same cap twice.
-const BOOSTED_MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS_BOOSTED) || 4096;
-// thinkingBudget: -1 = automatic (model decides per-request), 0 = disabled.
-// Automatic sounds ideal but has no ceiling — a moderate fixed budget caps
-// worst-case spend on this casual-chat/tool-picking bot while still leaving
-// room for real reasoning across the tool set. Not disabled outright: tool
-// selection accuracy benefits from at least some of it. Unverified against
-// a live key — if responses feel truncated or tool picks get worse, raise
-// this (or set to -1) before assuming something else is wrong.
-const THINKING_BUDGET =
-    process.env.GEMINI_THINKING_BUDGET !== undefined
-        ? Number(process.env.GEMINI_THINKING_BUDGET)
-        : 1024;
-// A continuation is picking up an answer already in progress, not deciding
-// what to say next, so it wants minimal thinking — that leaves more of the
-// (wider) output cap for the answer text itself.
-//
-// NOT zero, even though "no thinking needed" is the intent: gemini-3.5-flash-lite
-// rejects thinkingBudget: 0 outright with 400 INVALID_ARGUMENT (verified live
-// against this exact model — 0 fails, 128 and 1024 succeed). Thinking cannot be
-// disabled on it, only turned down, and a rejected request took out the whole
-// continuation rather than degrading it.
-const CONTINUATION_THINKING_BUDGET =
-    process.env.GEMINI_CONTINUATION_THINKING_BUDGET !== undefined
-        ? Number(process.env.GEMINI_CONTINUATION_THINKING_BUDGET)
-        : 128;
-
-// The real tools plus the budget-extension escape hatch, declared together
-// so the function-call schema Gemini sees stays identical across every
-// request in a conversation (mixing tool sets mid-conversation is untested
-// and not worth risking).
-const TOOLS_FOR_REQUEST = [
-    {
-        functionDeclarations: [
-            ...GEMINI_TOOLS[0].functionDeclarations,
-            requestMoreToolCallsDeclaration,
-        ],
-    },
-];
+const settings = config.ai.gemini;
 
 /**
- * Builds Gemini's `contents` array from stored history + the new user turn.
- * Uses a stateless generateContent call (rather than ai.chats.create()'s
- * opaque session) so history can be backed by SQLite and tool round trips
- * can be appended to the same array we control.
- */
-function toGeminiContents(history, userMessage) {
-    return [
-        ...history.map((entry) => ({
-            role: entry.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: entry.content }],
-        })),
-        { role: 'user', parts: [{ text: userMessage }] },
-    ];
-}
-
-/**
- * Manually walks the response instead of using the SDK's `.text` getter,
- * which — confirmed live — logs a warning and can return an empty string
- * when the response also contains a non-text part (e.g. a stray
- * functionCall), even when real text is present elsewhere in the same
- * response. Filtering to text parts ourselves gets that text back either way.
+ * Text parts read by hand instead of the SDK's `.text` getter, which —
+ * confirmed live — logs a warning and can return '' when the response also
+ * holds a non-text part (a stray functionCall), even with real text present.
  */
 function extractText(response) {
     const parts = response.candidates?.[0]?.content?.parts;
@@ -114,7 +29,6 @@ function extractText(response) {
         .trim();
 }
 
-/** Logs one row per actual Gemini call — a single generateReply() can make several across tool-call iterations. */
 function recordUsage(response) {
     const usage = response.usageMetadata;
     if (!usage) return;
@@ -123,7 +37,7 @@ function recordUsage(response) {
     try {
         logUsage({
             provider: 'gemini',
-            model: MODEL,
+            model: settings.model,
             promptTokens,
             completionTokens,
             costUsd: estimateCostUsd('gemini', promptTokens, completionTokens),
@@ -133,188 +47,104 @@ function recordUsage(response) {
     }
 }
 
-/**
- * Implements the AIProvider interface (see ../agent.js): generateReply(history,
- * userMessage, {userId, guildId}) -> Promise<string>. Sends the conversation
- * to Gemini, executing tool calls (memory + web search/read) locally and
- * feeding results back until Gemini returns text (or the tool-call budget
- * runs out). `userId`/`guildId` come from the real Discord message, never from
- * the model — see toolDefinitions.createToolExecutors.
- */
-async function generateReply(history, userMessage, { userId, guildId, speaker, continuation }) {
-    const ai = getGeminiClient();
-    const executors = createToolExecutors({ userId, guildId });
-    const contents = toGeminiContents(history, userMessage);
-    const systemInstruction = buildSystemPrompt({ userId, guildId, speaker });
-    let maxIterations = BASE_MAX_TOOL_ITERATIONS;
-    const maxOutputTokens = continuation ? BOOSTED_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
-    const thinkingBudget = continuation ? CONTINUATION_THINKING_BUDGET : THINKING_BUDGET;
+const adapter = {
+    name: 'Gemini',
+    toolBudget: settings.toolBudget,
 
-    for (let iteration = 0; iteration < maxIterations; iteration++) {
-        const response = await ai.models.generateContent({
-            model: MODEL,
-            contents,
+    initialOptions({ continuation }) {
+        return continuation
+            ? {
+                  maxOutputTokens: settings.boostedMaxOutputTokens,
+                  thinkingBudget: settings.continuationThinkingBudget,
+              }
+            : {
+                  maxOutputTokens: settings.maxOutputTokens,
+                  thinkingBudget: settings.thinkingBudget,
+              };
+    },
+    afterToolCalls(opts) {
+        return opts;
+    },
+    onTruncated() {
+        return null;
+    },
+
+    /**
+     * Stateless generateContent over a contents array we own (rather than
+     * ai.chats.create()'s opaque session), so history can come from SQLite
+     * and tool round trips append to it.
+     */
+    createConversation({ systemPrompt, history, userMessage, tools }) {
+        return {
+            systemInstruction: systemPrompt,
+            tools: [{ functionDeclarations: tools }],
+            contents: [
+                ...history.map((entry) => ({
+                    role: entry.role === 'assistant' ? 'model' : 'user',
+                    parts: [{ text: entry.content }],
+                })),
+                { role: 'user', parts: [{ text: userMessage }] },
+            ],
+        };
+    },
+
+    async send(conversation, opts, { forceText }) {
+        const response = await getGeminiClient().models.generateContent({
+            model: settings.model,
+            contents: conversation.contents,
             config: {
-                systemInstruction,
-                tools: TOOLS_FOR_REQUEST,
-                maxOutputTokens,
-                thinkingConfig: { thinkingBudget },
+                systemInstruction: conversation.systemInstruction,
+                // Kept declared even when forcing text, with mode NONE instead:
+                // dropping tools while the history holds functionCall turns
+                // reproducibly came back with a stray functionCall and no text.
+                tools: conversation.tools,
+                ...(forceText
+                    ? {
+                          toolConfig: {
+                              functionCallingConfig: { mode: FunctionCallingConfigMode.NONE },
+                          },
+                      }
+                    : {}),
+                maxOutputTokens: opts.maxOutputTokens,
+                thinkingConfig: { thinkingBudget: opts.thinkingBudget },
             },
         });
         recordUsage(response);
+        const finishReason = response.candidates?.[0]?.finishReason;
+        return {
+            raw: response,
+            text: extractText(response),
+            toolCalls: (response.functionCalls || []).map((call) => ({
+                id: call.id,
+                name: call.name,
+                args: call.args || {},
+            })),
+            finishReason,
+            truncated: finishReason === 'MAX_TOKENS',
+        };
+    },
 
-        const calls = response.functionCalls;
-        if (!calls || calls.length === 0) {
-            const text = extractText(response);
-            const finishReason = response.candidates?.[0]?.finishReason;
-            if (!text) {
-                logger.warn('agent', 'Gemini returned no text and no function calls', {
-                    finishReason,
-                });
-                throw new Error(
-                    `Gemini returned an empty response (finishReason: ${finishReason ?? 'unknown'})`
-                );
+    appendToolResults(conversation, response, results, note) {
+        // contents must alternate user/model, and Gemini needs to see its own
+        // functionCall turn before the matching responses.
+        conversation.contents.push(
+            response.raw.candidates?.[0]?.content ?? {
+                role: 'model',
+                parts: results.map(({ call }) => ({
+                    functionCall: { name: call.name, args: call.args },
+                })),
             }
-            // MAX_TOKENS means the answer stopped mid-sentence at the cap, not
-            // that it finished — returning it unmarked is how a half-written
-            // table reaches Discord looking complete. Flag it rather than
-            // passing a cut-off answer off as the whole thing.
-            if (finishReason === 'MAX_TOKENS') {
-                logger.warn(
-                    'agent',
-                    `Gemini reply hit the ${maxOutputTokens}-token cap mid-answer — returning it flagged`
-                );
-                return markTruncated(text);
-            }
-            return text;
-        }
-
-        logger.info(
-            'agent',
-            `Gemini requested ${calls.length} tool call(s): ${calls.map((c) => c.name).join(', ')}`
         );
+        const parts = results.map(({ call, result }) => ({
+            functionResponse: {
+                name: call.name,
+                ...(call.id ? { id: call.id } : {}),
+                response: result,
+            },
+        }));
+        if (note) parts.push({ text: note });
+        conversation.contents.push({ role: 'user', parts });
+    },
+};
 
-        // Echo the model's own turn (containing the functionCall parts) back
-        // before appending our results — contents must alternate user/model,
-        // and Gemini needs to see its own call before the matching response.
-        const modelContent = response.candidates?.[0]?.content;
-        contents.push(
-            modelContent ?? { role: 'model', parts: calls.map((call) => ({ functionCall: call })) }
-        );
-
-        // Parallel — Gemini can request multiple calls in one turn (e.g.
-        // search_memory + search_web together), and search_web/read_webpage
-        // are network calls worth not serializing.
-        const responseParts = await Promise.all(
-            calls.map(async (call) => {
-                if (call.name === REQUEST_MORE_TOOL_CALLS) {
-                    let result;
-                    if (maxIterations >= HARD_MAX_TOOL_ITERATIONS) {
-                        result = {
-                            success: false,
-                            granted: false,
-                            error: `Already at the hard cap of ${HARD_MAX_TOOL_ITERATIONS} tool calls for this message — answer with what you have.`,
-                        };
-                    } else {
-                        const before = maxIterations;
-                        maxIterations = Math.min(
-                            HARD_MAX_TOOL_ITERATIONS,
-                            maxIterations + TOOL_BUDGET_EXTEND_STEP
-                        );
-                        logger.info(
-                            'agent',
-                            `Gemini requested more tool-call budget: ${before} -> ${maxIterations}`
-                        );
-                        result = { success: true, granted: true, new_budget: maxIterations };
-                    }
-                    return {
-                        functionResponse: {
-                            name: call.name,
-                            ...(call.id ? { id: call.id } : {}),
-                            response: result,
-                        },
-                    };
-                }
-
-                const executor = executors[call.name];
-                let result;
-                if (!executor) {
-                    logger.warn('agent', `Unknown tool requested: ${call.name}`);
-                    result = { success: false, error: `Unknown tool: ${call.name}` };
-                } else {
-                    try {
-                        result = await executor(call.args || {});
-                    } catch (err) {
-                        logger.error('agent', `Tool ${call.name} threw`, err);
-                        result = { success: false, error: 'Tool execution failed.' };
-                    }
-                }
-                return {
-                    functionResponse: {
-                        name: call.name,
-                        ...(call.id ? { id: call.id } : {}),
-                        response: result,
-                    },
-                };
-            })
-        );
-
-        // Nudge the model once budget is running low, so it knows the escape
-        // hatch exists instead of silently hitting the forced-final-answer
-        // fallback below. Only fires near the end, not every turn — no point
-        // spending tokens on it for the common 1-2 call case.
-        const remaining = maxIterations - (iteration + 1);
-        const budgetNote =
-            remaining <= 2 && remaining >= 0
-                ? [
-                      {
-                          text: `[System note: ${remaining} of ${maxIterations} tool calls remain for this message. If you still need to keep researching, call ${REQUEST_MORE_TOOL_CALLS} before you run out; otherwise wrap up with what you have.]`,
-                      },
-                  ]
-                : [];
-
-        contents.push({ role: 'user', parts: [...responseParts, ...budgetNote] });
-    }
-
-    // Ran out of tool-call iterations without a final answer. The work the
-    // tools already did (and the API spend that produced it) shouldn't just
-    // be thrown away — force one last request the model can't ask another
-    // tool call from, so it has to answer with whatever it has, even if
-    // that's "I couldn't find a complete answer." Keeping `tools` declared
-    // but forcing mode: NONE (rather than omitting `tools` outright) is
-    // deliberate: the conversation history at this point already contains
-    // functionCall/functionResponse turns, and dropping tools entirely
-    // while that history remains produced a real, reproducible failure —
-    // the response came back with a stray functionCall part anyway, and
-    // finalResponse.text logged a warning and returned empty.
-    logger.warn(
-        'agent',
-        `Hit ${maxIterations} tool-call iterations without a final answer — forcing a text-only reply`
-    );
-    const finalResponse = await ai.models.generateContent({
-        model: MODEL,
-        contents,
-        config: {
-            systemInstruction,
-            tools: TOOLS_FOR_REQUEST,
-            toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } },
-            maxOutputTokens,
-            thinkingConfig: { thinkingBudget },
-        },
-    });
-    recordUsage(finalResponse);
-    const finalText = extractText(finalResponse);
-    if (finalText) return finalText;
-
-    // Belt-and-suspenders: even with tool calls barred, still fall back to a
-    // real (if generic) answer instead of an opaque error reaching Discord —
-    // this exact path has now misfired live more than once.
-    const finishReason = finalResponse.candidates?.[0]?.finishReason;
-    logger.error(
-        'agent',
-        `Gemini produced no final text even with tool calls disabled (finishReason: ${finishReason ?? 'unknown'})`
-    );
-    return "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific.";
-}
-
-module.exports = { generateReply };
+module.exports = { adapter };

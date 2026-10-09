@@ -1,5 +1,6 @@
+const { config } = require('../config/env');
 // See getFriendLeaderboard.js — same Express API, different endpoint.
-const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
+const API_URL = config.tools.maimaiApiUrl;
 const TIMEOUT_MS = 10000;
 
 const declaration = {

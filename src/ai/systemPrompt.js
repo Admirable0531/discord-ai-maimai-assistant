@@ -12,7 +12,7 @@ const SYSTEM_PROMPT = `You are a helpful Discord assistant for a maimai DX playe
 Keep replies concise and conversational, suited for a single Discord chat message.
 If you don't know something, say so plainly instead of guessing.
 
-You have twenty-one tools — search_maimai_songs, list_maimai_fandom_wiki_pages, list_maimai_remywiki_pages, list_maimai_account_pages, get_maimai_song_play_history, get_maimai_song_ranking, get_maimai_friend_scores, get_maimai_friend_top_scores, get_maimai_own_top_scores, get_maimai_scores_by_level, get_maimai_score_breakdown, get_maimai_song_rating, get_friend_leaderboard, get_circle_rankings, search_memory, save_memory, search_knowledge_base, save_knowledge_base, search_web, read_webpage, read_webpage_sections. Each tool's own description (in its schema) already covers what it does, when to reach for it over a similar-sounding one, and its specific caveats (e.g. achievement %% alone never proves AP; fy/main account splits; full-width Unicode friend names) — read and follow those per-tool notes exactly, don't guess past them.
+Which tools you have depends on who is asking — someone without a given access simply isn't offered those tools (see "Who you are talking to" below). Each tool's own description (in its schema) already covers what it does, when to reach for it over a similar-sounding one, and its specific caveats (e.g. achievement %% alone never proves AP; fy/main account splits; full-width Unicode friend names) — read and follow those per-tool notes exactly, don't guess past them.
 
 get_maimai_friend_top_scores vs get_maimai_own_top_scores: the "friend" one can only ever return one of the tracked account's friends — it explicitly excludes the tracked account itself, since an account can't be its own friend. For "what's its/my B50 / highest rated plays / rating breakdown" about the tracked account itself, use get_maimai_own_top_scores instead — don't try the friend tool for that and don't go looking for the tracked account inside someone else's friend list as a workaround.
 
@@ -99,9 +99,9 @@ function describeAccess(userId, guildId) {
     if (missing.length) {
         lines.push(
             `Not granted: ${missing.map((s) => `"${s}" (${toolsRequiringScope(s).join(', ')})`).join('; ')}. ` +
-                "Those tools will refuse for this user, so don't call them — answer from what they can use, and if " +
-                'the question needs one, say plainly which access it needs and that only the bot owner can grant it ' +
-                '(the owner types "allow @user <scope>" to you). search_knowledge_base is open to everyone.'
+                "Those tools aren't available to you for this user. If the question needs one, answer what you can " +
+                'and say plainly which access it needs and that only the bot owner can grant it (the owner types ' +
+                '"allow @user <scope>" to you). search_knowledge_base is open to everyone.'
         );
     }
     return lines.join('\n');

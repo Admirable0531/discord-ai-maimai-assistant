@@ -45,8 +45,6 @@ const TOOLS = [
     getMaimaiScoresByLevelTool,
 ];
 
-const GEMINI_TOOLS = [{ functionDeclarations: TOOLS.map((tool) => tool.declaration) }];
-
 /**
  * Which scope (see permissionStore.js's VALID_SCOPES) each tool requires.
  * read_webpage/read_webpage_sections are dynamic — see requiredScope()
@@ -130,4 +128,21 @@ function createToolExecutors(context) {
     return executors;
 }
 
-module.exports = { GEMINI_TOOLS, createToolExecutors, toolsRequiringScope };
+/**
+ * The tool declarations ({name, description, parametersJsonSchema}) to offer
+ * this user: only those their scopes allow. Tools they couldn't use used to
+ * be offered anyway and refused when called, so the model spent a round trip
+ * (and the user an answer) finding that out; the prompt then had to tell it
+ * not to try them. Now they simply aren't there. read_webpage stays in for
+ * everyone, since its scope depends on the url (see requiredScope) and the
+ * executor still checks that per call.
+ */
+function toolDeclarationsFor(context) {
+    const scopes = getAllowedScopes(context.userId, context.guildId);
+    return TOOLS.map((tool) => tool.declaration).filter((decl) => {
+        const scope = TOOL_SCOPES[decl.name];
+        return !scope || scopes === 'all' || scopes.includes(scope);
+    });
+}
+
+module.exports = { toolDeclarationsFor, createToolExecutors, toolsRequiringScope };

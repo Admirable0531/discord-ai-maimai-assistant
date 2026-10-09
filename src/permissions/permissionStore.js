@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { and, eq } = require('drizzle-orm');
 const logger = require('../utils/logger');
-
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const STORE_PATH = path.join(DATA_DIR, 'permissions.json');
+const { config } = require('../config/env');
+const { getDb } = require('../database/client');
+const { permissionGrants } = require('../database/schema');
+const { sqliteTimestamp } = require('../database/timestamp');
 
 /**
  * The tool categories access can be scoped to (see toolDefinitions.js's
@@ -15,59 +17,130 @@ const STORE_PATH = path.join(DATA_DIR, 'permissions.json');
 const VALID_SCOPES = ['web', 'account', 'leaderboard', 'memory', 'knowledge'];
 
 /**
- * Flat JSON file for Phase 1 — this is auth data, not conversation history,
- * so unlike historyStore it must survive restarts even before Phase 2's
- * SQLite lands. OWNER_USER_ID (env) is always allowed and isn't stored here.
- *
- * Two independent grant lists: allowedUserIds is full access (every scope,
- * same as the original behavior), scopedUserIds maps a userId to the
- * specific scopes they're limited to. A user is in at most one of these at
- * a time — granting scoped access to someone with full access downgrades
- * them (see allowUser), since "full but also limited" isn't meaningful.
- *
- * allowedGuildIds/scopedGuildIds mirror that same pair, but grant access to
- * every member of a server at once rather than one user — a member's actual
- * access is the UNION of their personal grant (if any) and their server's
- * grant (see getAllowedScopes), so a server-wide "web" grant plus one
- * member's personal "leaderboard" grant gives that member both.
+ * 'memory' is baseline, not granted: each user's memories are stored and
+ * read strictly under their own userId, so letting everyone remember things
+ * about themselves exposes nothing of anyone else's. Gating it meant only
+ * the owner ever had a single memory saved, and the bot could not tell
+ * anyone else apart from one conversation to the next.
  */
-function loadStore() {
+const BASELINE_SCOPES = ['web', 'memory'];
+
+/**
+ * Grants live in the permission_grants table: one row per user or server,
+ * with scopes as a JSON array, or NULL for full access. OWNER_USER_ID is
+ * always allowed and isn't stored. A user has at most one grant — granting
+ * scoped access to someone with full access downgrades them (see allowUser),
+ * since "full but also limited" isn't meaningful.
+ *
+ * A server grant applies to every member of that server at once; a member's
+ * actual access is the UNION of their personal grant (if any) and their
+ * server's grant (see getAllowedScopes), so a server-wide "web" grant plus
+ * one member's personal "leaderboard" grant gives that member both.
+ *
+ * These used to live in data/permissions.json, a stopgap from before SQLite;
+ * importLegacyJson() moves any such file into the table once.
+ */
+const LEGACY_JSON_PATH = path.resolve(__dirname, '../../data/permissions.json');
+
+/** Full access -> 'all', otherwise the granted scope array; null when there's no grant. */
+function readGrant(subjectType, subjectId) {
+    if (!subjectId) return null;
+    const row = getDb()
+        .select()
+        .from(permissionGrants)
+        .where(
+            and(
+                eq(permissionGrants.subjectType, subjectType),
+                eq(permissionGrants.subjectId, subjectId)
+            )
+        )
+        .get();
+    if (!row) return null;
+    return row.scopes === null ? 'all' : JSON.parse(row.scopes);
+}
+
+/** Upserts a grant (scopes null = full access). Returns true if there was no grant before. */
+function writeGrant(subjectType, subjectId, scopes) {
+    const isNew = readGrant(subjectType, subjectId) === null;
+    const value = scopes === null ? null : JSON.stringify(scopes);
+    getDb()
+        .insert(permissionGrants)
+        .values({ subjectType, subjectId, scopes: value })
+        .onConflictDoUpdate({
+            target: [permissionGrants.subjectType, permissionGrants.subjectId],
+            set: { scopes: value, updatedAt: sqliteTimestamp() },
+        })
+        .run();
+    return isNew;
+}
+
+/** Returns true if a grant was removed. */
+function deleteGrant(subjectType, subjectId) {
+    const result = getDb()
+        .delete(permissionGrants)
+        .where(
+            and(
+                eq(permissionGrants.subjectType, subjectType),
+                eq(permissionGrants.subjectId, subjectId)
+            )
+        )
+        .run();
+    return result.changes > 0;
+}
+
+function listGrants(subjectType) {
+    return getDb()
+        .select()
+        .from(permissionGrants)
+        .where(eq(permissionGrants.subjectType, subjectType))
+        .all()
+        .map((row) => ({
+            id: row.subjectId,
+            scopes: row.scopes === null ? null : JSON.parse(row.scopes),
+        }));
+}
+
+/**
+ * Moves data/permissions.json into the table, once: grants already in the
+ * table win, and the file is renamed so it isn't imported again (or mistaken
+ * for the live store).
+ */
+function importLegacyJson() {
+    let parsed;
     try {
-        const raw = fs.readFileSync(STORE_PATH, 'utf8');
-        const parsed = JSON.parse(raw);
-        return {
-            allowedUserIds: Array.isArray(parsed.allowedUserIds) ? parsed.allowedUserIds : [],
-            scopedUserIds:
-                parsed.scopedUserIds &&
-                typeof parsed.scopedUserIds === 'object' &&
-                !Array.isArray(parsed.scopedUserIds)
-                    ? parsed.scopedUserIds
-                    : {},
-            allowedGuildIds: Array.isArray(parsed.allowedGuildIds) ? parsed.allowedGuildIds : [],
-            scopedGuildIds:
-                parsed.scopedGuildIds &&
-                typeof parsed.scopedGuildIds === 'object' &&
-                !Array.isArray(parsed.scopedGuildIds)
-                    ? parsed.scopedGuildIds
-                    : {},
-        };
+        parsed = JSON.parse(fs.readFileSync(LEGACY_JSON_PATH, 'utf8'));
     } catch (err) {
         if (err.code !== 'ENOENT') {
-            logger.error('permissions', `Failed to read ${STORE_PATH}, starting empty`, err);
+            logger.error('permissions', `Could not read ${LEGACY_JSON_PATH} to import it`, err);
         }
-        return { allowedUserIds: [], scopedUserIds: {}, allowedGuildIds: [], scopedGuildIds: {} };
+        return;
     }
+    let imported = 0;
+    const importOne = (type, id, scopes) => {
+        if (readGrant(type, id) === null) {
+            writeGrant(type, id, scopes);
+            imported++;
+        }
+    };
+    for (const id of parsed.allowedUserIds || []) importOne('user', id, null);
+    for (const [id, scopes] of Object.entries(parsed.scopedUserIds || {}))
+        importOne('user', id, scopes);
+    for (const id of parsed.allowedGuildIds || []) importOne('guild', id, null);
+    for (const [id, scopes] of Object.entries(parsed.scopedGuildIds || {}))
+        importOne('guild', id, scopes);
+    fs.renameSync(LEGACY_JSON_PATH, `${LEGACY_JSON_PATH}.imported`);
+    logger.info('permissions', `Imported ${imported} grant(s) from permissions.json into SQLite`);
 }
 
-function saveStore(store) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+let legacyChecked = false;
+function ensureImported() {
+    if (legacyChecked) return;
+    legacyChecked = true;
+    importLegacyJson();
 }
-
-let store = loadStore();
 
 function getOwnerId() {
-    return process.env.OWNER_USER_ID;
+    return config.ownerUserId;
 }
 
 function isOwner(userId) {
@@ -75,18 +148,13 @@ function isOwner(userId) {
 }
 
 function getGuildScopes(guildId) {
-    if (!guildId) return [];
-    if (store.allowedGuildIds.includes(guildId)) return 'all';
-    return store.scopedGuildIds[guildId] || [];
+    ensureImported();
+    return readGrant('guild', guildId) || [];
 }
 
 function isAllowed(userId, guildId) {
-    if (
-        isOwner(userId) ||
-        store.allowedUserIds.includes(userId) ||
-        Boolean(store.scopedUserIds[userId])
-    )
-        return true;
+    ensureImported();
+    if (isOwner(userId) || readGrant('user', userId) !== null) return true;
     const guildScopes = getGuildScopes(guildId);
     return guildScopes === 'all' || guildScopes.length > 0;
 }
@@ -97,21 +165,15 @@ function isAllowed(userId, guildId) {
  * BASELINE_SCOPES, plus the union of the user's own grant and their
  * server's grant, if any. Callers gating a specific tool should treat 'all'
  * as "every scope granted" rather than comparing arrays.
- *
- * 'memory' is baseline, not granted: each user's memories are stored and
- * read strictly under their own userId, so letting everyone remember things
- * about themselves exposes nothing of anyone else's. Gating it meant only
- * the owner ever had a single memory saved, and the bot could not tell
- * anyone else apart from one conversation to the next.
  */
-const BASELINE_SCOPES = ['web', 'memory'];
-
 function getAllowedScopes(userId, guildId) {
-    if (isOwner(userId) || store.allowedUserIds.includes(userId)) return 'all';
+    ensureImported();
+    if (isOwner(userId)) return 'all';
+    const userGrant = readGrant('user', userId);
+    if (userGrant === 'all') return 'all';
     const guildScopes = getGuildScopes(guildId);
     if (guildScopes === 'all') return 'all';
-    const userScopes = store.scopedUserIds[userId] || [];
-    return [...new Set([...BASELINE_SCOPES, ...userScopes, ...guildScopes])];
+    return [...new Set([...BASELINE_SCOPES, ...(userGrant || []), ...guildScopes])];
 }
 
 function hasScope(userId, guildId, scope) {
@@ -120,75 +182,51 @@ function hasScope(userId, guildId, scope) {
 }
 
 /**
- * Grants access. `scopes` omitted/null grants full access (original
- * behavior); a non-empty array grants only those scopes and downgrades any
- * existing full access. Returns true if this is a new grant, false if it
- * only updated an existing one (still applied either way).
+ * Grants access. `scopes` omitted/null grants full access; a non-empty array
+ * grants only those scopes and replaces any existing full access. Returns
+ * true if this is a new grant, false if it only updated an existing one
+ * (still applied either way).
  */
 function allowUser(userId, scopes = null) {
-    if (scopes === null) {
-        const isNew = !store.allowedUserIds.includes(userId);
-        delete store.scopedUserIds[userId]; // full access supersedes any prior scoped grant
-        if (isNew) store.allowedUserIds.push(userId);
-        saveStore(store);
-        return isNew;
-    }
-
-    const isNew = !store.scopedUserIds[userId] && !store.allowedUserIds.includes(userId);
-    store.allowedUserIds = store.allowedUserIds.filter((id) => id !== userId); // scoping down replaces full access
-    store.scopedUserIds[userId] = scopes;
-    saveStore(store);
-    return isNew;
+    ensureImported();
+    return writeGrant('user', userId, scopes);
 }
 
-/** Returns true if the user was removed (from either list), false if they didn't have access. */
+/** Returns true if the user was removed, false if they didn't have access. */
 function revokeUser(userId) {
-    const had = store.allowedUserIds.includes(userId) || Boolean(store.scopedUserIds[userId]);
-    store.allowedUserIds = store.allowedUserIds.filter((id) => id !== userId);
-    delete store.scopedUserIds[userId];
-    if (had) saveStore(store);
-    return had;
+    ensureImported();
+    return deleteGrant('user', userId);
 }
 
 /** Same semantics as allowUser, but grants every member of `guildId` access at once. */
 function allowGuild(guildId, scopes = null) {
-    if (scopes === null) {
-        const isNew = !store.allowedGuildIds.includes(guildId);
-        delete store.scopedGuildIds[guildId];
-        if (isNew) store.allowedGuildIds.push(guildId);
-        saveStore(store);
-        return isNew;
-    }
-
-    const isNew = !store.scopedGuildIds[guildId] && !store.allowedGuildIds.includes(guildId);
-    store.allowedGuildIds = store.allowedGuildIds.filter((id) => id !== guildId);
-    store.scopedGuildIds[guildId] = scopes;
-    saveStore(store);
-    return isNew;
+    ensureImported();
+    return writeGrant('guild', guildId, scopes);
 }
 
 /** Returns true if the guild's grant was removed, false if it didn't have one. Individual members' own grants are untouched. */
 function revokeGuild(guildId) {
-    const had = store.allowedGuildIds.includes(guildId) || Boolean(store.scopedGuildIds[guildId]);
-    store.allowedGuildIds = store.allowedGuildIds.filter((id) => id !== guildId);
-    delete store.scopedGuildIds[guildId];
-    if (had) saveStore(store);
-    return had;
+    ensureImported();
+    return deleteGrant('guild', guildId);
 }
 
 /** { full: userId[], scoped: {id, scopes}[] } — owner always included in full. */
 function listAllowedUsers() {
+    ensureImported();
+    const grants = listGrants('user');
     return {
-        full: [getOwnerId(), ...store.allowedUserIds],
-        scoped: Object.entries(store.scopedUserIds).map(([id, scopes]) => ({ id, scopes })),
+        full: [getOwnerId(), ...grants.filter((g) => g.scopes === null).map((g) => g.id)],
+        scoped: grants.filter((g) => g.scopes !== null),
     };
 }
 
 /** { full: guildId[], scoped: {id, scopes}[] } */
 function listAllowedGuilds() {
+    ensureImported();
+    const grants = listGrants('guild');
     return {
-        full: [...store.allowedGuildIds],
-        scoped: Object.entries(store.scopedGuildIds).map(([id, scopes]) => ({ id, scopes })),
+        full: grants.filter((g) => g.scopes === null).map((g) => g.id),
+        scoped: grants.filter((g) => g.scopes !== null),
     };
 }
 

@@ -22,13 +22,12 @@
 const { LEVEL_BUCKETS } = require('./maimaiFriendLookup');
 const { withAccountPage } = require('./maimaiAccountSession');
 const logger = require('../utils/logger');
+const { config } = require('../config/env');
 
 // The Admirable0531 fork, not upstream: it syncs with upstream daily and also
 // fills in charts upstream's song data doesn't have yet (OV3RCLOCK, 2026-10),
 // which upstream leaves without a constant. Same default as maimaiscrape.
-const MAI_TOOLS_SCRIPT =
-    process.env.MAI_TOOLS_SCRIPT_URL ||
-    'https://admirable0531.github.io/mai-tools/scripts/all-in-one.js';
+const MAI_TOOLS_SCRIPT = config.tools.maiToolsScriptUrl;
 // The script fetches a game version and a song database over the network
 // before it can annotate anything, so this is deliberately generous.
 const ANNOTATION_TIMEOUT_MS = 25000;

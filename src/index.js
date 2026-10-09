@@ -1,8 +1,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { Collection, MessageFlags } = require('discord.js');
+const { Collection, Events, MessageFlags } = require('discord.js');
 const logger = require('./utils/logger');
 const { loadEnv } = require('./config/env');
+const { startDiscordLog } = require('./utils/discordLog');
 const { createDiscordClient } = require('./discord/client');
 const { registerMessageHandler, registerReactionHandler } = require('./discord/messageHandler');
 const { closeBrowser } = require('./web/playwrightFetcher');
@@ -84,8 +85,10 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-client.once('ready', (readyClient) => {
+// Events.ClientReady is 'clientReady'; discord.js deprecated the old 'ready' name.
+client.once(Events.ClientReady, (readyClient) => {
     logger.info('bot', `Logged in as ${readyClient.user.tag}`);
+    startDiscordLog(readyClient, config.logChannelId);
 });
 
 client.login(config.discordToken).catch((err) => {

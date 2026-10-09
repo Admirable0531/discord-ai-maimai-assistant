@@ -9,7 +9,7 @@ const DB_PATH = path.join(DATA_DIR, 'bot.db');
 
 /**
  * Bootstrapped directly with CREATE TABLE IF NOT EXISTS rather than
- * drizzle-kit migrations — there are only two tables and no schema history
+ * drizzle-kit migrations — there are only a few tables and no schema history
  * to manage yet. If the schema in schema.js changes later, update this SQL
  * to match (and write a manual ALTER for existing databases).
  */
@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at);
+
+CREATE TABLE IF NOT EXISTS permission_grants (
+    subject_type TEXT NOT NULL CHECK (subject_type IN ('user', 'guild')),
+    subject_id TEXT NOT NULL,
+    scopes TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (subject_type, subject_id)
+);
 `;
 
 let db = null;

@@ -1,4 +1,5 @@
 const { GoogleGenAI } = require('@google/genai');
+const { config } = require('../../config/env');
 
 let client = null;
 
@@ -6,7 +7,7 @@ let client = null;
 function getGeminiClient() {
     if (client) return client;
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = config.ai.gemini.apiKey;
     if (!apiKey) {
         throw new Error('GEMINI_API_KEY is not set; cannot create Gemini client.');
     }

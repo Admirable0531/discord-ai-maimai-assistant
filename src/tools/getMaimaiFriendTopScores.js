@@ -5,8 +5,9 @@
 // browser session needed here, just reading what that pipeline already saved.
 const { normalizeName } = require('../web/maimaiFriendLookup');
 const { ageInDays, isStale } = require('../utils/snapshotAge');
+const { config } = require('../config/env');
 
-const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
+const API_URL = config.tools.maimaiApiUrl;
 const TIMEOUT_MS = 15000;
 
 const declaration = {

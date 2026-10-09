@@ -2,13 +2,13 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const { assertSafeUrl } = require('./urlSafety');
 const logger = require('../utils/logger');
+const { config } = require('../config/env');
 
 // Same arm64-Debian gap as maimaiAccountSession.js — see its own comment for
 // the confirmed live error. Kept as a separate copy rather than a shared
 // import since this file has no other dependency on that module.
 function resolveExecutablePath() {
-    let executablePath =
-        process.env.CHROME_EXECUTABLE_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    let executablePath = config.tools.chromeExecutablePath;
     const isArmLinux =
         process.platform === 'linux' && (process.arch === 'arm' || process.arch === 'arm64');
     if (!executablePath && isArmLinux) {
@@ -30,7 +30,7 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; discord-ai-assistant/1.0)';
 // ~100-200ms of extra process-startup overhead vs. an already-warm browser
 // — per-page navigation dominates the total either way) for not holding
 // that memory the rest of the time. Set to 0 to keep the browser always warm.
-const IDLE_TIMEOUT_MS = Number(process.env.PLAYWRIGHT_IDLE_TIMEOUT_MS) || 5 * 60 * 1000;
+const IDLE_TIMEOUT_MS = config.tools.playwrightIdleTimeoutMs;
 
 let browserPromise = null;
 let idleTimer = null;

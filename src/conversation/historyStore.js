@@ -1,6 +1,7 @@
 const conversationRepository = require('../database/repositories/conversationRepository');
+const { config } = require('../config/env');
 
-const DEFAULT_LIMIT = Number(process.env.MAX_HISTORY_MESSAGES) || 4;
+const DEFAULT_LIMIT = config.maxHistoryMessages;
 
 /**
  * Phase 2: backed by SQLite (via conversationRepository) so history survives

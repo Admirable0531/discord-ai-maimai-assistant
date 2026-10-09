@@ -1,4 +1,5 @@
 const { searchCache } = require('./cache');
+const { config } = require('../config/env');
 
 const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
 const TIMEOUT_MS = 15000;
@@ -20,7 +21,7 @@ async function searchWeb({ query, allowedDomains = [], maxResults = 5 }) {
     const cached = searchCache.get(cacheKey);
     if (cached) return cached;
 
-    const apiKey = process.env.TAVILY_API_KEY;
+    const apiKey = config.tools.tavilyApiKey;
     if (!apiKey) {
         throw new Error('TAVILY_API_KEY is not set; web search is unavailable.');
     }

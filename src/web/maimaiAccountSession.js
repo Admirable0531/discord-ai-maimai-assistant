@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const { assertSafeUrl } = require('./urlSafety');
 const logger = require('../utils/logger');
+const { config } = require('../config/env');
 
 // Playwright's own bundled Chromium build doesn't support arm64 Debian
 // (confirmed live: "Playwright does not support chromium on debian11-arm64"
@@ -9,8 +10,7 @@ const logger = require('../utils/logger');
 // for its Puppeteer browser, so resolve the system Chromium apt installs the
 // same way that file does, rather than relying on Playwright's downloader.
 function resolveExecutablePath() {
-    let executablePath =
-        process.env.CHROME_EXECUTABLE_PATH || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    let executablePath = config.tools.chromeExecutablePath;
     const isArmLinux =
         process.platform === 'linux' && (process.arch === 'arm' || process.arch === 'arm64');
     if (!executablePath && isArmLinux) {
@@ -41,12 +41,12 @@ const NAV_TIMEOUT_MS = 30000;
 // Same reasoning as playwrightFetcher.js's IDLE_TIMEOUT_MS — a resident
 // Chromium process is real RAM on a Pi 4; auto-close after inactivity and
 // pay a relogin on the next call instead of holding it open indefinitely.
-const IDLE_TIMEOUT_MS = Number(process.env.MAIMAI_ACCOUNT_IDLE_TIMEOUT_MS) || 5 * 60 * 1000;
+const IDLE_TIMEOUT_MS = config.tools.maimaiAccountIdleTimeoutMs;
 const USER_AGENT =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36';
 
-const SID = process.env.MAIMAI_LOGIN_SID || '';
-const PASSWORD = process.env.MAIMAI_LOGIN_PASSWORD || '';
+const SID = config.tools.maimaiLogin.sid;
+const PASSWORD = config.tools.maimaiLogin.password;
 
 let contextPromise = null;
 let idleTimer = null;

@@ -1,64 +1,49 @@
-// Single seam for swapping the LLM backend later. Every provider must
-// implement generateReply(history, userMessage, {userId, guildId, speaker}) ->
-// Promise<string> — see providers/geminiProvider.js for the reference
-// implementation and providers/geminiClient.js for its SDK client.
-//
-// This is a lightweight refactor, not a full multi-provider system: nothing
-// here abstracts the tool-declaration wire format (toolDefinitions.js still
-// wraps tools Gemini's way, via functionDeclarations) or the system prompt
-// (systemPrompt.js is plain text, which happens to be provider-agnostic
-// already). Adding a real second provider would still mean adapting those
-// two, not just dropping in a new file below — this only removes the need
-// to touch messageHandler.js or hunt through agent.js's old tool-loop logic
-// to do it.
+// Entry point for generating a reply: picks the provider (AI_PROVIDER, with
+// AI_PROVIDER_FALLBACK behind it) and runs the shared tool loop
+// (agentLoop.js) with that provider's adapter. A new provider is one adapter
+// file — see providers/openAiCompatible.js for an OpenAI-style API, or
+// providers/geminiProvider.js for the full interface.
+const { runAgent } = require('./agentLoop');
+const { config } = require('../config/env');
 const logger = require('../utils/logger');
 
-const PRIMARY_NAME = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
-// Empty string disables fallback entirely (AI_PROVIDER_FALLBACK=""), e.g. if
-// you want DeepSeek-only behavior instead of silently degrading to Gemini.
-const FALLBACK_NAME =
-    process.env.AI_PROVIDER_FALLBACK !== undefined
-        ? process.env.AI_PROVIDER_FALLBACK.toLowerCase()
-        : 'gemini';
-
-const PROVIDERS = {
-    gemini: () => require('./providers/geminiProvider'),
-    groq: () => require('./providers/groqProvider'),
-    deepseek: () => require('./providers/deepseekProvider'),
+const ADAPTERS = {
+    gemini: () => require('./providers/geminiProvider').adapter,
+    groq: () => require('./providers/groqProvider').adapter,
+    deepseek: () => require('./providers/deepseekProvider').adapter,
 };
 
-function loadProvider(name) {
-    const factory = PROVIDERS[name];
+function loadAdapter(name) {
+    const factory = ADAPTERS[name];
     if (!factory) {
         throw new Error(
-            `Unknown AI provider "${name}" — available: ${Object.keys(PROVIDERS).join(', ')}`
+            `Unknown AI provider "${name}" — available: ${Object.keys(ADAPTERS).join(', ')}`
         );
     }
     return factory();
 }
 
 /**
- * Tries the primary provider first; on any failure (missing API key,
- * network error, empty/malformed response — anything generateReply()
- * throws for), falls back to a second provider rather than the whole
- * message just failing. Only triggers on an actual error, never on
- * "answer quality" — there's no reliable way to judge that automatically,
- * and guessing would silently double the cost of every reply.
+ * generateReply(history, userMessage, {userId, guildId, speaker, continuation})
+ * -> Promise<string>.
+ *
+ * Tries the primary provider first; on any failure (missing API key, network
+ * error, empty/malformed response — anything that throws) it falls back to
+ * the second rather than the message just failing. Only on an actual error,
+ * never on answer quality — there's no reliable way to judge that, and
+ * guessing would silently double the cost of every reply.
  */
 async function generateReply(history, userMessage, context) {
-    const primary = loadProvider(PRIMARY_NAME);
+    const { provider, fallback } = config.ai;
     try {
-        return await primary.generateReply(history, userMessage, context);
+        return await runAgent(loadAdapter(provider), history, userMessage, context);
     } catch (err) {
-        if (!FALLBACK_NAME || FALLBACK_NAME === PRIMARY_NAME) {
-            throw err;
-        }
+        if (!fallback || fallback === provider) throw err;
         logger.warn(
             'agent',
-            `Primary provider "${PRIMARY_NAME}" failed, falling back to "${FALLBACK_NAME}": ${err.message}`
+            `Primary provider "${provider}" failed, falling back to "${fallback}": ${err.message}`
         );
-        const fallback = loadProvider(FALLBACK_NAME);
-        return fallback.generateReply(history, userMessage, context);
+        return runAgent(loadAdapter(fallback), history, userMessage, context);
     }
 }
 

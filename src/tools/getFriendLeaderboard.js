@@ -3,8 +3,9 @@
 // knows the MongoDB schema and does the same read the /latestfriendsleaderboard
 // slash command in Discord_Bot uses, just as JSON.
 const { ageInDays, isStale } = require('../utils/snapshotAge');
+const { config } = require('../config/env');
 
-const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
+const API_URL = config.tools.maimaiApiUrl;
 const TIMEOUT_MS = 10000;
 
 const declaration = {

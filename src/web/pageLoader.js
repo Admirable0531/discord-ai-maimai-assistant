@@ -11,6 +11,7 @@ const {
     MAIMAI_ACCOUNT_PATH_PREFIX,
 } = require('./maimaiAccountSession');
 const logger = require('../utils/logger');
+const { config } = require('../config/env');
 
 // Above this, read_webpage returns section previews instead of full text.
 const SECTION_THRESHOLD_CHARS = 20000;
@@ -24,7 +25,7 @@ const SECTION_THRESHOLD_CHARS = 20000;
 // sites still dodge this (see siteConfig.js's forcePlaywright).
 const MIN_STATIC_TEXT_CHARS = 100;
 const MIN_HTML_BYTES_FOR_FALLBACK = 2000;
-const PLAYWRIGHT_FALLBACK_ENABLED = process.env.ENABLE_PLAYWRIGHT_FALLBACK !== 'false';
+const PLAYWRIGHT_FALLBACK_ENABLED = config.tools.playwrightFallbackEnabled;
 
 function hostnameOf(url) {
     try {

@@ -9,22 +9,23 @@
 // path to the tracked account's real B15/B35 breakdown, and it needed no
 // new scraping at all, just reading data that was already being collected.
 const { normalizeName } = require('../web/maimaiFriendLookup');
+const { config } = require('../config/env');
 
-const API_URL = process.env.MAIMAI_API_URL || 'http://localhost:3000';
+const API_URL = config.tools.maimaiApiUrl;
 const TIMEOUT_MS = 15000;
 
 const declaration = {
     name: 'get_maimai_own_top_scores',
     description:
         "Get this tracked account's OWN real best-scoring charts and total rating, straight off SEGA's " +
-        "rating-breakdown page (same source and shape as get_maimai_friend_top_scores, just for the " +
+        'rating-breakdown page (same source and shape as get_maimai_friend_top_scores, just for the ' +
         'tracked account itself rather than one of its friends — that tool can never return this data, ' +
         'since its friend lookup specifically excludes this account). Returns two lists ' +
         "(new_version_top_plays and old_version_top_plays, matching the game's own rating-split " +
         'categories, each entry with Song/Chart/Level/Achv/Rank/Rating) plus snapshot_rating, the total ' +
         'rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: this is a daily snapshot, not always fresh — ' +
-        "current_rating is fetched independently (this account shows up as a friend on the \"fy\" " +
-        'account\'s daily-updated leaderboard, so that\'s used as the live source; current_rating_source: ' +
+        'current_rating is fetched independently (this account shows up as a friend on the "fy" ' +
+        "account's daily-updated leaderboard, so that's used as the live source; current_rating_source: " +
         '"daily_friend_leaderboard"). Compare it against snapshot_rating: if they differ, or ' +
         'snapshot_age_days is large, tell the user plainly the top plays shown may be outdated. If ' +
         'current_rating_source is "unavailable" instead, current_rating is null — do NOT treat an old ' +

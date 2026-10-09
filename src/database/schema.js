@@ -1,4 +1,4 @@
-const { sqliteTable, integer, text, real } = require('drizzle-orm/sqlite-core');
+const { sqliteTable, integer, text, real, primaryKey } = require('drizzle-orm/sqlite-core');
 const { sql } = require('drizzle-orm');
 
 const memories = sqliteTable('memories', {
@@ -55,4 +55,25 @@ const aiUsage = sqliteTable('ai_usage', {
         .default(sql`CURRENT_TIMESTAMP`),
 });
 
-module.exports = { memories, conversations, aiUsage, knowledgeBase };
+/**
+ * Who may use which tools (see permissions/permissionStore.js). One row per
+ * user or server; scopes is a JSON array of scope names, or NULL for full
+ * access.
+ */
+const permissionGrants = sqliteTable(
+    'permission_grants',
+    {
+        subjectType: text('subject_type').notNull(), // 'user' | 'guild'
+        subjectId: text('subject_id').notNull(),
+        scopes: text('scopes'),
+        createdAt: text('created_at')
+            .notNull()
+            .default(sql`CURRENT_TIMESTAMP`),
+        updatedAt: text('updated_at')
+            .notNull()
+            .default(sql`CURRENT_TIMESTAMP`),
+    },
+    (table) => [primaryKey({ columns: [table.subjectType, table.subjectId] })]
+);
+
+module.exports = { memories, conversations, aiUsage, knowledgeBase, permissionGrants };
