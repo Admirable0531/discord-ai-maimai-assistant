@@ -5,6 +5,7 @@ const { searchWeb } = require('../web/searchProvider');
 const { attachFile } = require('../utils/outputs');
 const { COVER_HOST } = require('../render/theme');
 const { buildSongCardHtml, WIDTH } = require('../render/songCard');
+const { buildSongCardModel } = require('../web/maimaiSongCardModel');
 const { drawCard } = require('../render/drawCard');
 const logger = require('../utils/logger');
 
@@ -130,26 +131,6 @@ async function findVideos(song, sheet) {
     }
 }
 
-/** Every real chart of the song, DX before standard, easiest to hardest, in the shape the song card draws. */
-function cardCharts(song) {
-    const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
-    return song.sheets
-        .filter((s) => s.type === 'dx' || s.type === 'std')
-        .sort(
-            (a, b) =>
-                (a.type === b.type ? 0 : a.type === 'dx' ? -1 : 1) ||
-                order.indexOf(a.difficulty) - order.indexOf(b.difficulty)
-        )
-        .map((s) => ({
-            type: s.type,
-            difficulty: s.difficulty,
-            level: s.level,
-            constant: s.internalLevel,
-            designer: s.noteDesigner,
-            notes: s.noteCounts,
-        }));
-}
-
 async function execute(args, context) {
     const query = typeof args?.song === 'string' ? args.song.trim() : '';
     if (!query) return { success: false, error: 'song is required.' };
@@ -187,18 +168,9 @@ async function execute(args, context) {
 
     const [card, videos, remywiki] = await Promise.all([
         drawCard(context, {
-            html: buildSongCardHtml({
-                title: song.title,
-                artist: song.artist,
-                category: song.category,
-                bpm: song.bpm,
-                version: song.version,
-                intlVersion,
-                releaseDate: song.releaseDate,
-                cover: song.imageName,
-                charts: cardCharts(song),
-                highlight: { type: sheet.type, difficulty: sheet.difficulty },
-            }),
+            html: buildSongCardHtml(
+                buildSongCardModel(song, { type: sheet.type, difficulty: sheet.difficulty })
+            ),
             width: WIDTH,
             filename: 'song-card.png',
         }),

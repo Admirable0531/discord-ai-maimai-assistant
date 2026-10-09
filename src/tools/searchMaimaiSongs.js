@@ -1,5 +1,8 @@
 const { loadSongData } = require('../web/maimaiSongData');
 const { directMatch, fallbackMatch, loadAliases } = require('../web/maimaiSongMatch');
+const { buildSongCardHtml, WIDTH } = require('../render/songCard');
+const { buildSongCardModel } = require('../web/maimaiSongCardModel');
+const { drawCard } = require('../render/drawCard');
 
 const MAX_RESULTS = 15;
 
@@ -15,7 +18,10 @@ const declaration = {
         "says which via matched_via — confirm a matched_via result with the user if it isn't obvious. Use this instead of " +
         "search_web/read_webpage for any question about a specific song's difficulty, level, chart details, " +
         "or release version — it's exact structured data pulled directly from the game data, not something " +
-        'read off a wiki page.',
+        'read off a wiki page. For a question about ONE specific song (e.g. "what is X", "tell me about X", ' +
+        '"is X in international"), pass as_image: true to attach a song card — cover, every chart with its ' +
+        "constant and note counts, and which regions have it. You can't see it, so add a short comment and " +
+        "don't re-list the charts.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -73,6 +79,11 @@ const declaration = {
                     'so convert shorthand like "pink+" or "pink plus" to the base name plus "PLUS". Matching is ' +
                     'flexible on case/spacing/"+" vs "plus", so pass your best guess; if it doesn\'t resolve, the ' +
                     'result tells you the full list of valid version names to retry with.',
+            },
+            as_image: {
+                type: 'boolean',
+                description:
+                    'Draw a song card (cover, every chart with its constant and note counts, which regions have it) and attach it to the reply. Only when exactly one song matches — use it when someone asks about one specific song.',
             },
             random: {
                 type: 'boolean',
@@ -134,7 +145,7 @@ function resolveCategory(rawCategory, allCategories) {
     };
 }
 
-async function execute(args) {
+async function execute(args, context) {
     const query = typeof args?.query === 'string' ? args.query.trim() : '';
     const artist = typeof args?.artist === 'string' ? normalize(args.artist.trim()) : '';
     const noteDesigner =
@@ -263,13 +274,42 @@ async function execute(args) {
         };
     }
 
-    return {
+    const result = {
         success: true,
         result_count: Math.min(matches.length, MAX_RESULTS),
         truncated: matches.length > MAX_RESULTS,
         songs: matches.slice(0, MAX_RESULTS),
         data_updated_at: data.updateTime,
     };
+
+    // A card is for ONE song; with several matches, the model should narrow it down first.
+    if (args?.as_image === true) {
+        if (matches.length !== 1) {
+            result.image_error =
+                matches.length === 0
+                    ? 'There is no song to draw.'
+                    : `${matches.length} songs matched, and a card shows one — narrow the search to a single song first.`;
+        } else {
+            const m = matches[0];
+            const song = data.songs.find(
+                (s) => s.title === m.title && s.artist === m.artist && s.category === m.category
+            );
+            const highlight = difficulty && type ? { type, difficulty } : null;
+            const drawn = await drawCard(context, {
+                html: buildSongCardHtml(buildSongCardModel(song, highlight)),
+                width: WIDTH,
+                filename: 'song-card.png',
+            });
+            if (drawn.ok) {
+                result.image_attached = true;
+                result.note =
+                    "The song card is attached to your reply automatically and you can't see it — add a short comment from the data, and don't re-list the charts.";
+            } else {
+                result.image_error = drawn.error;
+            }
+        }
+    }
+    return result;
 }
 
 module.exports = { declaration, execute };

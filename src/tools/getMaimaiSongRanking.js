@@ -6,6 +6,8 @@ const {
     parseRankingEntries,
     parseYourScore,
 } = require('../web/maimaiRankingLookup');
+const { buildSongRankingHtml, WIDTH } = require('../render/songRankingCard');
+const { drawCard } = require('../render/drawCard');
 
 const declaration = {
     name: 'get_maimai_song_ranking',
@@ -20,7 +22,8 @@ const declaration = {
         'that same range. This tool only exposes percentage for other players, never their actual clear-type ' +
         "badges, so don't claim/count AP or AP+ from these entries — say plainly you can only see achievement %%, " +
         'not confirmed AP status. Only works for songs this tracked account has played at least once (same ' +
-        "limitation as get_maimai_song_play_history) — it won't find a song it's never touched.",
+        "limitation as get_maimai_song_play_history) — it won't find a song it's never touched. " +
+        "IMAGE: pass as_image: true when the user wants to SEE it (show / post / a picture or card) — a card is attached to your reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -44,12 +47,17 @@ const declaration = {
                 description:
                     'Optional: only return entries at or above this achievement %% (e.g. 100.5 to only see APs). Global rankings can be long, so filtering is recommended when you only care about high scores.',
             },
+            as_image: {
+                type: 'boolean',
+                description:
+                    'Also draw the ranking as a card and attach it to the reply (see the tool description).',
+            },
         },
         required: ['song_name', 'difficulty'],
     },
 };
 
-async function execute(args) {
+async function execute(args, context) {
     const songName = typeof args?.song_name === 'string' ? args.song_name.trim() : '';
     const difficulty = typeof args?.difficulty === 'string' ? args.difficulty.toLowerCase() : '';
     const scope = args?.scope === 'global' ? 'global' : 'friend';
@@ -102,7 +110,7 @@ async function execute(args) {
         const totalEntries = entries.length;
         if (minAchv !== null) entries = entries.filter((e) => e.achievement >= minAchv);
 
-        return {
+        const result = {
             success: true,
             song_name: song.title,
             difficulty,
@@ -113,6 +121,43 @@ async function execute(args) {
             returned_entries: entries.length,
             url: finalUrl,
         };
+        if (args?.as_image === true) {
+            if (entries.length === 0) {
+                result.image_error = 'There are no entries to draw.';
+            } else {
+                const sheets = (song.sheets || []).filter(
+                    (s) => s.difficulty === difficulty && s.type !== 'utage'
+                );
+                const sheet = sheets.find((s) => s.type === 'dx') || sheets[0];
+                const drawn = await drawCard(context, {
+                    html: buildSongRankingHtml({
+                        title: song.title,
+                        cover: song.imageName,
+                        difficulty,
+                        level: sheet?.level ?? null,
+                        scope,
+                        entries: entries.map((e) => ({
+                            rank: e.rank,
+                            name: e.name,
+                            achievement: e.achievement,
+                            isYou: e.is_you,
+                        })),
+                        yourScore: result.your_score,
+                        totalEntries,
+                    }),
+                    width: WIDTH,
+                    filename: `ranking-${scope}.png`,
+                });
+                if (drawn.ok) {
+                    result.image_attached = true;
+                    result.note =
+                        "The image is attached to your reply automatically and you can't see it — add a short comment from the data, and don't re-list the rows.";
+                } else {
+                    result.image_error = drawn.error;
+                }
+            }
+        }
+        return result;
     } catch (err) {
         return { success: false, error: err.message };
     }

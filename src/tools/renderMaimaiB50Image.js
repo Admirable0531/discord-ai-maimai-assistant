@@ -8,13 +8,16 @@ const { COVER_HOST } = require('../render/theme');
 const { attachFile } = require('../utils/outputs');
 const { isStale, formatSnapshotStamp } = require('../utils/snapshotAge');
 
+// 'new' = the best 15 of the current version, 'old' = the best 35 of the rest.
+const SECTIONS = ['all', 'new', 'old'];
+
 const declaration = {
     name: 'render_maimai_b50_image',
     description:
         "Draw a player's Best 50 (best 15 new-version + best 35 old-version charts) as an IMAGE card — " +
         "covers, difficulty, constant, achievement, rank and rating per chart, with the player's rating and " +
         'how fresh the data is — and attach it to your reply. Use it when someone asks to see / show / send / ' +
-        'post a B50 (or "b50 image/card"). Leave player_name out for the tracked account (the bot owner\'s own ' +
+        'post a B50 (or "b50 image/card"), or just the B15 / B35 (section "new" / "old"). Leave player_name out for the tracked account (the bot owner\'s own ' +
         'maimai account); pass a name for one of its friends. The image is attached automatically and you ' +
         "can't see it: reply with a short comment at most, never re-list the charts (the summary below has " +
         "the totals and each list's lowest chart). If stale is true the snapshot is old — the image says so " +
@@ -24,6 +27,13 @@ const declaration = {
     parametersJsonSchema: {
         type: 'object',
         properties: {
+            section: {
+                type: 'string',
+                enum: ['all', 'new', 'old'],
+                description:
+                    'Which half to draw: "new" for just the best 15 (the B15), "old" for just the best 35, ' +
+                    'default "all". The rating and both totals stay in the header either way.',
+            },
             player_name: {
                 type: 'string',
                 description:
@@ -81,6 +91,7 @@ async function execute(args, context) {
         stale,
         newPlays,
         oldPlays,
+        sections: SECTIONS.includes(args?.section) ? args.section : 'all',
         covers: await loadCoverMap([...newPlays, ...oldPlays].map((p) => p.Song)),
     });
 
@@ -92,7 +103,7 @@ async function execute(args, context) {
         return { success: false, error: err.message };
     }
     const attached = attachFile(context, {
-        name: `b50-${player.isTracked ? 'tracked' : player.id}.png`,
+        name: `b50-${player.isTracked ? 'tracked' : player.id}${SECTIONS.includes(args?.section) && args.section !== 'all' ? `-${args.section}` : ''}.png`,
         data: png,
     });
     if (!attached.ok) return { success: false, error: attached.reason };

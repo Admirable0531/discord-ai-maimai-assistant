@@ -2,6 +2,9 @@ const cheerio = require('cheerio');
 const { fetchAccountPage } = require('../web/maimaiAccountSession');
 const { loadSongData } = require('../web/maimaiSongData');
 const { findSongInLocalData, findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { getRankByAchievement } = require('../web/maimaiRatingMath');
+const { buildPlayHistoryHtml, WIDTH } = require('../render/playHistoryCard');
+const { drawCard } = require('../render/drawCard');
 
 const declaration = {
     name: 'get_maimai_song_play_history',
@@ -14,13 +17,19 @@ const declaration = {
         'truly an AP: a percentage in the AP-range does NOT prove it was one (a non-Perfect regular-note ' +
         'judgment can cost less than the break bonus adds back, landing a non-AP play in that same range), so ' +
         'always check is_ap here rather than inferring AP status from achievement_percent alone, for this ' +
-        'tracked account. It only finds a chart the account has actually played at least once.',
+        'tracked account. It only finds a chart the account has actually played at least once. ' +
+        "IMAGE: pass as_image: true for play-count and history questions ('my playcount for X', 'my history on X') as well as whenever the user wants to SEE it — they cover several difficulties at once, so a card (plays as bars, best score, rank, clear badges, last played) reads far better than a table. It is attached to your reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
             song_name: {
                 type: 'string',
                 description: 'The song title to look up (partial match is fine).',
+            },
+            as_image: {
+                type: 'boolean',
+                description:
+                    'Also draw the play history as a card and attach it to the reply (see the tool description).',
             },
         },
         required: ['song_name'],
@@ -75,16 +84,21 @@ function parseDifficultyBlocks(html) {
             is_ap_plus: has('app'),
             is_fc: has('fc') || has('fcp'),
             is_fc_plus: has('fcp'),
-            is_fs: has('fs') || has('fsp') || has('fsd') || has('fsdp'),
-            is_fs_plus: has('fsp') || has('fsdp'),
-            is_fsd: has('fsd') || has('fsdp'),
+            // The international site names the Full Sync DX icons fdx / fdxp (seen live: an
+            // expert chart with fdx, an advanced one with fdxp); this used to look only for
+            // fsd / fsdp, so is_fsd was always false there.
+            is_fs:
+                has('fs') || has('fsp') || has('fsd') || has('fsdp') || has('fdx') || has('fdxp'),
+            is_fs_plus: has('fsp') || has('fsdp') || has('fdxp'),
+            is_fsd: has('fsd') || has('fsdp') || has('fdx') || has('fdxp'),
+            dx_stars: Number(/dxstar_detail_(\d)/.exec(badges.join(' '))?.[1]) || 0,
             is_sync: has('sync'),
         });
     });
     return blocks;
 }
 
-async function execute(args) {
+async function execute(args, context) {
     const songName = typeof args?.song_name === 'string' ? args.song_name.trim() : '';
     if (!songName) return { success: false, error: 'song_name is required.' };
 
@@ -119,15 +133,62 @@ async function execute(args) {
             };
         }
 
-        return {
+        const result = {
             success: true,
             song_name: song.title,
             difficulties,
             url: finalUrl,
         };
+        if (args?.as_image === true) {
+            const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+            const drawn = await drawCard(context, {
+                html: buildPlayHistoryHtml({
+                    title: song.title,
+                    artist: song.artist,
+                    cover: song.imageName,
+                    rows: [...difficulties]
+                        .sort((a, b) => order.indexOf(a.difficulty) - order.indexOf(b.difficulty))
+                        .map((d) => ({
+                            difficulty: d.difficulty,
+                            level: d.level,
+                            plays: d.play_count,
+                            best: d.achievement_percent,
+                            rank:
+                                d.achievement_percent == null
+                                    ? null
+                                    : getRankByAchievement(d.achievement_percent)?.title,
+                            clear: d.is_ap_plus
+                                ? 'AP+'
+                                : d.is_ap
+                                  ? 'AP'
+                                  : d.is_fc_plus
+                                    ? 'FC+'
+                                    : d.is_fc
+                                      ? 'FC'
+                                      : null,
+                            sync:
+                                ['fdxp', 'fdx', 'fsp', 'fs', 'sync'].find((b) =>
+                                    d.badges.includes(b)
+                                ) ?? null,
+                            stars: d.dx_stars,
+                            lastPlayed: (d.last_played_date || '').replace(/\//g, '-'),
+                        })),
+                }),
+                width: WIDTH,
+                filename: 'play-history.png',
+            });
+            if (drawn.ok) {
+                result.image_attached = true;
+                result.note =
+                    "The image is attached to your reply automatically and you can't see it — add a short comment from the data, and don't re-list the rows.";
+            } else {
+                result.image_error = drawn.error;
+            }
+        }
+        return result;
     } catch (err) {
         return { success: false, error: err.message };
     }
 }
 
-module.exports = { declaration, execute };
+module.exports = { declaration, execute, parseDifficultyBlocks };

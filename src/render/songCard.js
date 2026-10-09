@@ -19,6 +19,8 @@ ${BASE_CSS}
 .facts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 18px; }
 .fact .k { color: ${TOKENS.inkMuted}; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 .fact .v { font-size: 16px; margin-top: 2px; }
+.regions { margin-top: 14px; font-size: 14px; color: ${TOKENS.inkSecondary}; }
+.regions .k { color: ${TOKENS.inkMuted}; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-right: 8px; }
 .charts { margin-top: 28px; display: flex; flex-direction: column; gap: 8px; }
 .chart { display: flex; align-items: center; gap: 16px; min-height: 58px; padding: 8px 16px; background: ${TOKENS.raised}; border-radius: 8px; }
 .chart.on { outline: 2px solid ${TOKENS.series1}; outline-offset: -2px; }
@@ -37,6 +39,13 @@ function fact(label, value) {
     return value
         ? `<div class="fact"><div class="k">${escapeHtml(label)}</div><div class="v">${escapeHtml(value)}</div></div>`
         : '';
+}
+
+/** Which regions have the song, as text with a tick or a cross — never colour alone. */
+function regionsLine(availability) {
+    if (!availability) return '';
+    const text = availability.map((r) => `${escapeHtml(r.label)} ${r.on ? '✓' : '✗'}`).join(' · ');
+    return `<div class="regions"><span class="k">Available</span> ${text}</div>`;
 }
 
 function chartRow(chart, highlight) {
@@ -80,6 +89,7 @@ function chartRow(chart, highlight) {
  * @param {{type,difficulty}|null} model.highlight  the chart the user asked about
  */
 function buildSongCardHtml({
+    availability,
     title,
     artist,
     category,
@@ -105,6 +115,7 @@ function buildSongCardHtml({
       <div class="title">${escapeHtml(title)}</div>
       <div class="artist">${escapeHtml(artist)}</div>
       <div class="facts">${fact('BPM', bpm != null ? String(bpm) : '')}${fact('Version', versionText)}${fact('Released', releaseDate)}</div>
+      ${regionsLine(availability)}
     </div>
   </div>
   <div class="charts">${charts.map((c) => chartRow(c, highlight)).join('')}</div>

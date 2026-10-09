@@ -21,6 +21,16 @@ module.exports = {
                 .setName('player')
                 .setDescription("A friend's name — leave empty for the tracked account")
                 .setAutocomplete(true)
+        )
+        .addStringOption((opt) =>
+            opt
+                .setName('section')
+                .setDescription('Which half to draw (default: both)')
+                .addChoices(
+                    { name: 'Both (B50)', value: 'all' },
+                    { name: 'New version only (B15)', value: 'new' },
+                    { name: 'Old versions only (B35)', value: 'old' }
+                )
         ),
 
     autocomplete: suggestPlayers,
@@ -33,7 +43,10 @@ module.exports = {
 
         const outputs = createOutputs();
         const player = interaction.options.getString('player') || undefined;
-        const result = await renderB50.execute({ player_name: player }, { outputs });
+        const result = await renderB50.execute(
+            { player_name: player, section: interaction.options.getString('section') || 'all' },
+            { outputs }
+        );
         if (!result.success) {
             await interaction.editReply(describeFailure(result));
             return;

@@ -22,6 +22,7 @@ const getMaimaiScoresByLevelTool = require('../tools/getMaimaiScoresByLevel');
 const renderMaimaiB50ImageTool = require('../tools/renderMaimaiB50Image');
 const renderMaimaiRatingHistoryTool = require('../tools/renderMaimaiRatingHistory');
 const getMaimaiChartPreviewTool = require('../tools/getMaimaiChartPreview');
+const getMaimaiRecentPlaysTool = require('../tools/getMaimaiRecentPlays');
 const { getAllowedScopes } = require('../permissions/permissionStore');
 
 const TOOLS = [
@@ -49,6 +50,7 @@ const TOOLS = [
     renderMaimaiB50ImageTool,
     renderMaimaiRatingHistoryTool,
     getMaimaiChartPreviewTool,
+    getMaimaiRecentPlaysTool,
 ];
 
 /**
@@ -67,6 +69,7 @@ const TOOL_SCOPES = {
     list_maimai_remywiki_pages: 'web',
     list_maimai_account_pages: 'account',
     get_maimai_song_play_history: 'account',
+    get_maimai_recent_plays: 'account',
     get_maimai_song_ranking: 'account',
     get_maimai_friend_scores: 'account',
     get_maimai_scores_by_level: 'account',
