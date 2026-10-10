@@ -87,7 +87,7 @@ async function runAgent(adapter, history, userMessage, context) {
     });
     const { base, hard, step } = adapter.toolBudget;
     let maxIterations = base;
-    let opts = adapter.initialOptions({ userId, userMessage, continuation });
+    let opts = adapter.initialOptions({ userId, userMessage, continuation, hasImages: canSee });
     // One retry at most, so a long reply can't ping-pong between retries.
     let retriedAfterTruncation = false;
     // Set once any tool has returned text from the open web; from then on this

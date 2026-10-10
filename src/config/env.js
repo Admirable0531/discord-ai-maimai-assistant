@@ -67,6 +67,12 @@ const config = {
             maxOutputTokens: num('GEMINI_MAX_OUTPUT_TOKENS', 2048),
             boostedMaxOutputTokens: num('GEMINI_MAX_OUTPUT_TOKENS_BOOSTED', 4096),
             thinkingBudget: numAllowZero('GEMINI_THINKING_BUDGET', 1024),
+            // Turns that include an image. Reading small stylised text off a photo of an arcade
+            // screen is where the lite model slips (one plate read as two different versions on
+            // two runs of the same picture), so these get more thinking, and optionally a
+            // larger model (unset = the same model as everything else).
+            visionModel: env.GEMINI_VISION_MODEL || null,
+            visionThinkingBudget: numAllowZero('GEMINI_VISION_THINKING_BUDGET', 2048),
             continuationThinkingBudget: numAllowZero('GEMINI_CONTINUATION_THINKING_BUDGET', 128),
             toolBudget: {
                 base: num('GEMINI_MAX_TOOL_ITERATIONS', 6),

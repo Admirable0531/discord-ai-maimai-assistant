@@ -29,7 +29,7 @@ function extractText(response) {
         .trim();
 }
 
-function recordUsage(response) {
+function recordUsage(response, model) {
     const usage = response.usageMetadata;
     if (!usage) return;
     const promptTokens = usage.promptTokenCount || 0;
@@ -37,7 +37,7 @@ function recordUsage(response) {
     try {
         logUsage({
             provider: 'gemini',
-            model: settings.model,
+            model,
             promptTokens,
             completionTokens,
             costUsd: estimateCostUsd('gemini', promptTokens, completionTokens),
@@ -52,7 +52,18 @@ const adapter = {
     toolBudget: settings.toolBudget,
     supportsImages: true,
 
-    initialOptions({ continuation }) {
+    initialOptions({ continuation, hasImages }) {
+        // Same picture, same answer: a low temperature, more thinking, and the
+        // vision model when one is configured (see config/env.js).
+        if (hasImages && !continuation) {
+            return {
+                // Thinking counts against the output cap, so the larger budget needs the larger cap.
+                maxOutputTokens: settings.boostedMaxOutputTokens,
+                thinkingBudget: settings.visionThinkingBudget,
+                temperature: 0.2,
+                ...(settings.visionModel ? { model: settings.visionModel } : {}),
+            };
+        }
         return continuation
             ? {
                   maxOutputTokens: settings.boostedMaxOutputTokens,
@@ -99,7 +110,7 @@ const adapter = {
 
     async send(conversation, opts, { forceText }) {
         const response = await getGeminiClient().models.generateContent({
-            model: settings.model,
+            model: opts.model || settings.model,
             contents: conversation.contents,
             config: {
                 systemInstruction: conversation.systemInstruction,
@@ -115,10 +126,11 @@ const adapter = {
                       }
                     : {}),
                 maxOutputTokens: opts.maxOutputTokens,
+                ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
                 thinkingConfig: { thinkingBudget: opts.thinkingBudget },
             },
         });
-        recordUsage(response);
+        recordUsage(response, opts.model || settings.model);
         const finishReason = response.candidates?.[0]?.finishReason;
         return {
             raw: response,
