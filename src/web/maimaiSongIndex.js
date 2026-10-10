@@ -20,21 +20,30 @@ function levelToBucketLabel(levelValue) {
 }
 
 /**
- * Finds this tracked account's musicDetail idx for a song already resolved
- * against loadSongData (so its real chart levels are known) — tries each of
- * the song's distinct level buckets (Master/Re:Master first, since that's
- * what's asked about most), stopping at the first bucket where the account
- * has actually played it. Usually 1-2 requests, never more than the song's
- * own distinct chart levels (at most 5, one per difficulty).
+ * This tracked account's musicDetail idx for each chart TYPE of a song it has
+ * played: [{idx, chartType: 'dx' | 'std'}]. A song charted as both DX and
+ * standard is two entries on the site, each with its own idx and its own
+ * detail page (confirmed live: "Endless, Sleepless Night" and ジングルベル
+ * appear twice on one level page with different idx values, and a detail page
+ * shows only its own type). Taking the first entry with a matching title, as
+ * this used to, silently dropped the other type's plays.
+ *
+ * Tries the song's level buckets (Master/Re:Master first, since that's what's
+ * asked about most) until every chart type the song has is found or the
+ * buckets run out — usually 1-2 requests, at most one per distinct level.
  */
-async function findPlayedSongIdx(song) {
-    const orderedSheets = [...song.sheets].sort(
+async function findPlayedCharts(song) {
+    const sheets = song.sheets.filter((sh) => sh.type === 'dx' || sh.type === 'std');
+    const wantedTypes = new Set(sheets.map((sh) => sh.type));
+    const orderedSheets = [...sheets].sort(
         (a, b) =>
             DIFFICULTY_PRIORITY.indexOf(a.difficulty) - DIFFICULTY_PRIORITY.indexOf(b.difficulty)
     );
+    const found = new Map(); // chartType -> idx
     const checkedBuckets = new Set();
 
     for (const sheet of orderedSheets) {
+        if (found.size >= wantedTypes.size) break;
         const level = sheet.internalLevelValue ?? sheet.levelValue;
         if (level == null) continue;
         const bucket = levelToBucketLabel(level);
@@ -45,19 +54,21 @@ async function findPlayedSongIdx(song) {
             `/maimai-mobile/record/musicLevel/search/?level=${encodeURIComponent(bucket)}`
         );
         const $ = cheerio.load(html);
-        let foundIdx = null;
         $('[class*="_score_back"]').each((_, block) => {
-            if (foundIdx) return;
             const $block = $(block);
-            const name = $block.find('.music_name_block').first().text().trim();
-            if (name === song.title) {
-                foundIdx = $block.find('input[name="idx"]').attr('value') || null;
-            }
+            if ($block.find('.music_name_block').first().text().trim() !== song.title) return;
+            const kind = $block
+                .find('img')
+                .toArray()
+                .map((img) => $(img).attr('src') || '')
+                .find((src) => /music_(dx|standard)\./.test(src));
+            const chartType = kind?.includes('music_standard') ? 'std' : 'dx';
+            const idx = $block.find('input[name="idx"]').attr('value');
+            if (idx && !found.has(chartType)) found.set(chartType, idx);
         });
-        if (foundIdx) return foundIdx;
     }
-    return null;
+    return [...found].map(([chartType, idx]) => ({ chartType, idx }));
 }
 
 // Turning a typed name into a song is songResolver.js's job.
-module.exports = { findPlayedSongIdx, levelToBucketLabel };
+module.exports = { findPlayedCharts, levelToBucketLabel };

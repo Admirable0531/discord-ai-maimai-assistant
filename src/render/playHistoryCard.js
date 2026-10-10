@@ -32,6 +32,7 @@ ${PARTS_CSS}
 .block { padding: 14px 16px; background: ${TOKENS.raised}; border-radius: 10px; }
 .line1 { display: flex; align-items: center; gap: 10px; }
 .line1 .pill { font-size: 14px; padding: 2px 9px; }
+.ctype { color: ${TOKENS.inkSecondary}; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
 .achv { font-size: 26px; font-weight: 700; margin-left: auto; }
 .rank { color: ${TOKENS.inkSecondary}; font-size: 17px; font-weight: 600; min-width: 36px; }
 .line2 { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; font-size: 15px; color: ${TOKENS.inkSecondary}; }
@@ -73,7 +74,7 @@ function recentBlock(recent, plays) {
  * @param {string} model.title
  * @param {string|null} model.artist
  * @param {string|null} model.cover
- * @param {Array<{difficulty, level, plays, best, rank, clear, sync, stars, lastPlayed, recent?}>} model.rows
+ * @param {Array<{chartType?, difficulty, level, plays, best, rank, clear, sync, stars, lastPlayed, recent?}>} model.rows
  *        easiest first; `recent` is [{achievement, playedAt, newRecord}] newest first, when known
  */
 function buildPlayHistoryHtml({ title, artist, cover, rows }) {
@@ -85,7 +86,7 @@ function buildPlayHistoryHtml({ title, artist, cover, rows }) {
     const body = played
         .map(
             (r) => `<div class="block">
-  <div class="line1">${difficultyPill(r.difficulty, r.level)}<span class="rank">${escapeHtml(r.rank || '')}</span><span class="achv tabular">${r.best == null ? '–' : `${r.best.toFixed(4)}%`}</span></div>
+  <div class="line1">${difficultyPill(r.difficulty, r.level)}${r.chartType ? `<span class="ctype">${r.chartType === 'std' ? 'STD' : 'DX'}</span>` : ''}<span class="rank">${escapeHtml(r.rank || '')}</span><span class="achv tabular">${r.best == null ? '–' : `${r.best.toFixed(4)}%`}</span></div>
   <div class="line2"><span class="count tabular">${formatInt(r.plays || 0)} play${r.plays === 1 ? '' : 's'}</span>${badgePills(r.clear, r.sync)}${r.stars ? `<span class="stars tabular">★${r.stars}</span>` : ''}<span class="when tabular">${escapeHtml(r.lastPlayed ? `last ${r.lastPlayed}` : '')}</span></div>
   ${recentBlock(r.recent, r.plays || 0)}
 </div>`
@@ -93,7 +94,7 @@ function buildPlayHistoryHtml({ title, artist, cover, rows }) {
         .join('');
     const unplayedLine =
         unplayed.length > 0
-            ? `<div class="unplayed">Not played: ${unplayed.map((r) => `${escapeHtml(String(r.difficulty).slice(0, 3).toUpperCase())}${r.level ? ` ${escapeHtml(r.level)}` : ''}`).join(' · ')}</div>`
+            ? `<div class="unplayed">Not played: ${unplayed.map((r) => `${r.chartType ? `${r.chartType === 'std' ? 'STD' : 'DX'} ` : ''}${escapeHtml(String(r.difficulty).slice(0, 3).toUpperCase())}${r.level ? ` ${escapeHtml(r.level)}` : ''}`).join(' · ')}</div>`
             : '';
     const anyScoreMissing = played.some((r) => (r.plays || 0) > (r.recent?.length || 0));
 

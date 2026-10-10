@@ -26,6 +26,7 @@ const getMaimaiRecentPlaysTool = require('../tools/getMaimaiRecentPlays');
 const getMaimaiRatingTargetsTool = require('../tools/getMaimaiRatingTargets');
 const getMaimaiB50ChangesTool = require('../tools/getMaimaiB50Changes');
 const getMaimaiScoreImpactTool = require('../tools/getMaimaiScoreImpact');
+const getMaimaiPlateProgressTool = require('../tools/getMaimaiPlateProgress');
 const { getAllowedScopes } = require('../permissions/permissionStore');
 
 const TOOLS = [
@@ -57,6 +58,7 @@ const TOOLS = [
     getMaimaiRatingTargetsTool,
     getMaimaiB50ChangesTool,
     getMaimaiScoreImpactTool,
+    getMaimaiPlateProgressTool,
 ];
 
 /**
@@ -79,6 +81,7 @@ const TOOL_SCOPES = {
     get_maimai_song_ranking: 'account',
     get_maimai_friend_scores: 'account',
     get_maimai_scores_by_level: 'account',
+    get_maimai_plate_progress: 'account',
     get_friend_leaderboard: 'leaderboard',
     get_circle_rankings: 'leaderboard',
     get_maimai_friend_top_scores: 'leaderboard',

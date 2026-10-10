@@ -36,6 +36,7 @@ const LABELS = {
     get_maimai_rating_targets: '🧮 Working out rating targets',
     get_maimai_b50_changes: '📊 Comparing B50 snapshots',
     get_maimai_score_impact: '🧮 Working out what the score is worth',
+    get_maimai_plate_progress: '🏅 Checking plate progress',
 };
 const FALLBACK_LABEL = '⚙️ Working on it';
 

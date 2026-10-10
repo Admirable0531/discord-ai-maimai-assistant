@@ -1,7 +1,7 @@
 const cheerio = require('cheerio');
 const { fetchAccountPage } = require('../web/maimaiAccountSession');
 const { loadSongData } = require('../web/maimaiSongData');
-const { findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { findPlayedCharts } = require('../web/maimaiSongIndex');
 const { lookupSong } = require('../web/songResolver');
 const { getRankByAchievement } = require('../web/maimaiRatingMath');
 const { buildPlayHistoryHtml, WIDTH } = require('../render/playHistoryCard');
@@ -93,7 +93,7 @@ function parseDifficultyBlocks(html) {
 }
 
 /**
- * Scores of single plays of `song`, per difficulty, newest first, from the
+ * Scores of single plays of `song`, per "type:difficulty" (dx:master), newest first, from the
  * game's log of its last 50 plays. The song page itself only has a play count
  * and the best score, so this is the only place a per-play score exists — and
  * only for plays recent enough to still be in the log. Returns {} (never
@@ -106,7 +106,7 @@ async function recentScoresByDifficulty(song) {
         const byDifficulty = {};
         for (const play of parseRecentPlays(html)) {
             if (fold(play.title) !== wanted || !play.difficulty) continue;
-            (byDifficulty[play.difficulty] ||= []).push({
+            (byDifficulty[`${play.chart_type || 'dx'}:${play.difficulty}`] ||= []).push({
                 achievement: play.achievement,
                 playedAt: play.played_at.replace(/\//g, '-'),
                 newRecord: play.new_record.achievement,
@@ -128,18 +128,26 @@ async function execute(args, context) {
         if (found.failure) return found.failure;
         const { song, matchedVia } = found;
 
-        const idx = await findPlayedSongIdx(song);
-        if (!idx) {
+        const charts = await findPlayedCharts(song);
+        if (charts.length === 0) {
             return {
                 success: false,
                 error: `"${song.title}" doesn't appear in this account's play history — it hasn't been played (on any difficulty).`,
             };
         }
 
-        const { html: detailHtml, finalUrl } = await fetchAccountPage(
-            `/maimai-mobile/record/musicDetail/?idx=${encodeURIComponent(idx)}`
-        );
-        const difficulties = parseDifficultyBlocks(detailHtml);
+        // One detail page per chart type; each difficulty is tagged with its type.
+        const difficulties = [];
+        let finalUrl = null;
+        for (const { idx, chartType } of charts) {
+            const page = await fetchAccountPage(
+                `/maimai-mobile/record/musicDetail/?idx=${encodeURIComponent(idx)}`
+            );
+            finalUrl = finalUrl || page.finalUrl;
+            for (const d of parseDifficultyBlocks(page.html)) {
+                difficulties.push({ chart_type: chartType, ...d });
+            }
+        }
         if (difficulties.length === 0) {
             return {
                 success: false,
@@ -157,14 +165,20 @@ async function execute(args, context) {
         if (args?.as_image === true) {
             const recent = await recentScoresByDifficulty(song);
             const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+            const typeOrder = ['dx', 'std'];
             const drawn = await drawCard(context, {
                 html: buildPlayHistoryHtml({
                     title: song.title,
                     artist: song.artist,
                     cover: song.imageName,
                     rows: [...difficulties]
-                        .sort((a, b) => order.indexOf(a.difficulty) - order.indexOf(b.difficulty))
+                        .sort(
+                            (a, b) =>
+                                typeOrder.indexOf(a.chart_type) - typeOrder.indexOf(b.chart_type) ||
+                                order.indexOf(a.difficulty) - order.indexOf(b.difficulty)
+                        )
                         .map((d) => ({
+                            chartType: charts.length > 1 ? d.chart_type : null,
                             difficulty: d.difficulty,
                             level: d.level,
                             plays: d.play_count,
@@ -188,7 +202,7 @@ async function execute(args, context) {
                                 ) ?? null,
                             stars: d.dx_stars,
                             lastPlayed: (d.last_played_date || '').replace(/\//g, '-'),
-                            recent: recent[d.difficulty] || [],
+                            recent: recent[`${d.chart_type}:${d.difficulty}`] || [],
                         })),
                 }),
                 width: WIDTH,

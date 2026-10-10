@@ -6,7 +6,7 @@ const { drawCard } = require('../render/drawCard');
 const declaration = {
     name: 'get_maimai_scores_by_level',
     description:
-        'ALL of the tracked account\'s scores at one DISPLAYED level ("14", "14+", "13"…), each with its constant, AP/FC badge and rank, live from the Song Scores by Level page — the complete list, unlike the best 50. For "my best at 14+ / each constant", "how many SSS at 14", plate progress, or anything the best 50 would leave out. Ask for the displayed level: constants 14.0–14.5 are "14" and 14.6–14.9 "14+", so a question about 14.3 means level "14"; best_per_constant gives the best at each constant. If constants_available is false the constant source failed — say so rather than guessing. as_image: true draws the per-constant table.',
+        'ALL of the tracked account\'s scores at one DISPLAYED level ("14", "14+", "13"…), each with its constant, AP/FC badge and rank, live from the Song Scores by Level page — the complete list, unlike the best 50. For "my best at 14+ / each constant", "how many SSS at 14", or anything the best 50 would leave out. Ask for the displayed level: constants 14.0–14.5 are "14" and 14.6–14.9 "14+", so a question about 14.3 means level "14"; best_per_constant gives the best at each constant. If constants_available is false the constant source failed — say so rather than guessing. as_image: true draws the per-constant table.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

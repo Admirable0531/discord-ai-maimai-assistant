@@ -1,6 +1,6 @@
 const { fetchAccountPage } = require('../web/maimaiAccountSession');
 const { loadSongData } = require('../web/maimaiSongData');
-const { findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { findPlayedCharts } = require('../web/maimaiSongIndex');
 const { lookupSong } = require('../web/songResolver');
 const {
     parseRankingFormTokens,
@@ -31,6 +31,11 @@ const declaration = {
                 enum: ['friend', 'global'],
                 description:
                     'Whose ranking to fetch — this account\'s friends, or the global top scores. Defaults to "friend".',
+            },
+            chart_type: {
+                type: 'string',
+                enum: ['dx', 'std'],
+                description: 'For a song charted as both: which one (default dx).',
             },
             min_achievement_percent: {
                 type: 'number',
@@ -63,7 +68,20 @@ async function execute(args, context) {
         if (found.failure) return found.failure;
         const { song, matchedVia } = found;
 
-        const idx = await findPlayedSongIdx(song);
+        const charts = await findPlayedCharts(song);
+        const wantedType =
+            args?.chart_type === 'std' || args?.chart_type === 'dx' ? args.chart_type : null;
+        const chart =
+            charts.find((c) => c.chartType === wantedType) ||
+            (wantedType ? null : charts.find((c) => c.chartType === 'dx') || charts[0]);
+        if (wantedType && !chart && charts.length > 0) {
+            return {
+                success: false,
+                error: `This account hasn't played the ${wantedType.toUpperCase()} chart of "${song.title}".`,
+                played_chart_types: charts.map((c) => c.chartType),
+            };
+        }
+        const idx = chart?.idx;
         if (!idx) {
             return {
                 success: false,
@@ -98,6 +116,12 @@ async function execute(args, context) {
             success: true,
             song_name: song.title,
             ...(matchedVia ? { matched_via: matchedVia } : {}),
+            chart_type: chart.chartType,
+            ...(charts.length > 1 && !wantedType
+                ? {
+                      note: 'This song has DX and STD charts; this is the DX ranking — pass chart_type "std" for the other.',
+                  }
+                : {}),
             difficulty,
             scope,
             your_score: parseYourScore(rankingHtml),

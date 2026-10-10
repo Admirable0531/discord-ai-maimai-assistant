@@ -8,11 +8,11 @@ const TIMEOUT_MS = 10000;
 const declaration = {
     name: 'get_circle_rankings',
     description:
-        'Get the latest circle (team) points leaderboard from maimai DX CiRCLE mode — circle name, points, ' +
-        'and rank. Use this for questions like "who is #1 circle" or "what rank is [circle name]". This is ' +
-        'live tracked data, not something to guess or look up on the web. IMAGE: pass as_image: true when the ' +
-        'user wants to SEE the ranking (show / post / a picture or chart) — a bar chart is attached to your ' +
-        "reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
+        'The circle (team) points leaderboard from maimai DX CiRCLE mode — circle name, points and rank, from ' +
+        'the nightly snapshot. For "who is #1 circle", "what rank is <circle>". With `circle`, instead that ' +
+        "circle's points day by day: rank, cumulative points and each day's gain (points earned that day) — for " +
+        '"how much did <circle> earn each day / this week". Only the top 100 are stored, so a day outside it has ' +
+        'no entry. as_image: true draws the leaderboard when they want to SEE it.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -22,8 +22,16 @@ const declaration = {
             },
             as_image: {
                 type: 'boolean',
+                description: 'Draw the leaderboard as a bar chart.',
+            },
+            circle: {
+                type: 'string',
                 description:
-                    'Also draw the ranking as a bar chart and attach it to the reply (see the tool description).',
+                    "One circle's name (partial match; full-width or plain) for its daily history.",
+            },
+            days: {
+                type: 'integer',
+                description: 'With circle: how many days back (default 30).',
             },
         },
     },
@@ -37,7 +45,50 @@ function localStamp(iso) {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** One circle's daily rank, points and gain (see maimaiscrape's /api/circle-rankings/history). */
+async function circleHistory(circle, days) {
+    const query = new URLSearchParams({ circle, days: String(days) });
+    const response = await fetch(`${API_URL}/api/circle-rankings/history?${query}`, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!body.success) {
+        return {
+            success: false,
+            error: body.error || `HTTP ${response.status}`,
+            ...(body.matches ? { matches: body.matches } : {}),
+        };
+    }
+    const gains = body.days.map((d) => d.gain).filter((g) => g != null);
+    return {
+        success: true,
+        circle: body.circle,
+        days: body.days.map((d) => ({
+            date: d.date,
+            rank: d.rank,
+            points: d.points,
+            gain: d.gain,
+        })),
+        total_gained: gains.reduce((a, b) => a + b, 0),
+        average_per_day: gains.length
+            ? Math.round(gains.reduce((a, b) => a + b, 0) / gains.length)
+            : null,
+        note: "gain is the points earned since the previous day's snapshot; the first day has none.",
+    };
+}
+
 async function execute(args, context) {
+    if (typeof args?.circle === 'string' && args.circle.trim()) {
+        const days = Math.min(Math.max(Number(args?.days) || 30, 1), 365);
+        try {
+            return await circleHistory(args.circle.trim(), days);
+        } catch (err) {
+            return {
+                success: false,
+                error: `Could not reach the maimai stats API: ${err.message}`,
+            };
+        }
+    }
     const limit = Math.min(Math.max(Number(args?.limit) || 20, 1), 100);
     try {
         const response = await fetch(`${API_URL}/api/circle-rankings?limit=${limit}`, {

@@ -95,6 +95,22 @@ async function isErrorPage(page) {
     }
 }
 
+// maimai DX NET goes down for maintenance every day (confirmed live: "Sorry,
+// servers are under maintenance", 00:00-01:00 Hong Kong time, 00:00-03:00 on
+// Wednesdays). Every page is that notice meanwhile, which the score parsers
+// used to read as "no data" or a broken session.
+const MAINTENANCE_ERROR =
+    'maimai DX NET is down for its daily maintenance (00:00–01:00 Hong Kong time, 00:00–03:00 on ' +
+    'Wednesdays). Tell the user to try again after it ends.';
+
+async function isMaintenancePage(page) {
+    try {
+        return (await page.content()).includes('servers are under maintenance');
+    } catch {
+        return false;
+    }
+}
+
 // Confirmed live: a direct GET to either of these kills the ENTIRE session
 // (every page load after it fails identically until a fresh login), not
 // just the request itself — block them outright rather than relying on
@@ -274,6 +290,9 @@ async function withAccountPage(path, visit) {
                 timeout: NAV_TIMEOUT_MS,
             });
             if (!response) throw new Error('Navigation failed (no response).');
+            // Checked before the logged-out test: during maintenance every page is
+            // this notice, and relogging in would only hit it again.
+            if (await isMaintenancePage(page)) throw new Error(MAINTENANCE_ERROR);
             if (await isErrorPage(page)) return { loggedOut: true };
             const value = await visit(page);
             return { loggedOut: false, value, finalUrl: page.url() };
