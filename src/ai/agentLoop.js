@@ -10,6 +10,12 @@ const { buildSystemPrompt } = require('./systemPrompt');
 const { toolDeclarationsFor, createToolExecutors } = require('./toolDefinitions');
 const { capToolResult } = require('./toolResultCap');
 const { markTruncated } = require('./truncation');
+const {
+    isUntrustedSource,
+    isWriteTool,
+    markUntrusted,
+    BLOCKED_ERROR,
+} = require('./untrustedContent');
 const { config } = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -25,6 +31,15 @@ const requestMoreToolCallsDeclaration = {
         'through reading several pages or synthesizing a large table) — not speculatively, and not on turn one.',
     parametersJsonSchema: { type: 'object', properties: {} },
 };
+
+/** Tells the Discord layer which tools are about to run, for its "working on it" message. Never throws. */
+function notifyProgress(context, toolNames) {
+    try {
+        context.onProgress?.(toolNames);
+    } catch (err) {
+        logger.warn('agent', 'Progress callback failed', err);
+    }
+}
 
 const GAVE_UP_REPLY =
     "I looked into this but couldn't put together a complete answer — try rephrasing, or ask about something more specific.";
@@ -75,6 +90,9 @@ async function runAgent(adapter, history, userMessage, context) {
     let opts = adapter.initialOptions({ userId, userMessage, continuation });
     // One retry at most, so a long reply can't ping-pong between retries.
     let retriedAfterTruncation = false;
+    // Set once any tool has returned text from the open web; from then on this
+    // message may not write memory or knowledge (see untrustedContent.js).
+    let readUntrusted = false;
 
     async function runTool(call) {
         if (call.name === REQUEST_MORE_TOOL_CALLS) {
@@ -93,6 +111,13 @@ async function runAgent(adapter, history, userMessage, context) {
             );
             return { success: true, granted: true, new_budget: maxIterations };
         }
+        if (readUntrusted && isWriteTool(call.name)) {
+            logger.warn(
+                'agent',
+                `Refused ${call.name} for ${userId}: this message already read web content`
+            );
+            return { success: false, error: BLOCKED_ERROR };
+        }
         const executor = executors[call.name];
         if (!executor) {
             // Includes tools this user isn't offered, if the model guesses one anyway.
@@ -100,7 +125,11 @@ async function runAgent(adapter, history, userMessage, context) {
             return { success: false, error: `Unknown tool: ${call.name}` };
         }
         try {
-            return capToolResult(await executor(call.args || {}), config.ai.toolResultMaxChars);
+            const result = capToolResult(
+                await executor(call.args || {}),
+                config.ai.toolResultMaxChars
+            );
+            return isUntrustedSource(call.name) ? markUntrusted(result) : result;
         } catch (err) {
             logger.error('agent', `Tool ${call.name} threw`, err);
             return { success: false, error: 'Tool execution failed.' };
@@ -149,6 +178,11 @@ async function runAgent(adapter, history, userMessage, context) {
             'agent',
             `${adapter.name} requested ${names.length} tool call(s): ${names.join(', ')}`
         );
+
+        // Decided before any of the batch runs: a save that sits in the same turn as a
+        // page read is no safer than one after it.
+        if (names.some(isUntrustedSource)) readUntrusted = true;
+        notifyProgress(context, names);
 
         // Parallel: several calls in one turn are usually independent network lookups.
         const results = await Promise.all(

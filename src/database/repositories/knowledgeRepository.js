@@ -1,7 +1,8 @@
-const { eq, like, or } = require('drizzle-orm');
+const { eq, like, desc, inArray } = require('drizzle-orm');
 const { getDb } = require('../client');
 const { knowledgeBase } = require('../schema');
 const { sqliteTimestamp } = require('../timestamp');
+const { searchIds } = require('../textSearch');
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_LENGTH = 4000;
@@ -67,31 +68,49 @@ function addEntry({ guildId, title, content, category, createdBy }) {
     return { success: true, updated: false, title: title.trim() };
 }
 
-/** Free-text search over title + content, across every entry regardless of where it was taught. */
+function toResult(row) {
+    return { id: row.id, title: row.title, content: row.content, category: row.category };
+}
+
+/**
+ * Free-text search over title, content and category, across every entry
+ * regardless of where it was taught. Matched word by word, best first (see
+ * textSearch.js); no query lists the most recently updated.
+ */
 function searchEntries(query, limit = 5) {
     const db = getDb();
     const trimmedQuery = (query || '').trim();
 
-    const rows = trimmedQuery
-        ? db
-              .select()
-              .from(knowledgeBase)
-              .where(
-                  or(
-                      like(knowledgeBase.title, `%${trimmedQuery}%`),
-                      like(knowledgeBase.content, `%${trimmedQuery}%`)
-                  )
-              )
-              .limit(limit)
-              .all()
-        : db.select().from(knowledgeBase).limit(limit).all();
+    if (!trimmedQuery) {
+        return db
+            .select()
+            .from(knowledgeBase)
+            .orderBy(desc(knowledgeBase.updatedAt), desc(knowledgeBase.id))
+            .limit(limit)
+            .all()
+            .map(toResult);
+    }
 
-    return rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        content: row.content,
-        category: row.category,
-    }));
+    const ids = searchIds(db.$client, {
+        table: 'knowledge_base',
+        fts: 'knowledge_base_fts',
+        columns: ['title', 'content', 'category'],
+        query: trimmedQuery,
+        limit,
+    });
+    if (ids.length === 0) return [];
+    const byId = new Map(
+        db
+            .select()
+            .from(knowledgeBase)
+            .where(inArray(knowledgeBase.id, ids))
+            .all()
+            .map((row) => [row.id, row])
+    );
+    return ids
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map(toResult);
 }
 
 function listEntries(limit = 50) {
@@ -100,7 +119,8 @@ function listEntries(limit = 50) {
 
 function removeEntry(title) {
     const existing = findByTitle(title);
-    if (!existing) return { success: false, error: `No knowledge base entry found for "${title}".` };
+    if (!existing)
+        return { success: false, error: `No knowledge base entry found for "${title}".` };
 
     const db = getDb();
     db.delete(knowledgeBase).where(eq(knowledgeBase.id, existing.id)).run();

@@ -8,6 +8,7 @@ const {
     getOwnerId,
     VALID_SCOPES,
 } = require('../permissions/permissionStore');
+const { feedbackSummary } = require('../database/repositories/feedbackRepository');
 
 /** Matches either a Discord mention (`<@id>` / `<@!id>`) or a bare 15-20 digit snowflake. */
 const MENTION_OR_ID = /^(?:<@!?(\d+)>|(\d{15,20}))$/;
@@ -42,6 +43,7 @@ const SCOPE_DESCRIPTIONS = {
  *   revoke server                          -> removes the current server's grant (members' own personal grants are untouched)
  *   allowed
  *   scopes
+ *   feedback                               -> 👍/👎 totals and the newest 👎 replies
  *
  * `guildId` is the id of the server the command was typed in (null in DMs)
  * — "allow server"/"revoke server" apply to that server specifically, since
@@ -143,6 +145,21 @@ function tryHandleAdminCommand(text, guildId) {
         }
         for (const s of scopedGuilds) {
             lines.push(`Server ${s.id}: ${s.scopes.join(', ')} (everyone)`);
+        }
+        return lines.join('\n');
+    }
+
+    // 👍/👎 pressed under replies (see replyButtons.js).
+    if (/^feedback$/i.test(trimmed)) {
+        const { up, down, recentBad } = feedbackSummary(30, 5);
+        if (up + down === 0) return 'No 👍/👎 on any reply in the last 30 days.';
+        const lines = [`Last 30 days: 👍 ${up} · 👎 ${down}`];
+        if (recentBad.length > 0) {
+            lines.push('Newest 👎:');
+            for (const bad of recentBad) {
+                const excerpt = (bad.excerpt || '(no text)').replace(/\s+/g, ' ').slice(0, 160);
+                lines.push(`• message ${bad.messageId}: ${excerpt}`);
+            }
         }
         return lines.join('\n');
     }

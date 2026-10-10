@@ -10,7 +10,7 @@
 // asked for right after a dozen heavy tool calls can therefore run out of
 // budget on reasoning before much text is written — the answer stops in the
 // middle of a row, which previously reached Discord looking finished.
-const TRUNCATION_MARKER = '…(cut off — react ▶️ to continue)';
+const TRUNCATION_MARKER = '…(cut off — press ▶️ Continue)';
 
 /** Appends the marker. Providers call this instead of returning a cut-off answer as if it were whole. */
 function markTruncated(text) {

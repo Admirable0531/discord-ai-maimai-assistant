@@ -76,4 +76,27 @@ const permissionGrants = sqliteTable(
     (table) => [primaryKey({ columns: [table.subjectType, table.subjectId] })]
 );
 
-module.exports = { memories, conversations, aiUsage, knowledgeBase, permissionGrants };
+/** 👍/👎 on a reply (the buttons under it — see discord/replyButtons.js). One vote per user per reply. */
+const replyFeedback = sqliteTable(
+    'reply_feedback',
+    {
+        messageId: text('message_id').notNull(),
+        userId: text('user_id').notNull(),
+        channelId: text('channel_id'),
+        rating: integer('rating').notNull(), // 1 or -1
+        replyExcerpt: text('reply_excerpt'),
+        createdAt: text('created_at')
+            .notNull()
+            .default(sql`CURRENT_TIMESTAMP`),
+    },
+    (table) => [primaryKey({ columns: [table.messageId, table.userId] })]
+);
+
+module.exports = {
+    memories,
+    conversations,
+    aiUsage,
+    knowledgeBase,
+    permissionGrants,
+    replyFeedback,
+};

@@ -5,7 +5,8 @@ const logger = require('./utils/logger');
 const { loadEnv } = require('./config/env');
 const { startDiscordLog } = require('./utils/discordLog');
 const { createDiscordClient } = require('./discord/client');
-const { registerMessageHandler, registerReactionHandler } = require('./discord/messageHandler');
+const { registerMessageHandler } = require('./discord/messageHandler');
+const { routeComponent } = require('./discord/componentRouter');
 const { closeBrowser } = require('./web/playwrightFetcher');
 const { pruneOlderThan } = require('./database/repositories/conversationRepository');
 const { startServer } = require('./web/server');
@@ -57,7 +58,6 @@ for (const folder of fs.readdirSync(commandsRoot)) {
 logger.info('bot', `Loaded ${client.commands.size} slash command(s)`);
 
 registerMessageHandler(client, config);
-registerReactionHandler(client, config);
 
 client.on('interactionCreate', async (interaction) => {
     // Autocomplete (friend names in /b50 and /history) has to answer within 3
@@ -66,6 +66,11 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isAutocomplete()) {
         const command = client.commands.get(interaction.commandName);
         if (command?.autocomplete) await command.autocomplete(interaction);
+        return;
+    }
+    // Buttons, select menus and modals — the ones under replies and on /memories.
+    if (interaction.isMessageComponent() || interaction.isModalSubmit()) {
+        await routeComponent(interaction);
         return;
     }
     if (!interaction.isChatInputCommand()) return;

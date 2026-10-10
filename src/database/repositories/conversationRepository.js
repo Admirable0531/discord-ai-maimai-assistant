@@ -1,4 +1,4 @@
-const { and, eq, desc, lt, sql } = require('drizzle-orm');
+const { and, eq, desc, lt, inArray, sql } = require('drizzle-orm');
 const { getDb } = require('../client');
 const { conversations } = require('../schema');
 
@@ -52,4 +52,27 @@ function pruneOlderThan(retentionDays) {
     return result.changes;
 }
 
-module.exports = { appendMessage, getRecentHistory, pruneOlderThan };
+/**
+ * Takes back the last question and answer of one user's conversation in a
+ * channel, so a regenerated reply doesn't sit in the history next to the one
+ * it replaces. Only if the newest rows really are that exchange — `reply` is
+ * the answer being replaced — otherwise nothing is touched and false comes back.
+ */
+function removeLastExchange(channelId, userId, reply) {
+    const db = getDb();
+    const [last, before] = db
+        .select()
+        .from(conversations)
+        .where(and(eq(conversations.channelId, channelId), eq(conversations.userId, userId)))
+        .orderBy(desc(conversations.id))
+        .limit(2)
+        .all();
+    if (!last || !before) return false;
+    if (last.role !== 'assistant' || last.content !== reply || before.role !== 'user') return false;
+    db.delete(conversations)
+        .where(inArray(conversations.id, [last.id, before.id]))
+        .run();
+    return true;
+}
+
+module.exports = { appendMessage, getRecentHistory, pruneOlderThan, removeLastExchange };

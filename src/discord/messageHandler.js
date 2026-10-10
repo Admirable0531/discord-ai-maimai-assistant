@@ -5,29 +5,17 @@ const { isOwner } = require('../permissions/permissionStore');
 const { tryHandleAdminCommand } = require('./adminCommands');
 const { collectImages, describeImages } = require('./imageInputs');
 const { createOutputs } = require('../utils/outputs');
-const { isTruncated, stripTruncationMarker, CONTINUE_PROMPT } = require('../ai/truncation');
+const { sendReply } = require('./replyDelivery');
+const { createMessageProgress } = require('./progress');
+const { whileTyping } = require('./typing');
+const { describeUser } = require('./speaker');
+const { onCooldown } = require('./cooldown');
 
-const DISCORD_MESSAGE_LIMIT = 2000;
 const REPLY_CONTEXT_MAX_LENGTH = 800;
-const CONTINUE_EMOJI = '▶️';
-const STOP_EMOJI = '⏹️';
-const NOT_ENOUGH_CONTEXT_NOTICE =
-    "Not enough context budget to finish this in one go. React ▶️ and I'll keep going, " +
-    "or ⏹️ to send what I've got so far.";
-/**
- * Bot notices offering to pick up a reply that stopped at the output-token
- * limit: botMessageId -> { userId, channelId, guildId, accumulated }.
- * `accumulated` is everything generated so far with the cut-off marker
- * stripped, kept off Discord until the answer is either finished (▶️) or
- * the asker settles for what's there (⏹️). In memory on purpose — this is a
- * convenience affordance, and after a restart the user can still just ask
- * again. Capped so a long-running process can't accumulate them forever.
- */
-const continuable = new Map();
-const MAX_CONTINUABLE = 200;
 
-/** userId -> last reply timestamp (ms). Simple in-memory cooldown, not persisted. */
-const lastReplyAtByUser = new Map();
+const INTRO =
+    "Hi, I'm Atri — ask me anything about maimai: songs and charts, your B50 and rating, scores, " +
+    'friends and circles. Mention me with a question, or use `/ask`. `/help` lists everything I can do.';
 
 /**
  * Trigger: @-mentioned in a guild channel, or a DM from the owner. DMs from
@@ -38,20 +26,6 @@ function shouldRespond(message, clientUserId) {
     if (message.author.bot) return false;
     if (!message.guild) return isOwner(message.author.id);
     return message.mentions.has(clientUserId);
-}
-
-/** How the speaker appears in Discord, so the model knows who it's talking to (see systemPrompt.describeSpeaker). */
-function describeUser(user, member) {
-    return {
-        username: user.username,
-        displayName: member?.displayName || user.globalName || user.username,
-    };
-}
-
-function isOnCooldown(userId, cooldownMs) {
-    const last = lastReplyAtByUser.get(userId);
-    if (last === undefined) return false;
-    return Date.now() - last < cooldownMs;
 }
 
 /**
@@ -86,148 +60,6 @@ function resolveMentions(text, message) {
 /** Strips a leading bot mention so it doesn't pollute the prompt sent to Gemini. */
 function stripMention(content, clientUserId) {
     return content.replace(new RegExp(`^<@!?${clientUserId}>\\s*`), '').trim();
-}
-
-/**
- * Splits text across Discord's 2000-char message limit without dropping any
- * of it — breaking at the last newline that fits so a table row or sentence
- * doesn't get sliced mid-way. Previously anything over the limit was cut
- * off with "...(truncated)", which quietly lost content instead of just
- * spreading it across more messages.
- */
-function splitForDiscord(text) {
-    const chunks = [];
-    let remaining = text;
-    while (remaining.length > DISCORD_MESSAGE_LIMIT) {
-        let splitAt = remaining.lastIndexOf('\n', DISCORD_MESSAGE_LIMIT);
-        if (splitAt <= 0) splitAt = DISCORD_MESSAGE_LIMIT;
-        chunks.push(remaining.slice(0, splitAt));
-        remaining = remaining.slice(splitAt).replace(/^\n+/, '');
-    }
-    if (remaining) chunks.push(remaining);
-    return chunks;
-}
-
-/**
- * Fixes an unbalanced ``` in model text, which Discord shows as a broken block.
- * A stray fence that ends the message is dropped; an unclosed block that runs to
- * the end is closed. Balanced text — including a reply that ends in a finished
- * code block — is returned unchanged.
- */
-function balanceCodeFences(text) {
-    if (((text.match(/```/g) || []).length & 1) === 0) return text;
-    const trimmed = text.trimEnd();
-    return trimmed.endsWith('```') ? trimmed.slice(0, -3).trimEnd() : `${text}\n\`\`\``;
-}
-
-/** discord.js attachment objects for files a tool produced (see utils/outputs.js). */
-function toDiscordFiles(files) {
-    return files.map((f) => ({ attachment: f.data, name: f.name }));
-}
-
-// Discord error codes for "can't upload this": missing Attach Files permission,
-// and the file being over the upload limit.
-const FILE_REFUSED_CODES = new Set([50013, 40005]);
-const FILES_REFUSED_NOTE =
-    "\n\n_(I couldn't attach the image — I may be missing the Attach Files permission here.)_";
-
-/**
- * Sends (possibly long) text as one or more messages, replying with the first
- * (which carries any files). Empty text would otherwise split into zero
- * chunks and send nothing at all, which reaches the user as silence rather
- * than as an error — unless there are files to send, which is a reply on its
- * own. If Discord refuses the files, the text still goes out, with a note.
- */
-async function sendChunked(message, text, files = []) {
-    const chunks = splitForDiscord(balanceCodeFences(text));
-    if (chunks.length === 0 && files.length === 0) {
-        logger.warn('discord', 'Refusing to send an empty reply — nothing to say');
-        return null;
-    }
-    const replyOptions = { allowedMentions: { repliedUser: false } };
-    const attachments = toDiscordFiles(files);
-
-    async function replyFirst(content) {
-        try {
-            return await message.reply({
-                ...replyOptions,
-                ...(content ? { content } : {}),
-                ...(attachments.length ? { files: attachments } : {}),
-            });
-        } catch (err) {
-            if (!attachments.length || !FILE_REFUSED_CODES.has(err.code)) throw err;
-            logger.warn(
-                'discord',
-                'Discord refused the attachment — sending the text without it',
-                err
-            );
-            return message.reply({
-                ...replyOptions,
-                content: ((content || '') + FILES_REFUSED_NOTE)
-                    .trim()
-                    .slice(0, DISCORD_MESSAGE_LIMIT),
-            });
-        }
-    }
-
-    let sent = await replyFirst(chunks[0]);
-    for (let i = 1; i < chunks.length; i++) sent = await message.channel.send(chunks[i]);
-    return sent;
-}
-
-function registerContinuable(messageId, state) {
-    if (continuable.size >= MAX_CONTINUABLE) {
-        continuable.delete(continuable.keys().next().value); // drop the oldest
-    }
-    continuable.set(messageId, state);
-}
-
-/**
- * Delivers a reply. A finished answer (this reply plus anything accumulated
- * from earlier cut-off segments) goes straight to Discord in full, however
- * many messages that takes — never trimmed. A reply that hit the output-token
- * cap is NOT sent as-is: showing half a table and calling it done is exactly
- * what this is trying to avoid. Instead its (marker-stripped) text is folded
- * into the hidden `accumulated` stash, and a short notice goes out offering
- * ▶️ to keep going or ⏹️ to take what's there so far (see
- * registerReactionHandler). Only that notice gets reactions — a finished
- * answer needs neither.
- */
-async function sendReply(
-    message,
-    reply,
-    { userId, channelId, guildId, accumulated = '', files = [] }
-) {
-    if (!isTruncated(reply)) {
-        return sendChunked(message, accumulated + reply, files);
-    }
-
-    const nextAccumulated = accumulated + stripTruncationMarker(reply) + '\n\n';
-    // Any image goes out with the notice: it would otherwise wait on a
-    // continuation that rebuilds the text from scratch and has no file.
-    const notice = await sendChunked(message, NOT_ENOUGH_CONTEXT_NOTICE, files);
-
-    try {
-        await notice.react(CONTINUE_EMOJI);
-        await notice.react(STOP_EMOJI);
-        registerContinuable(notice.id, {
-            userId,
-            channelId,
-            guildId,
-            accumulated: nextAccumulated,
-        });
-    } catch (err) {
-        // Missing Add Reactions permission shouldn't lose the answer that's
-        // already been generated — fall back to sending what's ready instead
-        // of stranding it with no way to reach it.
-        logger.warn(
-            'discord',
-            'Could not add the continue/stop reactions — sending what I have',
-            err
-        );
-        await sendChunked(message, nextAccumulated.trim());
-    }
-    return notice;
 }
 
 /**
@@ -271,7 +103,15 @@ function registerMessageHandler(client, config) {
 
         const userText = stripMention(message.content, client.user.id);
         // An image with no words is still a question ("what song is this?").
-        if (!userText && message.attachments.size === 0) return;
+        if (!userText && message.attachments.size === 0) {
+            // A bare mention: say what this is rather than staying silent.
+            if (!onCooldown(userId, config.replyCooldownMs)) {
+                await message
+                    .reply({ content: INTRO, allowedMentions: { repliedUser: false } })
+                    .catch((err) => logger.error('discord', 'Could not send the intro', err));
+            }
+            return;
+        }
 
         const replyContext = await buildReplyContext(message);
         const resolvedText = resolveMentions(userText, message);
@@ -288,11 +128,10 @@ function registerMessageHandler(client, config) {
             }
         }
 
-        if (isOnCooldown(userId, config.replyCooldownMs)) {
+        if (onCooldown(userId, config.replyCooldownMs)) {
             logger.info('discord', `Ignoring message from ${message.author.tag} (cooldown)`);
             return;
         }
-        lastReplyAtByUser.set(userId, Date.now());
 
         // After the cooldown check, so a message that's ignored doesn't cost a download.
         const inputImages = await collectImages([replyContext?.referenced, message]);
@@ -306,164 +145,48 @@ function registerMessageHandler(client, config) {
 
         const channelId = message.channel.id;
         const history = getHistory(channelId, userId);
-
-        // Discord's typing indicator lasts ~10s and isn't auto-refreshed — a
-        // single sendTyping() before a multi-tool-call generateReply() (which
-        // can easily run longer than that) expires mid-work, so it looks like
-        // Atri gave up until the reply suddenly appears. Re-trigger it on an
-        // interval, comfortably under the 10s expiry, for as long as work is
-        // still in flight.
-        const typingInterval = setInterval(() => {
-            message.channel.sendTyping().catch(() => {});
-        }, 8000);
+        const speaker = describeUser(message.author, message.member);
+        const progress = createMessageProgress(message);
 
         try {
-            await message.channel.sendTyping().catch(() => {});
-            const outputs = createOutputs();
-            const reply = await generateReply(history, promptText, {
-                userId,
-                guildId,
-                speaker: describeUser(message.author, message.member),
-                images: inputImages.images,
-                outputs,
+            await whileTyping(message.channel, async () => {
+                const outputs = createOutputs();
+                const reply = await generateReply(history, promptText, {
+                    userId,
+                    guildId,
+                    speaker,
+                    images: inputImages.images,
+                    outputs,
+                    onProgress: progress.onProgress,
+                });
+
+                appendMessage({ userId, guildId, channelId, role: 'user', content: promptText });
+                appendMessage({ userId, guildId, channelId, role: 'assistant', content: reply });
+
+                await sendReply(message, reply, {
+                    userId,
+                    channelId,
+                    guildId,
+                    files: outputs.files,
+                    statusMessage: await progress.take(),
+                    // The images aren't kept, so an answer that depended on them can't be redone.
+                    regenerate: inputImages.images.length === 0 ? { promptText, speaker } : null,
+                });
             });
-
-            appendMessage({ userId, guildId, channelId, role: 'user', content: promptText });
-            appendMessage({ userId, guildId, channelId, role: 'assistant', content: reply });
-
-            await sendReply(message, reply, { userId, channelId, guildId, files: outputs.files });
         } catch (err) {
             logger.error('discord', `Failed to answer ${message.author.tag}`, err);
-            await message
-                .reply('Sorry, something went wrong answering that. Please try again in a moment.')
-                .catch((replyErr) =>
-                    logger.error('discord', 'Could not send error reply', replyErr)
-                );
-        } finally {
-            clearInterval(typingInterval);
-        }
-    });
-}
-
-/**
- * Reacts to a "not enough context" notice (see sendReply): ▶️ keeps
- * generating and folds the result into what's already stashed, ⏹️ stops
- * there and sends the stash as-is.
- *
- * The ▶️ continuation goes through the normal generateReply path with
- * `continuation: true` (its own dedicated token budget — see the
- * providers), so the model sees the cut-off answer sitting in its own
- * history and is asked to carry on from where it stopped. A continuation
- * that itself hits the cap gets its own fresh notice, so the same choice is
- * offered again rather than losing the thread.
- */
-function registerReactionHandler(client, config) {
-    client.on('messageReactionAdd', async (reaction, user) => {
-        if (user.bot) return;
-        // Only the asker may act on their own answer — otherwise anyone in
-        // the channel could spend tokens on, or cut short, someone else's.
-        const state = continuable.get(reaction.message.id);
-        if (!state || state.userId !== user.id) return;
-
-        let emojiName;
-        try {
-            if (reaction.partial) await reaction.fetch();
-            emojiName = reaction.emoji.name;
-        } catch (err) {
-            logger.warn('discord', 'Could not resolve a reaction', err);
-            return;
-        }
-        if (emojiName !== CONTINUE_EMOJI && emojiName !== STOP_EMOJI) return;
-
-        // One action per offer: drop it first so a double-tap (or a
-        // remove-and-re-add) can't run the same continuation twice, or race
-        // a stop against a continue.
-        continuable.delete(reaction.message.id);
-
-        const message = reaction.message.partial
-            ? await reaction.message.fetch().catch(() => null)
-            : reaction.message;
-        if (!message) return;
-
-        if (emojiName === STOP_EMOJI) {
-            const finalText = state.accumulated.trim();
-            await sendChunked(
-                message,
-                finalText
-                    ? `${finalText}\n\n_(stopped there — that's everything I had ready)_`
-                    : "I didn't have anything ready yet — try asking again."
-            ).catch((err) =>
-                logger.error('discord', `Failed to send stopped reply for ${user.tag}`, err)
+            const notice =
+                'Sorry, something went wrong answering that. Please try again in a moment.';
+            const status = await progress.take().catch(() => null);
+            // The status message, if there is one, becomes the apology rather than being left saying "working on it".
+            const sent = status
+                ? status.edit({ content: notice, components: [] })
+                : message.reply(notice);
+            await sent.catch((replyErr) =>
+                logger.error('discord', 'Could not send error reply', replyErr)
             );
-            return;
-        }
-
-        const { userId, channelId, guildId, accumulated } = state;
-        const typingInterval = setInterval(() => {
-            message.channel.sendTyping().catch(() => {});
-        }, 8000);
-
-        try {
-            await message.channel.sendTyping().catch(() => {});
-            const history = getHistory(channelId, userId);
-            const member = message.guild?.members.cache.get(user.id);
-            const outputs = createOutputs();
-            const reply = await generateReply(history, CONTINUE_PROMPT, {
-                userId,
-                guildId,
-                speaker: describeUser(user, member),
-                continuation: true,
-                outputs,
-            });
-
-            appendMessage({
-                userId,
-                guildId,
-                channelId,
-                role: 'user',
-                content: CONTINUE_PROMPT,
-            });
-            appendMessage({ userId, guildId, channelId, role: 'assistant', content: reply });
-
-            await sendReply(message, reply, {
-                userId,
-                channelId,
-                guildId,
-                accumulated,
-                files: outputs.files,
-            });
-        } catch (err) {
-            logger.error('discord', `Failed to continue a reply for ${user.tag}`, err);
-            // Whatever went wrong upstream, the work already generated is still
-            // worth delivering — losing it here is what made a failed
-            // continuation look like the bot silently ignoring the ▶️.
-            const fallback = accumulated.trim();
-            const notice = fallback
-                ? `Sorry, I couldn't finish that one. Here's what I had so far:\n\n${fallback}`
-                : "Sorry, I couldn't pick that back up — ask me to continue in a message instead.";
-            try {
-                await sendChunked(message, notice);
-            } catch (sendErr) {
-                // Never swallowed: when this failed quietly, the typing
-                // indicator just stopped with nothing posted, which from the
-                // outside is indistinguishable from the bot ignoring you.
-                // reply() can fail on its own (deleted/unreachable target)
-                // while a plain channel send still works, so try that too.
-                logger.error('discord', 'Could not deliver the continuation fallback', sendErr);
-                await message.channel
-                    .send(notice.slice(0, DISCORD_MESSAGE_LIMIT))
-                    .catch((lastErr) =>
-                        logger.error('discord', 'Could not send to the channel either', lastErr)
-                    );
-            }
-        } finally {
-            clearInterval(typingInterval);
         }
     });
-
-    // config is accepted for symmetry with registerMessageHandler (and so a
-    // future cooldown here can read the same settings); nothing needs it yet.
-    void config;
 }
 
-module.exports = { registerMessageHandler, registerReactionHandler };
+module.exports = { registerMessageHandler };
