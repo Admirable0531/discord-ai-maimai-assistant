@@ -15,25 +15,7 @@ const TIMEOUT_MS = 10000;
 const declaration = {
     name: 'get_friend_leaderboard',
     description:
-        "Get the current maimai DX rating leaderboard for one tracked account's in-game friend list — each " +
-        'friend\'s name, rating, and rank. There are TWO separate real accounts tracked, "fy" and "main", each ' +
-        'with their own distinct ~40-friend list — a friend on one is very often NOT on the other. account_type ' +
-        'defaults to "fy" if omitted, so never assume that\'s the right pool: if the user says "main account" ' +
-        'call with account_type: "main"; if you\'re searching for one specific friend by name and don\'t know ' +
-        "which account tracks them, call this tool twice (once per account_type) before concluding they're not " +
-        'found — do not report "not found" after checking only one. Names on this leaderboard are often written ' +
-        'in full-width Unicode characters (e.g. "Ｍｉｎｊｉｎ") — treat those as the same name as their plain-ASCII ' +
-        'equivalent ("minjin") when matching, don\'t treat the different character width as a non-match. Use this ' +
-        'for questions like "what is X\'s rating", "who has the highest rating", "is X a friend", or "top N ' +
-        'friends". This is tracked data, not something to guess or look up on the web. FRESHNESS: this is the ' +
-        'most recent nightly snapshot, which is not always recent — check snapshot_age_days and is_stale on ' +
-        'every call. When is_stale is true the ratings and ranks are genuinely out of date (the scrape has been ' +
-        'failing), so state the snapshot date plainly instead of presenting the numbers as current, and never ' +
-        'describe a stale rank as someone\'s standing "now". If the asker is ' +
-        "themselves one of the tracked friends, check search_memory first in case they've told you their in-game name before. " +
-        'IMAGE: pass as_image: true when the user wants to SEE the leaderboard (show / post / send / a picture or ' +
-        "card of it) — a ranked chart is attached to your reply automatically; you can't see it, so add a short " +
-        'comment from the data and don\'t re-list the rows. Leave it off for a specific lookup ("what is X\'s rating").',
+        'The DX Rating leaderboard of one tracked account\'s friend list: each friend\'s name, rating and rank. Two accounts are tracked, "fy" (the default) and "main", with different friend lists — use "main" when the user says so, and when looking for one person whose list you don\'t know, check both before saying they aren\'t there. Names are often full-width ("Ｍｉｎｊｉｎ" is "minjin"). For "what is X\'s rating", "who\'s highest", "is X a friend", "top N". It is the last nightly snapshot: when is_stale is true, give the snapshot date and don\'t present the ranks as current. If the asker may be on the list, check their memories for their in-game name. as_image: true when they want to SEE it, not for a single lookup.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

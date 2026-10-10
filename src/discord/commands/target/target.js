@@ -1,31 +1,10 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { getSongRating, findMinAchvForRating } = require('../../../web/maimaiRatingMath');
+const { nextPointTargets } = require('../../../web/maimaiRatingTargets');
 const { loadSnapshot, freshnessNote } = require('../../../web/maimaiPlayerSnapshot');
 const { TOKENS } = require('../../../render/theme');
 const { denyWithoutScope, describeFailure, suggestPlayers } = require('../../commandHelpers');
 
 const SHOWN = 10;
-const RATING_CAP = 100.5;
-
-/**
- * For each chart in the best 50: the achievement that would add one rating
- * point to it, and how far that is from the score now. Each chart's rating
- * counts straight into the total, so +1 on any of them is +1 overall — the
- * cheapest ones are where to spend the next attempts.
- */
-function nextPointTargets(plays, section) {
-    const targets = [];
-    for (const play of plays) {
-        const now = getSongRating(play.level, play.achievement);
-        if (!now) continue;
-        const next = findMinAchvForRating(play.level, now.rating + 1);
-        if (!next || next.achv_needed > RATING_CAP) continue; // maxed out at this constant
-        const gap = next.achv_needed - play.achievement;
-        if (gap <= 0) continue;
-        targets.push({ play, section, now: now.rating, needed: next.achv_needed, gap });
-    }
-    return targets;
-}
 
 function line(t) {
     const { play } = t;

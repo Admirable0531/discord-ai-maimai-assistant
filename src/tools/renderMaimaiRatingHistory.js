@@ -10,16 +10,7 @@ const DEFAULT_DAYS = 0; // 0 = everything recorded
 const declaration = {
     name: 'render_maimai_rating_history',
     description:
-        "Draw a player's DX Rating over time as a line-graph IMAGE and attach it to your reply — one point " +
-        "per day from the nightly snapshots (the tracked account's goes back to April 2024; friends' start " +
-        'later), with the latest rating, the peak, and the change since the start. Use it for "show my rating ' +
-        'history / graph / progress / how fast did X climb". Leave player_name out for the tracked account ' +
-        "(the bot owner's own); pass a name for one of its friends. `days` limits it to the most recent N " +
-        "days (omit for everything). The image is attached automatically and you can't see it: add a short " +
-        'comment using the figures returned (change_last_30_days etc.), never read the graph out point by ' +
-        'point. Breaks in the line are stretches with no snapshot; mention that if gap_days_over_14 is > 0 ' +
-        'and it matters. Check latest_snapshot_age_days: if it is more than a couple of days, the history ' +
-        "stops there and the player's current rating may be higher — say so.",
+        'Draw a player\'s DX Rating over time as a line graph — one point per daily snapshot (the tracked account\'s from April 2024, friends\' later) — with the latest rating, peak and change. For "my rating history / graph / progress", "how fast did X climb". Leave player_name out for the tracked account; `days` limits it to the last N days. Comment using the returned figures (change_last_30_days etc.), never read the graph out. Mention gaps if gap_days_over_14 > 0 and it matters; if latest_snapshot_age_days is more than a couple of days, say the current rating may be higher.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

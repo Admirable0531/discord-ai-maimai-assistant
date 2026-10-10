@@ -1,7 +1,8 @@
 const cheerio = require('cheerio');
 const { fetchAccountPage } = require('../web/maimaiAccountSession');
 const { loadSongData } = require('../web/maimaiSongData');
-const { findSongInLocalData, findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { lookupSong } = require('../web/songResolver');
 const { getRankByAchievement } = require('../web/maimaiRatingMath');
 const { buildPlayHistoryHtml, WIDTH } = require('../render/playHistoryCard');
 const { drawCard } = require('../render/drawCard');
@@ -11,16 +12,7 @@ const { fold } = require('../web/maimaiSongMatch');
 const declaration = {
     name: 'get_maimai_song_play_history',
     description:
-        "Look up this tracked account's per-difficulty play count, last-played date, best achievement %, and " +
-        'real clear-type badges for one specific song, by name — is_ap/is_ap_plus, is_fc/is_fc_plus, is_fs/' +
-        'is_fs_plus/is_fsd (Full Sync tiers), is_sync, plus the raw badges array (every badge icon this play ' +
-        "actually has, in case something isn't covered by those flags). Read directly off the actual badge " +
-        'icons, not guessed from the percentage — this is the only reliable way to know if a specific play was ' +
-        'truly an AP: a percentage in the AP-range does NOT prove it was one (a non-Perfect regular-note ' +
-        'judgment can cost less than the break bonus adds back, landing a non-AP play in that same range), so ' +
-        'always check is_ap here rather than inferring AP status from achievement_percent alone, for this ' +
-        'tracked account. It only finds a chart the account has actually played at least once. ' +
-        "IMAGE: pass as_image: true for play-count and history questions ('my playcount for X', 'my history on X') as well as whenever the user wants to SEE it — they cover several difficulties at once, so a card (play count, best score, rank, clear badges, last played, and the individual scores of recent plays) reads far better than a table. It is attached to your reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
+        'The tracked account\'s record on one song, per difficulty: play count, last played, best achievement %, and the real clear badges (is_ap/is_ap_plus, is_fc/is_fc_plus, is_fs/is_fs_plus/is_fsd, is_sync, and the raw badges list). For "my playcount for X", "my history on X", "did I AP X" — the badges are the only reliable way to know an AP. The game keeps only the count and the best score per difficulty, not each play\'s score. Only finds songs the account has played. Pass as_image: true for playcount and history questions (several difficulties read better as a card).',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -132,15 +124,9 @@ async function execute(args, context) {
 
     try {
         const songData = await loadSongData();
-        const song = findSongInLocalData(songData, songName);
-        if (!song) return { success: false, error: `No song matching "${songName}" found.` };
-        if (song.ambiguous) {
-            return {
-                success: false,
-                error: `Multiple songs match "${songName}" — be more specific.`,
-                matches: song.ambiguous,
-            };
-        }
+        const found = await lookupSong(songData.songs, songName);
+        if (found.failure) return found.failure;
+        const { song, matchedVia } = found;
 
         const idx = await findPlayedSongIdx(song);
         if (!idx) {
@@ -164,6 +150,7 @@ async function execute(args, context) {
         const result = {
             success: true,
             song_name: song.title,
+            ...(matchedVia ? { matched_via: matchedVia } : {}),
             difficulties,
             url: finalUrl,
         };

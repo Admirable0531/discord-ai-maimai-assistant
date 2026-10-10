@@ -14,16 +14,7 @@ const SECTIONS = ['all', 'new', 'old'];
 const declaration = {
     name: 'render_maimai_b50_image',
     description:
-        "Draw a player's Best 50 (best 15 new-version + best 35 old-version charts) as an IMAGE card — " +
-        "covers, difficulty, constant, achievement, rank and rating per chart, with the player's rating and " +
-        'how fresh the data is — and attach it to your reply. Use it when someone asks to see / show / send / ' +
-        'post a B50 (or "b50 image/card"), or just the B15 / B35 (section "new" / "old"). Leave player_name out for the tracked account (the bot owner\'s own ' +
-        'maimai account); pass a name for one of its friends. The image is attached automatically and you ' +
-        "can't see it: reply with a short comment at most, never re-list the charts (the summary below has " +
-        "the totals and each list's lowest chart). If stale is true the snapshot is old — the image says so " +
-        'too, but say it in your reply as well. For questions that need the actual chart data in text ' +
-        '(a specific song, the highest rated play) use get_maimai_own_top_scores / ' +
-        'get_maimai_friend_top_scores instead.',
+        'Draw a player\'s best 50 (B15 new version + B35 old) as an image card — cover, difficulty, constant, achievement, rank and rating per chart, plus rating and snapshot age. For "show / send / post my B50", or just the B15 / B35 (section "new" / "old"). Leave player_name out for the tracked account; pass a friend\'s name otherwise. Don\'t list the charts in your reply (the result has the totals and each list\'s lowest chart); if stale is true, say the snapshot is old. For questions needing the chart data in text, use get_maimai_own_top_scores / get_maimai_friend_top_scores.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

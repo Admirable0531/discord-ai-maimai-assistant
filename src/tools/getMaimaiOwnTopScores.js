@@ -18,27 +18,7 @@ const TIMEOUT_MS = 15000;
 const declaration = {
     name: 'get_maimai_own_top_scores',
     description:
-        "Get this tracked account's OWN real best-scoring charts and total rating, straight off SEGA's " +
-        'rating-breakdown page (same source and shape as get_maimai_friend_top_scores, just for the ' +
-        'tracked account itself rather than one of its friends — that tool can never return this data, ' +
-        'since its friend lookup specifically excludes this account). Returns two lists ' +
-        "(new_version_top_plays and old_version_top_plays, matching the game's own rating-split " +
-        'categories, each entry with Song/Chart/Level/Achv/Rank/Rating) plus snapshot_rating, the total ' +
-        'rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: this is a daily snapshot, not always fresh — ' +
-        'current_rating is fetched independently (this account shows up as a friend on the "fy" ' +
-        "account's daily-updated leaderboard, so that's used as the live source; current_rating_source: " +
-        '"daily_friend_leaderboard"). Compare it against snapshot_rating: if they differ, or ' +
-        'snapshot_age_days is large, tell the user plainly the top plays shown may be outdated. If ' +
-        'current_rating_source is "unavailable" instead, current_rating is null — do NOT treat an old ' +
-        'snapshot as current just because there was nothing to compare it to; say plainly that freshness ' +
-        'could not be verified. Use this for "what\'s my/its highest rated play / B50 breakdown" about the ' +
-        'tracked account — not about a friend, which is get_maimai_friend_top_scores instead. ' +
-        'SCOPE LIMIT: this is only the 50 charts that currently feed the rating, NOT a complete score ' +
-        'list. Any chart outside the top 50 is absent, so it cannot answer "my best score at level/' +
-        'constant X" except by luck — for lower constants especially, the real best score is usually not ' +
-        'in here at all, and treating a gap as "no score" or the top entry as "my highest" is simply ' +
-        'wrong. For questions about best scores at a given level or constant, read the Song Scores by ' +
-        'Level page instead (see list_maimai_account_pages), which has every score.',
+        'The tracked account\'s own best 50 (B15 new_version_top_plays + B35 old_version_top_plays, each with Song/Chart/Level/Achv/Rank/Rating) and snapshot_rating, from SEGA\'s rating-breakdown page, scraped daily. current_rating is checked independently; if it differs from snapshot_rating or snapshot_age_days is large, say the list may be outdated, and if current_rating_source is "unavailable" say freshness couldn\'t be verified. For "my B50 / my highest rated play" about the tracked account (get_maimai_friend_top_scores can never return it). Only the 50 charts that count: a chart missing here is not unplayed — for scores at a level or constant use get_maimai_scores_by_level.',
     parametersJsonSchema: {
         type: 'object',
         properties: {},

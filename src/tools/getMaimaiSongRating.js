@@ -1,16 +1,12 @@
 const { loadSongData } = require('../web/maimaiSongData');
-const { findSheet, sheetLevel, isUtageSong } = require('../web/maimaiChartLookup');
+const { findSheet, sheetLevel } = require('../web/maimaiChartLookup');
+const { lookupSong } = require('../web/songResolver');
 const { getSongRating, findMinAchvForRating } = require('../web/maimaiRatingMath');
 
 const declaration = {
     name: 'get_maimai_song_rating',
     description:
-        "Calculate a single chart's DX Rating contribution — either forward (given an achievement %, what " +
-        "rating does that chart give) or reverse (given a target rating, what's the minimum achievement % " +
-        "needed on that chart). Uses the real internal level and maimai's actual rating formula, not a guess. " +
-        "Pass exactly one of achievement_percent or target_rating. Note: this is one chart's rating in " +
-        "isolation, not a player's overall profile rating (which is the sum of their best-N chart ratings, plus " +
-        "+1 per All Perfect clear — this tool doesn't compute that aggregate).",
+        "One chart's rating from the real formula and constant: forward (achievement % -> rating) or reverse (target rating -> minimum achievement %). Pass exactly one of achievement_percent or target_rating. One chart in isolation — a player's rating is the sum of their best 50; for what a score does to a player's best 50, use get_maimai_score_impact.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -46,7 +42,8 @@ async function execute(args) {
     const difficulty = typeof args?.difficulty === 'string' ? args.difficulty.toLowerCase() : '';
     const achv = typeof args?.achievement_percent === 'number' ? args.achievement_percent : null;
     const targetRating = typeof args?.target_rating === 'number' ? args.target_rating : null;
-    const chartType = args?.chart_type === 'std' || args?.chart_type === 'dx' ? args.chart_type : null;
+    const chartType =
+        args?.chart_type === 'std' || args?.chart_type === 'dx' ? args.chart_type : null;
 
     if (!songQuery) return { success: false, error: 'song_name is required.' };
     if (!difficulty) return { success: false, error: 'difficulty is required.' };
@@ -67,29 +64,12 @@ async function execute(args) {
         return { success: false, error: err.message };
     }
 
-    const q = songQuery.toLowerCase();
     // 宴会場/UTAGE entries share titles with 65 real songs but hold only joke
-    // charts (【宴】/【狂】/…), so leaving them in makes a normal lookup either
-    // ambiguous or silently wrong. The difficulty enum here is always a
-    // standard one, so they can never be what's meant.
-    const songMatches = data.songs.filter(
-        (s) => s.title.toLowerCase().includes(q) && !isUtageSong(s)
-    );
-    if (songMatches.length === 0) {
-        return { success: false, error: `No song matching "${songQuery}" found.` };
-    }
-    let song = songMatches[0];
-    if (songMatches.length > 1) {
-        const exact = songMatches.find((s) => s.title.toLowerCase() === q);
-        if (!exact) {
-            return {
-                success: false,
-                error: `Multiple songs match "${songQuery}" — be more specific.`,
-                matches: songMatches.slice(0, 10).map((s) => s.title),
-            };
-        }
-        song = exact;
-    }
+    // charts; the resolver leaves them out, since the difficulty here is always
+    // a standard one.
+    const lookup = await lookupSong(data.songs, songQuery);
+    if (lookup.failure) return lookup.failure;
+    const { song } = lookup;
 
     // Shared resolver rather than a bare sheets.find: std and dx charts of the
     // same song often carry different constants (71 of the 81 songs charted in

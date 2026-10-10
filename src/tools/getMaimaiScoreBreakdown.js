@@ -1,18 +1,12 @@
 const { loadSongData } = require('../web/maimaiSongData');
-const { findSheet, isUtageSong } = require('../web/maimaiChartLookup');
+const { findSheet } = require('../web/maimaiChartLookup');
+const { lookupSong } = require('../web/songResolver');
 const { findApBreakdown } = require('../web/maimaiScoreMath');
 
 const declaration = {
     name: 'get_maimai_score_breakdown',
     description:
-        'Check whether a specific achievement percentage (e.g. "100.9929%") is achievable as an AP (All Perfect ' +
-        '— every note Perfect-or-better, no Great/Good/Miss) on a specific song and difficulty, using the exact ' +
-        "note counts and maimai's real scoring formula — not a guess. If it is achievable, returns the exact " +
-        'break-judgment breakdown (how many Critical Perfect / high-window Perfect / low-window Perfect) that ' +
-        "produces it, plus the chart's full possible AP range (always 100.5000%-101.0000% when it has breaks, " +
-        'exactly 100.0000% if it has none). Only checks pure-AP scores — it does NOT solve for scores that ' +
-        "include any Great/Good/Miss (a much larger, unsolved search space); if the target isn't a valid AP for " +
-        'this chart, say so plainly rather than guessing at a Great/Good/Miss combination.',
+        "Whether an achievement % (e.g. 100.9929) is possible as an AP — every note Perfect or better — on one chart, from its real note counts and the scoring formula, and if so the exact break judgments (Critical Perfect / high Perfect / low Perfect) that produce it, plus the chart's AP range (100.5–101% with breaks, exactly 100% without). Pure-AP scores only: if the target isn't a valid AP, say so rather than guessing a Great/Good/Miss combination.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -48,28 +42,11 @@ async function execute(args) {
         return { success: false, error: err.message };
     }
 
-    const q = songQuery.toLowerCase();
-    // Exclude 宴会場/UTAGE namesakes — they share titles with 65 real songs
-    // but carry only joke charts, never the standard difficulty asked for here.
-    const songMatches = data.songs.filter(
-        (s) => s.title.toLowerCase().includes(q) && !isUtageSong(s)
-    );
-    if (songMatches.length === 0) {
-        return { success: false, error: `No song matching "${songQuery}" found.` };
-    }
-    if (songMatches.length > 1) {
-        const exact = songMatches.find((s) => s.title.toLowerCase() === q);
-        if (!exact) {
-            return {
-                success: false,
-                error: `Multiple songs match "${songQuery}" — be more specific.`,
-                matches: songMatches.slice(0, 10).map((s) => s.title),
-            };
-        }
-        return checkChart(exact, difficulty, targetPercent);
-    }
-
-    return checkChart(songMatches[0], difficulty, targetPercent);
+    // UTAGE namesakes are left out by the resolver: they carry only joke charts,
+    // never the standard difficulty asked for here.
+    const found = await lookupSong(data.songs, songQuery);
+    if (found.failure) return found.failure;
+    return checkChart(found.song, difficulty, targetPercent);
 }
 
 function checkChart(song, difficulty, targetPercent) {

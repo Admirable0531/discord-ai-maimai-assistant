@@ -1,6 +1,7 @@
 const { fetchAccountPage } = require('../web/maimaiAccountSession');
 const { loadSongData } = require('../web/maimaiSongData');
-const { findSongInLocalData, findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { findPlayedSongIdx } = require('../web/maimaiSongIndex');
+const { lookupSong } = require('../web/songResolver');
 const {
     parseRankingFormTokens,
     parseRankingEntries,
@@ -12,18 +13,7 @@ const { drawCard } = require('../render/drawCard');
 const declaration = {
     name: 'get_maimai_song_ranking',
     description:
-        "Get the achievement-%% ranking for a specific song/difficulty — either this tracked account's friend " +
-        'list (scope: "friend") or the global top scores (scope: "global"), each entry with a player name and ' +
-        'their achievement %%. Use this for "who has the highest score on X" or similar per-song leaderboard ' +
-        'questions — this is the actual data source for those, not get_friend_leaderboard (which is DX Rating ' +
-        'only, not per-song). Achievement %% alone does NOT prove a play was an AP: being in [100.5000%, ' +
-        '101.0000%] on a chart with break notes is NECESSARY for AP but not SUFFICIENT — a non-Perfect regular-' +
-        'note judgment can cost less than the break bonus adds back, so a real non-AP (e.g. FC) play can land in ' +
-        'that same range. This tool only exposes percentage for other players, never their actual clear-type ' +
-        "badges, so don't claim/count AP or AP+ from these entries — say plainly you can only see achievement %%, " +
-        'not confirmed AP status. Only works for songs this tracked account has played at least once (same ' +
-        "limitation as get_maimai_song_play_history) — it won't find a song it's never touched. " +
-        "IMAGE: pass as_image: true when the user wants to SEE it (show / post / a picture or card) — a card is attached to your reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
+        'Per-song score ranking on one difficulty: the tracked account\'s friends (scope "friend") or the global top (scope "global"), each with name and achievement %. For "who has the best score on X", "how many people 101\'d X" (use min_achievement_percent). get_friend_leaderboard is DX Rating only, not per song. Only percentages are shown for other players — never call an entry AP or AP+. Works only for songs the tracked account has played. as_image: true when they want to SEE it.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -69,15 +59,9 @@ async function execute(args, context) {
 
     try {
         const songData = await loadSongData();
-        const song = findSongInLocalData(songData, songName);
-        if (!song) return { success: false, error: `No song matching "${songName}" found.` };
-        if (song.ambiguous) {
-            return {
-                success: false,
-                error: `Multiple songs match "${songName}" — be more specific.`,
-                matches: song.ambiguous,
-            };
-        }
+        const found = await lookupSong(songData.songs, songName);
+        if (found.failure) return found.failure;
+        const { song, matchedVia } = found;
 
         const idx = await findPlayedSongIdx(song);
         if (!idx) {
@@ -113,6 +97,7 @@ async function execute(args, context) {
         const result = {
             success: true,
             song_name: song.title,
+            ...(matchedVia ? { matched_via: matchedVia } : {}),
             difficulty,
             scope,
             your_score: parseYourScore(rankingHtml),

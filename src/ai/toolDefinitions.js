@@ -23,6 +23,9 @@ const renderMaimaiB50ImageTool = require('../tools/renderMaimaiB50Image');
 const renderMaimaiRatingHistoryTool = require('../tools/renderMaimaiRatingHistory');
 const getMaimaiChartPreviewTool = require('../tools/getMaimaiChartPreview');
 const getMaimaiRecentPlaysTool = require('../tools/getMaimaiRecentPlays');
+const getMaimaiRatingTargetsTool = require('../tools/getMaimaiRatingTargets');
+const getMaimaiB50ChangesTool = require('../tools/getMaimaiB50Changes');
+const getMaimaiScoreImpactTool = require('../tools/getMaimaiScoreImpact');
 const { getAllowedScopes } = require('../permissions/permissionStore');
 
 const TOOLS = [
@@ -51,6 +54,9 @@ const TOOLS = [
     renderMaimaiRatingHistoryTool,
     getMaimaiChartPreviewTool,
     getMaimaiRecentPlaysTool,
+    getMaimaiRatingTargetsTool,
+    getMaimaiB50ChangesTool,
+    getMaimaiScoreImpactTool,
 ];
 
 /**
@@ -77,6 +83,9 @@ const TOOL_SCOPES = {
     get_circle_rankings: 'leaderboard',
     get_maimai_friend_top_scores: 'leaderboard',
     get_maimai_own_top_scores: 'leaderboard',
+    get_maimai_rating_targets: 'leaderboard',
+    get_maimai_b50_changes: 'leaderboard',
+    get_maimai_score_impact: 'leaderboard',
     // The image cards show the same data as the tools they wrap, so they need
     // the same access; chart previews only use public song data.
     render_maimai_b50_image: 'leaderboard',

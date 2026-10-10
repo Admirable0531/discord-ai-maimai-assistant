@@ -1,6 +1,7 @@
 const { loadSongData } = require('../web/maimaiSongData');
 const { isUtageSong } = require('../web/maimaiChartLookup');
-const { fold, fallbackMatch, loadAliases } = require('../web/maimaiSongMatch');
+const { fold } = require('../web/maimaiSongMatch');
+const { findSongs } = require('../web/songResolver');
 const { searchWeb } = require('../web/searchProvider');
 const { attachFile } = require('../utils/outputs');
 const { COVER_HOST } = require('../render/theme');
@@ -23,15 +24,7 @@ const DIFFICULTY_ORDER = ['remaster', 'master', 'expert', 'advanced', 'basic'];
 const declaration = {
     name: 'get_maimai_chart_preview',
     description:
-        "Preview a maimai chart: a song card (cover art plus every chart's level, exact constant, note " +
-        'counts and charter) attached to your reply as an image, the details of one difficulty, and LINKS to watch the ' +
-        'chart — video search results (YouTube / niconico, "譜面確認"-style chart-confirmation videos) and the ' +
-        'song\'s RemyWiki page when it has one. Use it for "show me X", "how does X look / play", "chart ' +
-        'preview / video of X". It cannot render the chart itself — the videos are search results from other ' +
-        'people, so say they are results to check rather than guaranteed matches (title_matches: false ones ' +
-        'especially). Put the best video URL in your reply on its own line so Discord embeds it. The card is ' +
-        "attached automatically and you can't see it. Takes a song title or a nickname; it asks you to pick " +
-        'when several songs fit. Defaults: master difficulty, the DX chart when a song has both.',
+        'Preview a chart: a song card image (cover, every chart\'s level, constant, notes and charter), the details of one difficulty, and LINKS to watch it — chart-confirmation video search results (YouTube / niconico) and the RemyWiki page. For "show me X", "how does X look / play", "chart video of X". It can\'t render the chart itself: the videos are other people\'s uploads found by search, so present them as results to check (especially title_matches: false). Put the best video URL on its own line so Discord embeds it. Defaults to master, and the DX chart when a song has both.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -54,15 +47,8 @@ const declaration = {
 
 /** The one song `query` means, or a list to choose from, or nothing. */
 async function resolveSong(songs, query) {
-    const q = fold(query);
-    const real = songs.filter((s) => !isUtageSong(s));
-    let candidates = real.filter((s) => fold(s.title) === q);
-    if (candidates.length === 0) candidates = real.filter((s) => q && fold(s.title).includes(q));
-    if (candidates.length === 0) {
-        const aliases = await loadAliases();
-        candidates = real.filter((s) => fallbackMatch(s, query, aliases));
-    }
-    return candidates;
+    const { matches } = await findSongs(songs, query, (s) => !isUtageSong(s));
+    return matches.map((m) => m.song);
 }
 
 function pickSheet(song, difficulty, type) {

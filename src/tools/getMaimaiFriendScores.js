@@ -15,19 +15,7 @@ const MAX_PAGES = 8; // 41+ friends at ~10/page, with headroom
 const declaration = {
     name: 'get_maimai_friend_scores',
     description:
-        "Get one of this tracked account's friends' actual scores (achievement %%) on every Master/Re:Master " +
-        'chart at one exact difficulty constant (e.g. 14.3) — this is the "maimai bookmarklet"-style friend ' +
-        'comparison the /constant command in Discord_Bot uses, via the friend-versus-level page. Use this for ' +
-        '"what are Y\'s scores on 14.7" or similar per-friend-per-constant questions — get_maimai_song_ranking ' +
-        "answers the opposite direction (who's best on one song), and get_friend_leaderboard only has DX Rating, " +
-        'no per-song data at all. Only covers Master/Re:Master charts (constants roughly 1.0-15.0) — there is no ' +
-        'lower-difficulty equivalent on the site. A friend with no score on a chart shows friend_achievement: ' +
-        'null (unplayed), not zero. Each chart also carries the real clear badges read off the page: ' +
-        "friend_ap_fc / own_ap_fc (\"AP+\", \"AP\", \"FC+\", \"FC\", or null for none) and friend_rank / own_rank. " +
-        'Use friend_ap_fc — and ONLY friend_ap_fc — to say whether a friend AP\'d something: achievement %% never ' +
-        'proves AP, since a non-AP play can land in the same range as a true AP (confirmed live). Never call a ' +
-        'score AP because of its percentage, and never describe a score as being "in AP range" or similar — if ' +
-        'ap_fc is null, the play is simply not AP or FC, so say that or say nothing about its clear type.',
+        "One friend's scores on every Master/Re:Master chart at one exact constant (e.g. 14.3), side by side with the tracked account's, from the friend-versus page. For \"Y's scores on 14.7\". friend_achievement null means unplayed. friend_ap_fc / own_ap_fc and the ranks are read off the real badges — the only basis for saying a friend AP'd something. (get_maimai_song_ranking is who's best on one song; get_friend_leaderboard has rating only.)",
     parametersJsonSchema: {
         type: 'object',
         properties: {

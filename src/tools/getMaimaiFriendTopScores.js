@@ -13,26 +13,7 @@ const TIMEOUT_MS = 15000;
 const declaration = {
     name: 'get_maimai_friend_top_scores',
     description:
-        "Get one of this tracked account's friends' REAL best-scoring charts and total rating, straight off " +
-        "SEGA's own rating-breakdown page for that friend (the same page the maimai bookmarklet's \"Analyze " +
-        'Rating" opens) — not a guess assembled from sampling a few charts. Returns two lists (new_version_top_plays ' +
-        "and old_version_top_plays, matching the game's own rating-split categories, each entry with Song/Chart/" +
-        'Level/Achv/Rank/Rating) plus snapshot_rating, their total rating AT THE TIME OF THAT SNAPSHOT. IMPORTANT: ' +
-        'this snapshot comes from a daily scraper that does not run reliably for every friend — snapshot_age_days ' +
-        'can be months or even years for some friends. current_rating is cross-checked against the friend-list ' +
-        'leaderboard, which is written by a separate job — but that job can ALSO be broken, so neither number is ' +
-        'automatically the current one. Read current_rating_source: "daily_friend_leaderboard" means the ' +
-        'cross-check is recent and current_rating can be treated as their rating now; "stale_friend_leaderboard" ' +
-        'means that leaderboard has not run in a long time and current_rating is NOT their rating now (its age is ' +
-        'in current_rating_age_days, its date in current_rating_date); "unavailable" means the friend was not ' +
-        'found there and current_rating is null. freshest_rating_source names which of the two numbers is ' +
-        'actually more recent, and any freshness_warnings spell out what is wrong — follow them, and never ' +
-        "present a stale rating or rank as someone's standing right now. Do NOT treat an old snapshot as current " +
-        'just because you have nothing to compare it to; surface snapshot_age_days and say plainly that ' +
-        "freshness could not be verified. Use this for \"what's Y's " +
-        'highest rated play / best scores" — get_maimai_friend_scores answers a narrower but always-fresh ' +
-        'question (one difficulty constant at a time), and get_maimai_song_ranking answers a different direction ' +
-        "entirely (who's best on one song, not one friend's best charts).",
+        'One friend\'s best 50 (B15 new_version_top_plays + B35 old_version_top_plays, each with Song/Chart/Level/Achv/Rank/Rating) and snapshot_rating, from SEGA\'s rating-breakdown page, scraped daily but not reliably for every friend — snapshot_age_days can be months. current_rating comes from the friend leaderboard: trust it as their rating now only when current_rating_source is "daily_friend_leaderboard"; "stale_friend_leaderboard" means it is old (see current_rating_age_days), "unavailable" means null. freshest_rating_source says which number is newer; follow any freshness_warnings, and never present a stale rating as current. For "Y\'s best scores / highest rated play". Only the 50 charts that count — for scores at one constant use get_maimai_friend_scores, for who\'s best on one song get_maimai_song_ranking.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

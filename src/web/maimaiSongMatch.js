@@ -66,10 +66,10 @@ async function loadAliases() {
         aliasCache = { byTitle, expiresAt: Date.now() + ALIAS_TTL_MS };
     } catch (err) {
         logger.warn('songs', `Could not load LXNS song aliases: ${err.message}`);
-        // Retry in an hour rather than on every search while it's down.
+        // Retry in ten minutes rather than on every search while it is down.
         aliasCache = {
             byTitle: aliasCache?.byTitle || new Map(),
-            expiresAt: Date.now() + 60 * 60 * 1000,
+            expiresAt: Date.now() + 10 * 60 * 1000,
         };
     }
     return aliasCache.byTitle;
@@ -90,7 +90,10 @@ function fallbackMatch(song, query, aliasesByTitle) {
     if (!q) return null;
     const rq = romajiKey(query);
     if (rq.length >= MIN_ROMAJI_QUERY && romajiKey(song.title).includes(rq)) return 'romaji';
-    const alias = (aliasesByTitle.get(song.title) || []).find((a) => fold(a).includes(q));
+    // Aliases compared as written, and romanised: "つなぎて" is the alias "tsunagite".
+    const alias = (aliasesByTitle.get(song.title) || []).find(
+        (a) => fold(a).includes(q) || (rq.length >= MIN_ROMAJI_QUERY && romajiKey(a) === rq)
+    );
     return alias ? `alias "${alias}"` : null;
 }
 

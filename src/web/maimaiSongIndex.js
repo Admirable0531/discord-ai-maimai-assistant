@@ -59,15 +59,5 @@ async function findPlayedSongIdx(song) {
     return null;
 }
 
-/** Exact-then-unique-substring title match against loadSongData's song list, same convention as the other maimai tools. */
-function findSongInLocalData(songData, query) {
-    const q = query.trim().toLowerCase();
-    const matches = songData.songs.filter((s) => s.title.toLowerCase().includes(q));
-    if (matches.length === 0) return null;
-    const exact = matches.find((s) => s.title.toLowerCase() === q);
-    if (exact) return exact;
-    if (matches.length > 1) return { ambiguous: matches.map((s) => s.title) };
-    return matches[0];
-}
-
-module.exports = { findSongInLocalData, findPlayedSongIdx, levelToBucketLabel };
+// Turning a typed name into a song is songResolver.js's job.
+module.exports = { findPlayedSongIdx, levelToBucketLabel };

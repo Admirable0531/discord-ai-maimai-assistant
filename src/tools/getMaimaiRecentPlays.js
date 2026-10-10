@@ -9,17 +9,7 @@ const { drawCard } = require('../render/drawCard');
 const declaration = {
     name: 'get_maimai_recent_plays',
     description:
-        "Get this tracked account's recent plays — the last 50 the game keeps — from its own Game Record " +
-        'page, as structured data: when each was played, the chart (difficulty, level, DX or standard), ' +
-        'achievement %, rank, DX score, and the real clear / sync badges. A run of the same chart is grouped ' +
-        'into one session with its attempts oldest-first, so "practised one song 16 times" is one entry ' +
-        'showing how the score moved. Use it for "my recent plays", "what did I play today", "how is my ' +
-        'practice going", "did I set a new best". `song` narrows it to plays of one song. new_best marks a ' +
-        "session where a play beat the previous best. This is the tracked account's own history only (not a " +
-        "friend's), and it is capped at 50 plays by the game, so older plays are simply not there. IMAGE: pass " +
-        'as_image: true when the user wants to SEE it (show / post / a picture or timeline) — a card grouped by ' +
-        "day, with a sparkline per session, is attached to your reply automatically; you can't see it, so add a " +
-        "short comment from the data and don't re-list the sessions.",
+        'The tracked account\'s recent plays — the last 50 the game keeps — from its Game Record page: time, chart (difficulty, level, DX/standard), achievement, rank, DX score and the real clear/sync badges. A run of the same chart is grouped into one session with its attempts oldest-first. For "my recent plays", "what did I play today", "how is my practice going", "did I set a new best" (new_best marks one). `song` narrows it to one song. The tracked account only, and nothing older than 50 plays. as_image: true when they want to SEE it.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

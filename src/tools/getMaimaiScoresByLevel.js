@@ -6,24 +6,7 @@ const { drawCard } = require('../render/drawCard');
 const declaration = {
     name: 'get_maimai_scores_by_level',
     description:
-        'Get ALL of this tracked account\'s best scores at one displayed level ("14+", "13", …), each ' +
-        "with its chart constant (定数 / internal level), read live off the account's own Song Scores by " +
-        'Level page. This is the COMPLETE set of scores at that level — unlike get_maimai_own_top_scores, ' +
-        'which is only the 50 charts currently feeding the rating and therefore silently missing most ' +
-        'charts, especially at lower constants. Use this for "my best score at 14+/13/each constant", ' +
-        '"how many SSS do I have at 14", plate/将牌 progress, or anything needing scores the rating ' +
-        'breakdown would leave out. IMPORTANT: ask for a DISPLAYED level, not a constant — the game ' +
-        'groups constants 14.0-14.5 under "14" and 14.6-14.9 under "14+", so a question about constant ' +
-        '14.3 means fetching level "14" and reading the per-constant breakdown in the result. ' +
-        'best_per_constant gives the highest achievement at each constant directly. ap_fc comes from the ' +
-        "chart's actual AP/FC badge, so it is the only trustworthy way to say something is AP — never " +
-        'infer AP from the achievement %% alone. If constants_available is false, mai-tools (the ' +
-        'third-party script that supplies constants) failed to load, so every constant is null and ' +
-        'best_per_constant is empty — say so rather than falling back to guessing constants. IMAGE: pass ' +
-        'as_image: true when the user wants to SEE the table (show / post / a picture of it) — a card with the ' +
-        'best score at every constant, cover art, rank, AP/FC badge and how many charts are played is attached ' +
-        "to your reply automatically; you can't see it, so add a short comment and don't re-list the rows. It is " +
-        'also the way to give a long per-constant table without writing it out.',
+        'ALL of the tracked account\'s scores at one DISPLAYED level ("14", "14+", "13"…), each with its constant, AP/FC badge and rank, live from the Song Scores by Level page — the complete list, unlike the best 50. For "my best at 14+ / each constant", "how many SSS at 14", plate progress, or anything the best 50 would leave out. Ask for the displayed level: constants 14.0–14.5 are "14" and 14.6–14.9 "14+", so a question about 14.3 means level "14"; best_per_constant gives the best at each constant. If constants_available is false the constant source failed — say so rather than guessing. as_image: true draws the per-constant table.',
     parametersJsonSchema: {
         type: 'object',
         properties: {

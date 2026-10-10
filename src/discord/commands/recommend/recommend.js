@@ -1,77 +1,12 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { getSongRating, findMinAchvForRating } = require('../../../web/maimaiRatingMath');
-const { loadSnapshot, chartKey, freshnessNote } = require('../../../web/maimaiPlayerSnapshot');
+const { findCandidates } = require('../../../web/maimaiRatingTargets');
+const { loadSnapshot, freshnessNote } = require('../../../web/maimaiPlayerSnapshot');
 const { loadSongData } = require('../../../web/maimaiSongData');
-const { isUtageSong } = require('../../../web/maimaiChartLookup');
 const { TOKENS } = require('../../../render/theme');
 const { denyWithoutScope, describeFailure, suggestPlayers } = require('../../commandHelpers');
 
 const SHOWN_PER_SECTION = 8;
-const NEW_COUNT = 15;
-const OLD_COUNT = 35;
-const DIFFICULTIES = new Set(['expert', 'master', 'remaster']);
 const DEFAULT_TARGET = 100.0;
-
-/** "CiRCLE+" (rating pages) and "CiRCLE PLUS" (song data) are the same version. */
-function versionKey(version) {
-    return String(version || '')
-        .toLowerCase()
-        .replace(/\+/g, ' plus')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-/** The rating a new chart has to beat to enter this list: the lowest in it, or 0 while the list isn't full yet. */
-function cutoff(plays, size) {
-    return plays.length >= size ? Math.min(...plays.map((p) => p.rating)) : 0;
-}
-
-/**
- * Charts that would displace the lowest entry of the B15 / B35 at a score no
- * higher than `target`, skipping charts already in the best 50. The chart's own
- * score is unknown (only the best 50 is stored), so one the player has
- * already played below the cutoff can show up — it is "worth trying", not
- * "unplayed".
- */
-function findCandidates(songs, snapshot, target) {
-    const newVersions = new Set(snapshot.newPlays.map((p) => versionKey(p.version)));
-    const inBest = new Set(
-        [...snapshot.newPlays, ...snapshot.oldPlays].map((p) =>
-            chartKey(p.song, p.chartType, p.difficulty)
-        )
-    );
-    const cutoffs = {
-        new: cutoff(snapshot.newPlays, NEW_COUNT),
-        old: cutoff(snapshot.oldPlays, OLD_COUNT),
-    };
-    const found = { new: [], old: [] };
-
-    for (const song of songs) {
-        if (isUtageSong(song)) continue;
-        for (const sheet of song.sheets || []) {
-            const level = sheet.internalLevelValue;
-            if (!DIFFICULTIES.has(sheet.difficulty) || !Number.isFinite(level)) continue;
-            if (sheet.regions?.intl === false) continue; // the tracked account is on the international game
-            if (inBest.has(chartKey(song.title, sheet.type, sheet.difficulty))) continue;
-
-            const version = sheet.regionOverrides?.intl?.version || song.version;
-            const section = newVersions.has(versionKey(version)) ? 'new' : 'old';
-            const need = findMinAchvForRating(level, cutoffs[section] + 1);
-            if (!need || need.achv_needed > target) continue;
-
-            const atTarget = getSongRating(level, target)?.rating ?? 0;
-            found[section].push({
-                title: song.title,
-                type: sheet.type,
-                difficulty: sheet.difficulty,
-                level,
-                needed: need.achv_needed,
-                gain: atTarget - cutoffs[section],
-            });
-        }
-    }
-    return { found, cutoffs };
-}
 
 function line(c) {
     return (

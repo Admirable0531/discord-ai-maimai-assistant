@@ -33,6 +33,9 @@ const LABELS = {
     render_maimai_rating_history: '🖼️ Drawing the rating history',
     get_maimai_chart_preview: '🖼️ Fetching the chart preview',
     get_maimai_recent_plays: '📊 Loading recent plays',
+    get_maimai_rating_targets: '🧮 Working out rating targets',
+    get_maimai_b50_changes: '📊 Comparing B50 snapshots',
+    get_maimai_score_impact: '🧮 Working out what the score is worth',
 };
 const FALLBACK_LABEL = '⚙️ Working on it';
 

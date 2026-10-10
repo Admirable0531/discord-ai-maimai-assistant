@@ -1,5 +1,5 @@
 const { loadSongData } = require('../web/maimaiSongData');
-const { directMatch, fallbackMatch, loadAliases } = require('../web/maimaiSongMatch');
+const { findSongs } = require('../web/songResolver');
 const { buildSongCardHtml, WIDTH } = require('../render/songCard');
 const { buildSongCardModel } = require('../web/maimaiSongCardModel');
 const { drawCard } = require('../render/drawCard');
@@ -9,47 +9,26 @@ const MAX_RESULTS = 15;
 const declaration = {
     name: 'search_maimai_songs',
     description:
-        "Search the maimai DX song database for exact chart data: each difficulty's level (including the " +
-        'precise decimal internal level, not just the displayed rounded level like "13+"), BPM, artist, ' +
-        'category, note designer, note counts (tap/hold/slide/touch/break/total per chart), and which game ' +
-        'version a song was added in (intl_version when International got it in a different version). ' +
-        'Nicknames and loose spellings are handled: when nothing matches the title directly, it also tries ' +
-        'romanised kana ("apoc" finds アポカリプス…) and community aliases (mostly Chinese, e.g. 反逆焰), and ' +
-        "says which via matched_via — confirm a matched_via result with the user if it isn't obvious. Use this instead of " +
-        "search_web/read_webpage for any question about a specific song's difficulty, level, chart details, " +
-        "or release version — it's exact structured data pulled directly from the game data, not something " +
-        'read off a wiki page. For a question about ONE specific song (e.g. "what is X", "tell me about X", ' +
-        '"is X in international"), pass as_image: true to attach a song card — cover, every chart with its ' +
-        "constant and note counts, and which regions have it. You can't see it, so add a short comment and " +
-        "don't re-list the charts.",
+        'Exact song and chart data from the game\'s song list: each chart\'s level and precise constant (internal level), BPM, artist, category, charter, note counts per chart (tap/hold/slide/touch/break/total), and the version a song was added in (intl_version when International got it later). Use it — not the web — for any question about a song\'s charts, level, notes or version. Loose names work (romaji, community nicknames, simplified Chinese, typos); matched_via says how a loose match was made, so confirm it with the user if it isn\'t obvious. For a question about ONE song ("what is X", "is X in international"), pass as_image: true for a song card.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
             query: {
                 type: 'string',
-                description:
-                    'Song title, artist, nickname or romanised title to search for (partial match; case, ' +
-                    'full-width and accents are ignored, so "rondo" finds RONDØ).',
+                description: 'Title, artist, nickname or romanised title (partial match).',
             },
             artist: {
                 type: 'string',
-                description:
-                    'Filter to songs by this artist specifically (partial match, case-insensitive) — narrower ' +
-                    'than `query`, which also matches titles. Use this for "songs by X" requests where X might ' +
-                    'also coincidentally appear in some unrelated title.',
+                description: 'Only songs by this artist (partial match) — for "songs by X".',
             },
             category: {
                 type: 'string',
                 description:
-                    'Only include songs in this genre category, e.g. "POPS＆アニメ", "niconico＆ボーカロイド", ' +
-                    '"東方Project", "ゲーム＆バラエティ", "maimai", "オンゲキ＆CHUNITHM", "宴会場". Matching is ' +
-                    "flexible (partial, case-insensitive); if it doesn't resolve, the result lists the exact " +
-                    'category names to retry with.',
+                    'Genre category, e.g. "POPS＆アニメ", "niconico＆ボーカロイド", "東方Project", "maimai", "オンゲキ＆CHUNITHM", "宴会場". An unknown one returns the valid list.',
             },
             note_designer: {
                 type: 'string',
-                description:
-                    'Filter to charts credited to this note designer/chart maker (partial match). "-" in the data means uncredited.',
+                description: 'Only charts by this charter (partial match).',
             },
             difficulty: {
                 type: 'string',
@@ -74,23 +53,16 @@ const declaration = {
             version: {
                 type: 'string',
                 description:
-                    'Only include songs added in this game version, e.g. "PiNK PLUS", "CiRCLE", "BUDDiES PLUS". ' +
-                    'Versions come in pairs — a base version (e.g. "PiNK") and its follow-up (e.g. "PiNK PLUS") — ' +
-                    'so convert shorthand like "pink+" or "pink plus" to the base name plus "PLUS". Matching is ' +
-                    'flexible on case/spacing/"+" vs "plus", so pass your best guess; if it doesn\'t resolve, the ' +
-                    'result tells you the full list of valid version names to retry with.',
+                    'Only songs added in this version, e.g. "PiNK PLUS", "CiRCLE" ("pink+" works too). An unknown one returns the valid list.',
             },
             as_image: {
                 type: 'boolean',
-                description:
-                    'Draw a song card (cover, every chart with its constant and note counts, which regions have it) and attach it to the reply. Only when exactly one song matches — use it when someone asks about one specific song.',
+                description: 'Draw a song card for the one matching song.',
             },
             random: {
                 type: 'boolean',
                 description:
-                    'Instead of listing matches, pick one uniformly at random from everything matching the other ' +
-                    'filters. Use this for "give me a random song/chart to practice" style requests — e.g. ' +
-                    'random: true with difficulty "master" and min_level 13 for "give me a random 13+ master".',
+                    'Pick one match at random — "give me a random 13+ master to practise" (with difficulty and min_level).',
             },
         },
     },
@@ -200,31 +172,32 @@ async function execute(args, context) {
     // every real match, not just whichever happened to appear first in the
     // source data — truncation to MAX_RESULTS (when not random) happens
     // after the full scan instead.
-    function collect(matchQuery) {
-        const found = [];
-        for (const song of data.songs) {
-            let matchedVia = null;
-            if (query) {
-                matchedVia = matchQuery(song);
-                if (!matchedVia) continue;
-            }
-            if (artist && !normalize(song.artist).includes(artist)) continue;
-            if (resolvedVersion && song.version !== resolvedVersion) continue;
-            if (resolvedCategory && song.category !== resolvedCategory) continue;
-            if (minBpm !== null && (song.bpm == null || song.bpm < minBpm)) continue;
-            if (maxBpm !== null && (song.bpm == null || song.bpm > maxBpm)) continue;
+    /** The song's charts that pass every filter, or null when the song doesn't. */
+    function passingSheets(song) {
+        if (artist && !normalize(song.artist).includes(artist)) return null;
+        if (resolvedVersion && song.version !== resolvedVersion) return null;
+        if (resolvedCategory && song.category !== resolvedCategory) return null;
+        if (minBpm !== null && (song.bpm == null || song.bpm < minBpm)) return null;
+        if (maxBpm !== null && (song.bpm == null || song.bpm > maxBpm)) return null;
+        const sheets = song.sheets.filter((sheet) => {
+            if (difficulty && sheet.difficulty !== difficulty) return false;
+            if (type && sheet.type !== type) return false;
+            if (noteDesigner && !normalize(sheet.noteDesigner).includes(noteDesigner)) return false;
+            const level = sheet.internalLevelValue ?? sheet.levelValue;
+            if (minLevel !== null && level < minLevel) return false;
+            if (maxLevel !== null && level > maxLevel) return false;
+            return true;
+        });
+        if (hasSheetFilter && sheets.length === 0) return null;
+        return hasSheetFilter ? sheets : song.sheets;
+    }
 
-            const matchingSheets = song.sheets.filter((sheet) => {
-                if (difficulty && sheet.difficulty !== difficulty) return false;
-                if (type && sheet.type !== type) return false;
-                if (noteDesigner && !normalize(sheet.noteDesigner).includes(noteDesigner))
-                    return false;
-                const level = sheet.internalLevelValue ?? sheet.levelValue;
-                if (minLevel !== null && level < minLevel) return false;
-                if (maxLevel !== null && level > maxLevel) return false;
-                return true;
-            });
-            if (hasSheetFilter && matchingSheets.length === 0) continue;
+    function collect(entries) {
+        const found = [];
+        for (const { song, via } of entries) {
+            const sheets = passingSheets(song);
+            if (!sheets) continue;
+            const matchedVia = via;
 
             const intlVersion = song.sheets.find((sh) => sh.regionOverrides?.intl?.version)
                 ?.regionOverrides.intl.version;
@@ -239,7 +212,7 @@ async function execute(args, context) {
                     : {}),
                 releaseDate: song.releaseDate,
                 ...(matchedVia === true ? {} : matchedVia ? { matched_via: matchedVia } : {}),
-                charts: (hasSheetFilter ? matchingSheets : song.sheets).map((sheet) => ({
+                charts: sheets.map((sheet) => ({
                     type: sheet.type,
                     difficulty: sheet.difficulty,
                     level: sheet.level,
@@ -252,13 +225,16 @@ async function execute(args, context) {
         return found;
     }
 
-    let matches = collect((song) => directMatch(song, query));
-    // Only when the title/artist found nothing: loose matching on a short or
-    // common query would bury the real answer under false positives.
-    if (query && matches.length === 0) {
-        const aliasesByTitle = await loadAliases();
-        matches = collect((song) => fallbackMatch(song, query, aliasesByTitle));
-    }
+    // A search lists everything containing the query, so the exact-title tier is
+    // skipped; the looser tiers only run when nothing contains it (songResolver.js).
+    const entries = query
+        ? (
+              await findSongs(data.songs, query, (song) => passingSheets(song) !== null, {
+                  skipExact: true,
+              })
+          ).matches
+        : data.songs.map((song) => ({ song, via: true }));
+    const matches = collect(entries);
 
     if (random) {
         if (matches.length === 0) {
