@@ -8,7 +8,9 @@ const logger = require('../utils/logger');
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 12 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 20000;
+// A timeout or dropped connection is usually the CDN having a bad moment; a second try mostly works.
+const DOWNLOAD_ATTEMPTS = 2;
 const TRUSTED_HOSTS = new Set(['cdn.discordapp.com', 'media.discordapp.net']);
 
 // What each supported type's file starts with.
@@ -35,6 +37,24 @@ function declaredType(attachment) {
     if (SIGNATURES[fromHeader]) return fromHeader;
     const ext = (attachment.name || '').split('.').pop().toLowerCase();
     return TYPE_BY_EXTENSION[ext] || null;
+}
+
+/** Downloads `url`, retrying once on a timeout, a dropped connection or a 5xx. A 4xx (expired link, no access) is final. */
+async function download(url) {
+    let lastError;
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+        try {
+            const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+            if (response.ok) return Buffer.from(await response.arrayBuffer());
+            lastError = new Error(`HTTP ${response.status}`);
+            if (response.status < 500) break;
+        } catch (err) {
+            lastError = err;
+        }
+        if (attempt < DOWNLOAD_ATTEMPTS)
+            logger.warn('discord', `Image download failed, retrying: ${lastError.message}`);
+    }
+    throw lastError;
 }
 
 /**
@@ -81,11 +101,7 @@ async function collectImages(messages) {
                     skipped.push(`${name}: not hosted on Discord`);
                     continue;
                 }
-                const response = await fetch(url, {
-                    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-                });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = Buffer.from(await response.arrayBuffer());
+                const data = await download(url);
                 if (data.length > MAX_IMAGE_BYTES) {
                     skipped.push(`${name}: larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
                     continue;
@@ -119,8 +135,24 @@ function describeImages({ images, skipped }) {
     return parts.length > 0 ? `[${parts.join('. ')}]` : '';
 }
 
+/**
+ * A reply to send INSTEAD of asking the model, or null. When the user attached
+ * images and none could be read, a model that can't see them will still answer
+ * the question from what it knows — "what is this plate" got a confident
+ * description of the wrong plate. The prompt tells the model to say it can't
+ * see the image, but that's a request; this makes it certain.
+ */
+function unreadableImagesReply({ images, skipped }) {
+    if (images.length > 0 || skipped.length === 0) return null;
+    return (
+        `I couldn't read the image you sent (${skipped.join('; ')}), so I can't tell you what's in it. ` +
+        'Please send it again, or ask without it.'
+    );
+}
+
 module.exports = {
     collectImages,
+    unreadableImagesReply,
     describeImages,
     MAX_IMAGES,
     MAX_IMAGE_BYTES,

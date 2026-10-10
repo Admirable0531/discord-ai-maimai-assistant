@@ -3,7 +3,7 @@ const { getHistory, appendMessage } = require('../conversation/historyStore');
 const { generateReply } = require('../ai/agent');
 const { isOwner } = require('../permissions/permissionStore');
 const { tryHandleAdminCommand } = require('./adminCommands');
-const { collectImages, describeImages } = require('./imageInputs');
+const { collectImages, describeImages, unreadableImagesReply } = require('./imageInputs');
 const { createOutputs } = require('../utils/outputs');
 const { sendReply } = require('./replyDelivery');
 const { createMessageProgress } = require('./progress');
@@ -135,6 +135,14 @@ function registerMessageHandler(client, config) {
 
         // After the cooldown check, so a message that's ignored doesn't cost a download.
         const inputImages = await collectImages([replyContext?.referenced, message]);
+        const unreadable = unreadableImagesReply(inputImages);
+        if (unreadable) {
+            logger.warn('discord', `Not answering ${message.author.tag}: ${unreadable}`);
+            await message
+                .reply({ content: unreadable, allowedMentions: { repliedUser: false } })
+                .catch((err) => logger.error('discord', 'Could not send the image notice', err));
+            return;
+        }
         const imageNote = describeImages(inputImages);
         const body = [resolvedText || '(no text — just the attachment)', imageNote]
             .filter(Boolean)
