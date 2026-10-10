@@ -93,6 +93,11 @@ async function runAgent(adapter, history, userMessage, context) {
     // Set once any tool has returned text from the open web; from then on this
     // message may not write memory or knowledge (see untrustedContent.js).
     let readUntrusted = false;
+    // The budget is a cost guard, not a verdict on the question: a message that is
+    // still mid-research when it runs out (a multi-page search, say) gets one
+    // extension automatically, because the model does not reliably ask for more
+    // itself. It then hit the forced answer below with its work half done.
+    let autoExtended = false;
 
     async function runTool(call) {
         if (call.name === REQUEST_MORE_TOOL_CALLS) {
@@ -188,6 +193,16 @@ async function runAgent(adapter, history, userMessage, context) {
         const results = await Promise.all(
             response.toolCalls.map(async (call) => ({ call, result: await runTool(call) }))
         );
+
+        if (iteration + 1 >= maxIterations && !autoExtended && maxIterations < hard) {
+            autoExtended = true;
+            const before = maxIterations;
+            maxIterations = Math.min(hard, maxIterations + step);
+            logger.info(
+                'agent',
+                `${adapter.name} was still researching at ${before} tool calls — extending the budget to ${maxIterations}`
+            );
+        }
 
         // Nudge the model once its budget is nearly spent, so it knows it can
         // ask for more rather than hitting the forced final answer below.

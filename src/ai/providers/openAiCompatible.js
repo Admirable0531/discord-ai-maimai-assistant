@@ -14,6 +14,10 @@ const { hasDsml, extractDsml } = require('./dsmlToolCalls');
  * @param {object} [spec.policy]      overrides for initialOptions / afterToolCalls /
  *                                    onTruncated / requestBody (see deepseekProvider.js)
  */
+const FORCED_ANSWER_NOTE =
+    '[System note: you are out of tool calls for this message. Do not call any tool. Write your final ' +
+    "answer now from the results above, and say plainly what you couldn't find or finish.]";
+
 function createOpenAiCompatibleAdapter({ name, provider, apiUrl, settings, policy = {} }) {
     function recordUsage(data) {
         const usage = data?.usage;
@@ -104,10 +108,16 @@ function createOpenAiCompatibleAdapter({ name, provider, apiUrl, settings, polic
         },
 
         async send(conversation, opts, { forceText }) {
+            // tool_choice "none" alone is not enough: with the tools still declared the model
+            // may write the call it wanted as text (see dsmlToolCalls.js) and have no answer.
+            // Say plainly that it is time to answer. Sent with this request only.
+            const messages = forceText
+                ? [...conversation.messages, { role: 'user', content: FORCED_ANSWER_NOTE }]
+                : conversation.messages;
             const data = await post(
                 {
                     model: settings.model,
-                    messages: conversation.messages,
+                    messages,
                     tools: conversation.tools,
                     // Tools stay declared when forcing text: the history already
                     // holds tool calls, and dropping the declarations breaks that.
