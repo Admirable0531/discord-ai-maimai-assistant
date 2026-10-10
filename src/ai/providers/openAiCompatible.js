@@ -3,6 +3,7 @@
 const { estimateCostUsd } = require('../pricing');
 const { logUsage } = require('../../database/repositories/usageRepository');
 const logger = require('../../utils/logger');
+const { hasDsml, extractDsml } = require('./dsmlToolCalls');
 
 /**
  * @param {object} spec
@@ -117,19 +118,53 @@ function createOpenAiCompatibleAdapter({ name, provider, apiUrl, settings, polic
                 opts.timeoutMs
             );
             const choice = data.choices?.[0];
-            const message = choice?.message;
+            let message = choice?.message;
+            let text = (message?.content || '').trim();
+            let toolCalls = (message?.tool_calls || []).map((call) => {
+                let args = {};
+                try {
+                    args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+                } catch {
+                    // Malformed arguments: run the tool with none and let it say what's missing.
+                }
+                return { id: call.id, name: call.function.name, args };
+            });
+
+            // The model sometimes writes its tool call as text in its own markup instead of
+            // the structured field (see dsmlToolCalls.js). Turn it back into the call it
+            // stands for, and rebuild the assistant message so the tool results that follow
+            // have a tool_calls entry to answer; markup is never left in the reply.
+            if (toolCalls.length === 0 && hasDsml(text)) {
+                const parsed = extractDsml(text);
+                logger.warn(
+                    'agent',
+                    `${name} wrote tool calls as text (${parsed.calls.map((c) => c.name).join(', ') || 'unparseable'})`
+                );
+                text = parsed.text;
+                if (parsed.calls.length > 0) {
+                    toolCalls = parsed.calls.map((call, i) => ({
+                        id: `call_text_${Date.now()}_${i}`,
+                        name: call.name,
+                        args: call.args,
+                    }));
+                    message = {
+                        ...message,
+                        content: text || null,
+                        tool_calls: toolCalls.map((c) => ({
+                            id: c.id,
+                            type: 'function',
+                            function: { name: c.name, arguments: JSON.stringify(c.args) },
+                        })),
+                    };
+                    text = '';
+                } else {
+                    message = { ...message, content: text };
+                }
+            }
             return {
                 raw: message,
-                text: (message?.content || '').trim(),
-                toolCalls: (message?.tool_calls || []).map((call) => {
-                    let args = {};
-                    try {
-                        args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
-                    } catch {
-                        // Malformed arguments: run the tool with none and let it say what's missing.
-                    }
-                    return { id: call.id, name: call.function.name, args };
-                }),
+                text,
+                toolCalls,
                 finishReason: choice?.finish_reason,
                 truncated: choice?.finish_reason === 'length',
             };
