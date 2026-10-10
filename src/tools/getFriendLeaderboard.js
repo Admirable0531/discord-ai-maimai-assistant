@@ -48,6 +48,11 @@ const declaration = {
                 description:
                     'Also draw the leaderboard as an image and attach it to the reply (see the tool description).',
             },
+            top_n: {
+                type: 'integer',
+                description:
+                    "With as_image: how many of the top friends to draw (default 25, max 60). The image is read on a phone, so keep it short unless the user asks for everyone; the asker's own row is always added.",
+            },
         },
     },
 };
@@ -86,7 +91,8 @@ async function execute(args, context) {
                 : {}),
             friends: body.friends,
         };
-        if (args?.as_image === true) await addImage(result, body, ageDays, stale, context);
+        if (args?.as_image === true)
+            await addImage(result, body, ageDays, stale, context, args?.top_n);
         return result;
     } catch (err) {
         return { success: false, error: `Could not reach the maimai stats API: ${err.message}` };
@@ -98,7 +104,7 @@ async function execute(args, context) {
  * row (it sits on the fy list) is marked "you". A failure to draw leaves the
  * data intact and says why.
  */
-async function addImage(result, body, ageDays, stale, context) {
+async function addImage(result, body, ageDays, stale, context, topN) {
     const friends = Array.isArray(body.friends) ? body.friends : [];
     if (friends.length === 0) {
         result.image_error = 'There are no friends in this snapshot to draw.';
@@ -123,6 +129,7 @@ async function addImage(result, body, ageDays, stale, context) {
             stale,
             friends,
             highlightIndex,
+            maxRows: Number.isInteger(topN) ? Math.min(Math.max(topN, 1), 60) : undefined,
         }),
         width: WIDTH,
         filename: `leaderboard-${body.accountType}.png`,

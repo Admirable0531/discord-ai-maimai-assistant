@@ -5,6 +5,8 @@ const { findSongInLocalData, findPlayedSongIdx } = require('../web/maimaiSongInd
 const { getRankByAchievement } = require('../web/maimaiRatingMath');
 const { buildPlayHistoryHtml, WIDTH } = require('../render/playHistoryCard');
 const { drawCard } = require('../render/drawCard');
+const { parseRecentPlays } = require('../web/maimaiRecentPlays');
+const { fold } = require('../web/maimaiSongMatch');
 
 const declaration = {
     name: 'get_maimai_song_play_history',
@@ -18,7 +20,7 @@ const declaration = {
         'judgment can cost less than the break bonus adds back, landing a non-AP play in that same range), so ' +
         'always check is_ap here rather than inferring AP status from achievement_percent alone, for this ' +
         'tracked account. It only finds a chart the account has actually played at least once. ' +
-        "IMAGE: pass as_image: true for play-count and history questions ('my playcount for X', 'my history on X') as well as whenever the user wants to SEE it — they cover several difficulties at once, so a card (plays as bars, best score, rank, clear badges, last played) reads far better than a table. It is attached to your reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
+        "IMAGE: pass as_image: true for play-count and history questions ('my playcount for X', 'my history on X') as well as whenever the user wants to SEE it — they cover several difficulties at once, so a card (play count, best score, rank, clear badges, last played, and the individual scores of recent plays) reads far better than a table. It is attached to your reply automatically; you can't see it, so add a short comment from the data and don't re-list the rows.",
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -98,6 +100,32 @@ function parseDifficultyBlocks(html) {
     return blocks;
 }
 
+/**
+ * Scores of single plays of `song`, per difficulty, newest first, from the
+ * game's log of its last 50 plays. The song page itself only has a play count
+ * and the best score, so this is the only place a per-play score exists — and
+ * only for plays recent enough to still be in the log. Returns {} (never
+ * throws) when the log can't be read.
+ */
+async function recentScoresByDifficulty(song) {
+    try {
+        const { html } = await fetchAccountPage('/maimai-mobile/record/');
+        const wanted = fold(song.title);
+        const byDifficulty = {};
+        for (const play of parseRecentPlays(html)) {
+            if (fold(play.title) !== wanted || !play.difficulty) continue;
+            (byDifficulty[play.difficulty] ||= []).push({
+                achievement: play.achievement,
+                playedAt: play.played_at.replace(/\//g, '-'),
+                newRecord: play.new_record.achievement,
+            });
+        }
+        return byDifficulty;
+    } catch {
+        return {};
+    }
+}
+
 async function execute(args, context) {
     const songName = typeof args?.song_name === 'string' ? args.song_name.trim() : '';
     if (!songName) return { success: false, error: 'song_name is required.' };
@@ -140,6 +168,7 @@ async function execute(args, context) {
             url: finalUrl,
         };
         if (args?.as_image === true) {
+            const recent = await recentScoresByDifficulty(song);
             const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
             const drawn = await drawCard(context, {
                 html: buildPlayHistoryHtml({
@@ -172,6 +201,7 @@ async function execute(args, context) {
                                 ) ?? null,
                             stars: d.dx_stars,
                             lastPlayed: (d.last_played_date || '').replace(/\//g, '-'),
+                            recent: recent[d.difficulty] || [],
                         })),
                 }),
                 width: WIDTH,

@@ -1,69 +1,102 @@
-// Play history for one song: a row per difficulty with level, plays (a bar from
-// zero, so where the plays went is visible at a glance), best achievement,
-// rank, clear and sync badges, and when it was last played. Five of the last
-// month's questions were exactly this table, in text. Pure.
-const { TOKENS, BASE_CSS, escapeHtml, formatInt, coverUrl } = require('./theme');
+// Play history for one song: a block per difficulty that has been played, with
+// its play count, best achievement, rank, clear and sync badges, when it was
+// last played — and the individual scores of recent plays where the game still
+// has them. Pure.
+//
+// What the game's song page stores per difficulty is a play COUNT and the BEST
+// score, nothing per play. So "2 plays" can only ever come with one score from
+// that page; the scores of single plays exist only in the game's log of the
+// last 50 plays, which is where `recent` comes from. A play older than that has
+// a count but no score anywhere, and the card says so rather than letting a
+// count with one score look like a bug.
+//
+// Sized for a phone (see leaderboardCard.js): 640px wide, unplayed difficulties
+// folded into one line instead of taking a row each.
+const { TOKENS, BASE_CSS, escapeHtml, footerHtml, formatInt, coverUrl } = require('./theme');
 const { PARTS_CSS, difficultyPill, badgePills } = require('./parts');
 
-const WIDTH = 1000;
-const BAR_MAX = 190;
+const WIDTH = 640;
+const MAX_RECENT_SHOWN = 6;
 
 const CSS = `
 ${BASE_CSS}
 ${PARTS_CSS}
-.card { width: ${WIDTH}px; padding: 32px; }
-.top { display: flex; gap: 22px; align-items: center; }
-.cover { flex: 0 0 120px; width: 120px; height: 120px; border-radius: 10px; background: ${TOKENS.axis}; overflow: hidden; }
-.cover img { display: block; width: 120px; height: 120px; object-fit: cover; }
+.card { width: ${WIDTH}px; padding: 24px 22px 22px; }
+.top { display: flex; gap: 16px; align-items: center; }
+.cover { flex: 0 0 96px; width: 96px; height: 96px; border-radius: 10px; background: ${TOKENS.axis}; overflow: hidden; }
+.cover img { display: block; width: 96px; height: 96px; object-fit: cover; }
 .label { color: ${TOKENS.inkMuted}; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-.title { font-size: 34px; font-weight: 700; line-height: 1.15; margin-top: 4px; overflow-wrap: anywhere; }
-.sub { color: ${TOKENS.inkSecondary}; font-size: 16px; margin-top: 8px; }
-.rows { margin-top: 26px; display: flex; flex-direction: column; gap: 8px; }
-.head, .row { display: flex; align-items: center; gap: 16px; }
-.head { padding: 0 16px; color: ${TOKENS.inkMuted}; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-.row { height: 62px; padding: 8px 16px; background: ${TOKENS.raised}; border-radius: 8px; }
-.c-diff { flex: 0 0 96px; }
-.c-plays { flex: 0 0 ${BAR_MAX + 70}px; }
-.c-best { flex: 0 0 112px; text-align: right; }
-.c-rank { flex: 0 0 48px; }
-.c-badges { flex: 1; min-width: 0; white-space: nowrap; }
-.c-last { flex: 0 0 124px; text-align: right; }
-.row .c-last { color: ${TOKENS.inkSecondary}; font-size: 13px; }
-.bar { position: relative; height: 18px; background: ${TOKENS.series1}; border-radius: 0 4px 4px 0; min-width: 3px; }
-.bar .n { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); padding-left: 8px; font-size: 15px; font-weight: 700; white-space: nowrap; }
-.none { color: ${TOKENS.inkMuted}; font-size: 15px; }
-.achv { font-size: 20px; font-weight: 700; }
-.rank { color: ${TOKENS.inkSecondary}; font-size: 15px; font-weight: 600; }
-.stars { color: ${TOKENS.inkSecondary}; font-size: 13px; margin-left: 8px; }
-.footer { margin-top: 22px; color: ${TOKENS.inkMuted}; font-size: 12px; text-align: right; }
+.title { font-size: 28px; font-weight: 700; line-height: 1.15; margin-top: 4px; overflow-wrap: anywhere; }
+.sub { color: ${TOKENS.inkSecondary}; font-size: 16px; margin-top: 6px; line-height: 1.35; }
+.rows { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.block { padding: 14px 16px; background: ${TOKENS.raised}; border-radius: 10px; }
+.line1 { display: flex; align-items: center; gap: 10px; }
+.line1 .pill { font-size: 14px; padding: 2px 9px; }
+.achv { font-size: 26px; font-weight: 700; margin-left: auto; }
+.rank { color: ${TOKENS.inkSecondary}; font-size: 17px; font-weight: 600; min-width: 36px; }
+.line2 { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; font-size: 15px; color: ${TOKENS.inkSecondary}; }
+.line2 .bpill { font-size: 13px; }
+.stars { font-size: 14px; }
+.count { font-weight: 700; color: ${TOKENS.ink}; }
+.when { margin-left: auto; color: ${TOKENS.inkMuted}; font-size: 14px; }
+.recent { margin-top: 10px; padding-top: 10px; border-top: 1px solid ${TOKENS.axis}; font-size: 14px; color: ${TOKENS.inkSecondary}; line-height: 1.5; }
+.recent .h { color: ${TOKENS.inkMuted}; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 2px; }
+.recent .p { display: flex; justify-content: space-between; gap: 12px; }
+.recent .best { color: ${TOKENS.ink}; font-weight: 700; }
+.unplayed { margin-top: 14px; color: ${TOKENS.inkMuted}; font-size: 14px; }
 `;
+
+function recentBlock(recent, plays) {
+    if (!recent || recent.length === 0) return '';
+    const shown = recent.slice(0, MAX_RECENT_SHOWN);
+    const top = Math.max(...recent.map((p) => p.achievement));
+    const lines = shown
+        .map(
+            (p) =>
+                `<div class="p tabular"><span>${escapeHtml(p.playedAt || '')}</span><span class="${p.achievement === top ? 'best' : ''}">${p.achievement.toFixed(4)}%${p.newRecord ? ' ★ new best' : ''}</span></div>`
+        )
+        .join('');
+    const more =
+        recent.length > shown.length
+            ? `<div class="p"><span>+ ${recent.length - shown.length} older in the log</span><span></span></div>`
+            : '';
+    // The count includes plays the game no longer has a score for.
+    const missing =
+        plays > recent.length
+            ? `<div class="p"><span>${plays - recent.length} older play${plays - recent.length === 1 ? '' : 's'} — the game keeps no score for ${plays - recent.length === 1 ? 'it' : 'them'}</span><span></span></div>`
+            : '';
+    return `<div class="recent"><div class="h">Recent plays</div>${lines}${more}${missing}</div>`;
+}
 
 /**
  * @param {object} model
  * @param {string} model.title
  * @param {string|null} model.artist
  * @param {string|null} model.cover
- * @param {Array<{difficulty, level, plays, best, rank, clear, sync, stars, lastPlayed}>} model.rows  easiest first
+ * @param {Array<{difficulty, level, plays, best, rank, clear, sync, stars, lastPlayed, recent?}>} model.rows
+ *        easiest first; `recent` is [{achievement, playedAt, newRecord}] newest first, when known
  */
 function buildPlayHistoryHtml({ title, artist, cover, rows }) {
     const total = rows.reduce((n, r) => n + (r.plays || 0), 0);
-    const max = Math.max(...rows.map((r) => r.plays || 0), 1);
+    const played = rows.filter((r) => r.plays > 0 || r.best != null);
+    const unplayed = rows.filter((r) => !(r.plays > 0 || r.best != null));
     const img = coverUrl(cover, true);
-    const body = rows
-        .map((r) => {
-            const bar = r.plays
-                ? `<div class="bar" style="width:${Math.max(3, Math.round((r.plays / max) * BAR_MAX))}px"><span class="n tabular">${formatInt(r.plays)}</span></div>`
-                : '<span class="none">–</span>';
-            return `<div class="row">
-  <div class="c-diff">${difficultyPill(r.difficulty, r.level)}</div>
-  <div class="c-plays">${bar}</div>
-  <div class="c-best achv tabular">${r.best == null ? '–' : `${r.best.toFixed(4)}%`}</div>
-  <div class="c-rank rank">${escapeHtml(r.rank || '')}</div>
-  <div class="c-badges">${badgePills(r.clear, r.sync)}${r.stars ? `<span class="stars tabular">★${r.stars}</span>` : ''}</div>
-  <div class="c-last tabular">${escapeHtml(r.lastPlayed || '')}</div>
-</div>`;
-        })
+
+    const body = played
+        .map(
+            (r) => `<div class="block">
+  <div class="line1">${difficultyPill(r.difficulty, r.level)}<span class="rank">${escapeHtml(r.rank || '')}</span><span class="achv tabular">${r.best == null ? '–' : `${r.best.toFixed(4)}%`}</span></div>
+  <div class="line2"><span class="count tabular">${formatInt(r.plays || 0)} play${r.plays === 1 ? '' : 's'}</span>${badgePills(r.clear, r.sync)}${r.stars ? `<span class="stars tabular">★${r.stars}</span>` : ''}<span class="when tabular">${escapeHtml(r.lastPlayed ? `last ${r.lastPlayed}` : '')}</span></div>
+  ${recentBlock(r.recent, r.plays || 0)}
+</div>`
+        )
         .join('');
+    const unplayedLine =
+        unplayed.length > 0
+            ? `<div class="unplayed">Not played: ${unplayed.map((r) => `${escapeHtml(String(r.difficulty).slice(0, 3).toUpperCase())}${r.level ? ` ${escapeHtml(r.level)}` : ''}`).join(' · ')}</div>`
+            : '';
+    const anyScoreMissing = played.some((r) => (r.plays || 0) > (r.recent?.length || 0));
+
     return `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
 <div class="card">
   <div class="top">
@@ -71,14 +104,12 @@ function buildPlayHistoryHtml({ title, artist, cover, rows }) {
     <div>
       <div class="label">Your play history</div>
       <div class="title">${escapeHtml(title)}</div>
-      <div class="sub">${artist ? `${escapeHtml(artist)} · ` : ''}${formatInt(total)} play${total === 1 ? '' : 's'} across ${rows.length} difficult${rows.length === 1 ? 'y' : 'ies'}</div>
+      <div class="sub">${artist ? `${escapeHtml(artist)}<br>` : ''}${formatInt(total)} play${total === 1 ? '' : 's'} · ${played.length} of ${rows.length} difficult${rows.length === 1 ? 'y' : 'ies'} played</div>
     </div>
   </div>
-  <div class="rows">
-    <div class="head"><span class="c-diff">Chart</span><span class="c-plays">Plays</span><span class="c-best">Best</span><span class="c-rank">Rank</span><span class="c-badges">Clear</span><span class="c-last">Last played</span></div>
-    ${body}
-  </div>
-  <div class="footer">Bars start at zero · clear badges read from the game's own icons · Generated by Atri</div>
+  <div class="rows">${body}</div>
+  ${unplayedLine}
+  ${footerHtml(anyScoreMissing ? 'The game stores a play count and the best score per difficulty; single scores exist only for its last 50 plays.' : '')}
 </div>
 </body></html>`;
 }
