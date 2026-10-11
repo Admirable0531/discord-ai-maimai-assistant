@@ -37,6 +37,7 @@ const LABELS = {
     get_maimai_b50_changes: '📊 Comparing B50 snapshots',
     get_maimai_score_impact: '🧮 Working out what the score is worth',
     get_maimai_plate_progress: '🏅 Checking plate progress',
+    get_maimai_judgement_loss: '🧮 Working out what each judgement costs',
 };
 const FALLBACK_LABEL = '⚙️ Working on it';
 

@@ -84,6 +84,18 @@ module.exports = {
             }
         } catch (err) {
             logger.error('discord', `/ask failed for ${interaction.user.tag}`, err);
+            try {
+                appendMessage({ userId, guildId, channelId, role: 'user', content: question });
+                appendMessage({
+                    userId,
+                    guildId,
+                    channelId,
+                    role: 'assistant',
+                    content: '(That question failed with an error and was not answered.)',
+                });
+            } catch (historyErr) {
+                logger.warn('discord', 'Could not remember a failed question', historyErr);
+            }
             await progress.finish();
             await interaction.editReply({
                 content:

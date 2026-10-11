@@ -13,6 +13,29 @@ const { onCooldown } = require('./cooldown');
 
 const REPLY_CONTEXT_MAX_LENGTH = 800;
 
+const FAILED_NOTE = '(That question failed with an error and was not answered.)';
+
+/** Saves a question that could not be answered, so "try again" retries it rather than an older one. */
+function rememberFailedQuestion({ userId, guildId, channelId, promptText }) {
+    try {
+        appendMessage({ userId, guildId, channelId, role: 'user', content: promptText });
+        appendMessage({ userId, guildId, channelId, role: 'assistant', content: FAILED_NOTE });
+    } catch (err) {
+        logger.warn('discord', 'Could not remember a failed question', err);
+    }
+}
+
+/** Runs `send` and, if it throws (a network blip reaching Discord), tries once more after a short wait. */
+async function withRetry(send) {
+    try {
+        return await send();
+    } catch (err) {
+        logger.warn('discord', `Discord send failed, retrying once: ${err.message}`);
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        return send();
+    }
+}
+
 const INTRO =
     "Hi, I'm Atri — ask me anything about maimai: songs and charts, your B50 and rating, scores, " +
     'friends and circles. Mention me with a question, or use `/ask`. `/help` lists everything I can do.';
@@ -183,16 +206,16 @@ function registerMessageHandler(client, config) {
             });
         } catch (err) {
             logger.error('discord', `Failed to answer ${message.author.tag}`, err);
+            // Keep the question: otherwise "try again" has nothing to refer to and the
+            // model goes back to the last question that DID get answered.
+            rememberFailedQuestion({ userId, guildId, channelId, promptText });
             const notice =
                 'Sorry, something went wrong answering that. Please try again in a moment.';
             const status = await progress.take().catch(() => null);
             // The status message, if there is one, becomes the apology rather than being left saying "working on it".
-            const sent = status
-                ? status.edit({ content: notice, components: [] })
-                : message.reply(notice);
-            await sent.catch((replyErr) =>
-                logger.error('discord', 'Could not send error reply', replyErr)
-            );
+            await withRetry(() =>
+                status ? status.edit({ content: notice, components: [] }) : message.reply(notice)
+            ).catch((replyErr) => logger.error('discord', 'Could not send error reply', replyErr));
         }
     });
 }

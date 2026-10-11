@@ -146,6 +146,21 @@ async function runAgent(adapter, history, userMessage, context) {
 
         if (response.toolCalls.length === 0) {
             if (!response.text) {
+                // Reasoning can use the whole token budget and leave nothing to say
+                // (finish reason "length"). That is a budget problem, not a broken
+                // provider: widen it once before giving the question to the fallback.
+                if (response.truncated && !retriedAfterTruncation) {
+                    const retryOpts = adapter.onTruncated(opts);
+                    if (retryOpts) {
+                        retriedAfterTruncation = true;
+                        logger.warn(
+                            'agent',
+                            `${adapter.name} ran out of tokens before writing anything — retrying with a wider budget`
+                        );
+                        opts = retryOpts;
+                        continue;
+                    }
+                }
                 logger.warn('agent', `${adapter.name} returned no text and no tool calls`, {
                     finishReason: response.finishReason,
                 });
