@@ -39,3 +39,9 @@ Experiments run with `src/sim` (virtual hands, the game's judging copied from fa
 ## Open questions
 - Is a normal finger really as small as the model's 0.055 to 0.09 ring radii? The Japanese guide's "touching 5 drags in 4" on E5 with ordinary play suggests real contacts (or the hand above the glass) are wider than the model's fingertips. Marked splash spots would settle it.
 - Which note takes a press shared by a touch and a tap on the same sensor?
+
+## Checked online (Oct 2026)
+Searches in English, Japanese and Chinese, plus the sega.bsnk.me maimai touchscreen page. What was found and not found:
+- **Found:** the original (pre-DX) touchscreen is read through an 838-15221 board over a serial text protocol that reports one bit per sensor (A1-A8, B1-B8, C) and lets the game set a **threshold per sensor**, so sensitivity can differ between cabinets. A community description says maimai has "fewer and individually larger touch areas" than other games, which causes more splashing, "especially when sliding over" a held note. The judging facts in `judge-facts.md` (60 fps, per-frame sensor state) match the Chinese 判定全解 summaries.
+- **Not found:** the sensor technology (infrared or capacitive), the physical sensor layout, whether neighbouring sensors react together, how wide a normal finger's effective contact is, and which note takes a press that two notes could use. The Bilibili 判定全解 articles block automated reading, and the pages that came back were general.
+- So the open questions below (contact size, shared-press order) stay open until someone marks real splash spots or reads the game's code; the contact-size results in the simulation remain estimates.
