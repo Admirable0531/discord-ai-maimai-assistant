@@ -14,7 +14,7 @@ A Discord bot for a maimai DX community. It answers in chat with tools (DeepSeek
 
 `/chartcheck song difficulty` (and the `analyze_maimai_chart` chat tool) reads a chart from the simai wiki and lists, in plain language:
 
-- **Splash risks**: places where a sensor can trigger the wrong note (rules A1, A2, A4 to A7, A9, A13 to A15).
+- **Splash risks**: places where a sensor can trigger the wrong note (rules A1, A2, A4 to A7, A9, A13 to A16).
 - **Rhythm and speed changes**: rhythm change, BPM change, bursts and jacks (B1, B2, B4, B5).
 
 Touches and slide ends have wide Perfect windows, so findings that involve only them are softened. Chart text is analysed but never reposted in Discord.

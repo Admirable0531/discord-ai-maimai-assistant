@@ -162,3 +162,10 @@ test('only a double slide makes a slide strip yellow; a simultaneous tap only ye
     const double = dataOf('(120){4}1-5[4:1]/2-6[4:1],,,,E').events.filter((e) => e.k === 's');
     assert.ok(double.every((e) => e.e));
 });
+
+test('a tap beside a slide start is flagged (A16), and two touches beside each other are not', () => {
+    const rules = (text) => analyse(buildChart(text)).map((f) => f.rule);
+    assert.ok(rules('(120){4}1-5[4:1],2,,,\nE').includes('A16'));
+    assert.ok(!rules('(120){4}1-5[4:1],5,,,\nE').includes('A16'));
+    assert.ok(!rules('(120){4}A1,A2,,,\nE').includes('A3'));
+});

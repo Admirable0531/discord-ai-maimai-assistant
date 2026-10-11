@@ -405,3 +405,12 @@ Arrow spacing in the game is about 0.09 of the ring radius.
   sounds, distinct simultaneous sound, a hitsound offset in ms, BPM and note counts, keep playing
   after seeking, and the chart text following the timeline (local network page only; a page
   attached to Discord never carries chart text).
+
+### Japanese guides: what they add (Oct 2026)
+
+Sources: gamerch maimai 攻略wiki (上達・攻略への指南書, 用語集), kioblog's "有名配置10選".
+
+- **巻き込み** is defined as: taking one note also judges another at the same time, common because of the button + touch-screen double input.
+- **Star then slide**: button players take the star, then touch the screen to slide; that screen touch easily catches the *next* star and gives an early Good. Added as rule A16 (a tap beside a slide's start, from 100 ms before it moves to 150 ms after).
+- **Named patterns**: ウミユリ配置 (EACH + slide star, tap, EACH + slide star, repeated), デスサイズ配置 (outer-rim adjacent taps while slides run), 連続巻き込みスライド (star-and-slide chains where slides wrap round neighbouring stars), 一筆書きスライド. The slide-route rules (A4, A5, A15) and A16 cover the mechanisms; the named patterns themselves are not detected yet.
+- One chart note: やがてその歌声は世界を創った — touching 5 easily drags in 4, which matches the sensor map (E5 borders A4 and A5, rule A1).

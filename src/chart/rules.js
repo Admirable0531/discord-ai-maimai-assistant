@@ -438,6 +438,33 @@ function tapOnSlideRoute(paths, events, cfg) {
     return out;
 }
 
+/**
+ * A16: a tap on the lane next to a slide's start, just as the slide begins moving.
+ * Button players take the star, then touch the screen on that lane to start the
+ * slide; the touching finger covers the neighbouring sensor and catches that tap
+ * early (an "early Good"). Named from the Japanese guides' 巻き込み advice.
+ */
+function tapBesideSlideStart(events) {
+    const out = [];
+    const notes = events.filter(isButtonHit);
+    for (const slide of events.filter((e) => e.kind === 'slide')) {
+        for (const note of notes) {
+            if (ringDistance(note.lane, slide.head) !== 1) continue;
+            const gap = note.time - slide.start; // > 0: the tap comes after the slide starts moving
+            if (gap < -0.1 || gap > 0.15) continue;
+            out.push({
+                rule: 'A16',
+                severity: Math.abs(gap) <= 0.06 ? 2 : 1,
+                time: Math.min(note.time, slide.start),
+                bar: note.bar,
+                notes: [slideLabel(slide), label(note)],
+                text: `${cap(phrase(note))} sits next to the start of the ${slideLabel(slide)}, ${gap >= 0 ? `${Math.round(gap * 1000)} ms after the slide starts moving` : `${Math.round(-gap * 1000)} ms before the slide starts moving`}. The finger that sets the slide off covers the neighbouring sensor and can catch that note early.`,
+            });
+        }
+    }
+    return out;
+}
+
 /** A6: two slides that use the same sensor at about the same time. */
 function slideBesideSlide(paths, cfg) {
     const out = [];
@@ -537,6 +564,7 @@ function analyse(chart, overrides = {}) {
         ...touchBesideButton(chart.events, cfg),
         ...touchBesideHold(chart.events, cfg),
         ...tapOnSlideRoute(paths.known, chart.events, cfg),
+        ...tapBesideSlideStart(chart.events),
         ...touchGroups(chart.events, cfg),
         ...adjacentBrush(chart.events, cfg),
         ...jacks(chart.events, cfg),

@@ -10,6 +10,7 @@ const RULE_NAMES = {
     A9: 'adjacent-button run',
     A13: 'note blocked by a slide end',
     A15: 'tap beside a slide route',
+    A16: 'tap beside a slide start',
     A14: 'touch group (more than half clears it)',
     B1: 'rhythm change',
     B2: 'BPM change',
