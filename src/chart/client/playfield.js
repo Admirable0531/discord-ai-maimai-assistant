@@ -6,7 +6,18 @@
 // notes growing as they run out from the centre, hollow-star slide heads and
 // dense chevron strips that follow the slide's real shape.
 
-const DEF = { speed: 5, note: 1, slideSize: 1, slideGap: 1, appear: 0.8, labels: 1, guides: 1 };
+const DEF = {
+    tapSpeed: 7.5,
+    touchSpeed: 7.5,
+    tapScale: 1,
+    holdScale: 1,
+    touchScale: 1,
+    slideScale: 1,
+    slideGap: 1,
+    slideOffset: 0,
+    labels: 1,
+    guides: 1,
+};
 let cfg = Object.assign({}, DEF);
 try {
     Object.assign(cfg, JSON.parse(localStorage.getItem('chartViewerCfg') || '{}'));
@@ -20,9 +31,35 @@ const saveCfg = () => {
         /* ignore */
     }
 };
-const approach = () => 4 / cfg.speed;
+// Motion rules follow the game's: distances in units where the judgement ring is 4.8.
+const U = 4.8;
+const INNER = 1.225; // a button note appears here and grows in place before it runs outward
+const RATE = 0.265;
+/** Where a button note due at time t is on its lane (fraction of the ring radius) and how big it is. */
+function tapState(t) {
+    const d = U - (t - at) * cfg.tapSpeed;
+    if (d >= INNER) return { frac: Math.min(1, d / U), scale: 1 };
+    const scale = d * RATE + (1 - RATE * INNER);
+    return { frac: INNER / U, scale: Math.max(0, Math.min(1, scale)) };
+}
+/** Seconds before the hit that a button note first appears. */
+const tapLead = () => (U + (1 - RATE * INNER) / RATE) / cfg.tapSpeed;
+const touchWhole = () => 3.209385682 * Math.pow(cfg.touchSpeed, -0.9549621752);
+/** A touch note fades in, then its four triangles close in, quickly at the end. */
+function touchState(t) {
+    const whole = touchWhole();
+    const move = 0.8 * whole;
+    const tau = at - t; // negative before the hit
+    if (-tau > whole) return null;
+    const alpha = -tau > move ? Math.max(0, Math.min(1, (whole + tau) / (0.2 * whole))) : 1;
+    let gap = 0.4;
+    if (-tau <= move)
+        gap = Math.max(0, Math.min(0.4, -Math.exp(8 * ((tau * 0.43) / move) - 0.85) + 0.42));
+    return { alpha, gap: (gap / U) * R };
+}
+/** Slide arrows start to fade in this long before the star lands. */
+const slideLead = () => 3.926913 / cfg.tapSpeed + cfg.slideOffset;
 const TRAIL = 0.25;
-const SPAWN = 0.12; // where a note starts, as a fraction of the ring radius
 
 const COL = {
     tap: '#ff4fa3',
@@ -49,9 +86,10 @@ function xy(name) {
     const L = name[0];
     const n = +name.slice(1);
     const a = L === 'A' || L === 'B' ? ang(n) : (45 * (n - 1) * Math.PI) / 180;
-    return pt(a, { A: 0.8, B: 0.5, D: 0.97, E: 0.68 }[L] * R);
+    return pt(a, { A: 0.78, B: 0.405, D: 0.88, E: 0.575 }[L] * R);
 }
-const laneAt = (lane, p) => pt(ang(lane), R * (SPAWN + (1 - SPAWN) * p));
+/** A point on a lane at `frac` of the ring radius. */
+const laneAt = (lane, frac) => pt(ang(lane), R * frac);
 
 // ----- slide shapes: the path the chevrons actually follow -----
 function arcPts(a0, sweep, r0, r1) {
@@ -81,6 +119,37 @@ function loopPts(sLane, eLane, dir) {
     out.push(pt(a1, R));
     return out;
 }
+/**
+ * pp/qq slide: in through the centre, round a circle (radius ~0.46R, centred
+ * toward the diagonal two lanes along), out to the ring two lanes back, then
+ * along the ring; the longer variants finish with a pass through the centre.
+ * Built to match the sensor sequences of the judging tables.
+ */
+function outerLoopPts(sLane, eLane, dir) {
+    const rc = R * 0.4619;
+    const a0 = ang(sLane);
+    const ac = a0 - dir * ((67.5 * Math.PI) / 180); // direction of the circle's centre
+    const [cx, cy] = pt(ac, rc);
+    const onCircle = (phi) => [cx + rc * Math.sin(phi), cy - rc * Math.cos(phi)];
+    const phi0 = ac + Math.PI; // the circle passes through the centre of the screen
+    const out = [pt(a0, R), [C, C]];
+    const sweep = (135 * Math.PI) / 180;
+    const n = 14;
+    for (let i = 1; i <= n; i++) out.push(onCircle(phi0 + (dir * sweep * i) / n));
+    const entry = wrap8(sLane - 2 * dir);
+    const k = (((dir * (eLane - sLane)) % 8) + 8) % 8;
+    out.push(dot(entry));
+    if (k === 6) return out;
+    const rimSteps = k === 0 ? 2 : 1;
+    out.push(...arcPts(ang(entry), dir * rimSteps * (Math.PI / 4), R * 0.97, R * 0.97).slice(1));
+    if (k === 7 || k === 0) return out;
+    // tail through the inside back out to the end button
+    const b = (lane) => pt(ang(lane), R * 0.405);
+    if (k >= 3) out.push(b(sLane), [C, C], b(eLane), dot(eLane));
+    else if (k === 2) out.push(b(sLane), b(wrap8(sLane + dir)), dot(eLane));
+    else out.push(b(sLane), dot(eLane));
+    return out;
+}
 function segPts(shape, s, via) {
     const e = via[via.length - 1];
     const dir = /Ccw/.test(shape) ? -1 : 1;
@@ -97,20 +166,8 @@ function segPts(shape, s, via) {
         case 'CurveCcw':
             return loopPts(s, e, dir);
         case 'EdgeCurveCw':
-        case 'EdgeCurveCcw': {
-            const len = f + 1;
-            const at = (k) => wrap8(s + dir * k);
-            const out = [dot(s), [C, C], pt(ang(at(5)), R * 0.6), dot(at(6))];
-            if (len === 7) return out;
-            out.push(...arcPts(ang(at(6)), dir * (Math.PI / 4), R * 0.97, R * 0.97).slice(1));
-            if (len === 8) return out;
-            if (len === 1)
-                return out.concat(
-                    arcPts(ang(at(7)), dir * (Math.PI / 4), R * 0.97, R * 0.97).slice(1)
-                );
-            out.push(dot(e));
-            return out;
-        }
+        case 'EdgeCurveCcw':
+            return outerLoopPts(s, e, dir);
         case 'EdgeFold':
             return [dot(s), dot(via[0]), dot(e)];
         case 'ZigZagS':
@@ -179,10 +236,11 @@ function along(p, d) {
 // ----- drawing helpers -----
 /** The strip's opacity: 0.5 after a 0.2 s fade-in, 1 from 50 ms before the star reaches its button. */
 function slideAlpha(e) {
-    const start = e.t - cfg.appear;
+    const lead = slideLead();
+    const start = e.t - lead;
     if (at < start) return 0;
     if (at >= e.t - 0.05) return 1;
-    return 0.5 * Math.min(1, (at - start) / Math.min(0.2, Math.max(0.01, cfg.appear - 0.05)));
+    return 0.5 * Math.min(1, (at - start) / Math.min(0.2, Math.max(0.01, lead - 0.05)));
 }
 function glow(g, on) {
     if (on) {
@@ -190,7 +248,8 @@ function glow(g, on) {
         g.shadowBlur = 16;
     }
 }
-function tapNote(g, x, y, r, c, ex, brk) {
+function tapNote(g, x, y, r0, c, ex, brk) {
+    const r = Math.max(r0, 4);
     const band = Math.max(3, r * 0.36);
     g.save();
     glow(g, ex);
@@ -242,7 +301,8 @@ function starPath(g, x, y, r) {
     }
     g.closePath();
 }
-function starNote(g, x, y, r, sc, ex) {
+function starNote(g, x, y, r0, sc, ex) {
+    const r = Math.max(r0, 3);
     g.save();
     glow(g, ex);
     starPath(g, x, y, r);
@@ -280,7 +340,8 @@ function hexOutline(g, x1, y1, x2, y2, w, k) {
     g.lineTo(x1 - nx * w, y1 - ny * w);
     g.closePath();
 }
-function holdNote(g, tx, ty, hx, hy, r, c, ex) {
+function holdNote(g, tx, ty, hx, hy, r0, c, ex) {
+    const r = Math.max(r0, 4);
     g.save();
     glow(g, ex);
     hexOutline(g, tx, ty, hx, hy, r, r * 0.75);
@@ -297,7 +358,8 @@ function holdNote(g, tx, ty, hx, hy, r, c, ex) {
     g.strokeStyle = c;
     g.stroke();
 }
-function touchNote(g, x, y, r, c, gap, ex, held) {
+function touchNote(g, x, y, r0, c, gap, ex, held) {
+    const r = Math.max(r0, 3);
     g.save();
     glow(g, ex);
     for (let i = 0; i < 4; i++) {
@@ -350,8 +412,22 @@ function chevron(g, x, y, tx, ty, size, col, alpha) {
     g.globalAlpha = 1;
 }
 
-// ----- sensor outlines -----
-function polygon(g, x, y, r, sides, rot) {
+// ----- sensor layout: the real panel tiles the whole circle -----
+const D2R = Math.PI / 180;
+function sector(g, a0, a1, r0, r1) {
+    g.beginPath();
+    const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) / 0.08));
+    for (let i = 0; i <= n; i++) {
+        const [x, y] = pt(a0 + ((a1 - a0) * i) / n, r1);
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    for (let i = n; i >= 0; i--) {
+        const [x, y] = pt(a0 + ((a1 - a0) * i) / n, r0);
+        g.lineTo(x, y);
+    }
+    g.closePath();
+}
+function regularPolygon(g, x, y, r, sides, rot) {
     g.beginPath();
     for (let i = 0; i < sides; i++) {
         const a = rot + (i * 2 * Math.PI) / sides;
@@ -359,31 +435,42 @@ function polygon(g, x, y, r, sides, rot) {
     }
     g.closePath();
 }
-const SENSORS = [];
-for (let n = 1; n <= 8; n++) {
-    SENSORS.push(['A' + n, 5], ['B' + n, 6], ['D' + n, 4], ['E' + n, 4]);
+/** The outline of one sensor, ready to stroke or fill. */
+function sensorShape(g, name) {
+    const L = name[0];
+    const n = +name.slice(1);
+    const [x, y] = xy(name);
+    if (L === 'C') return regularPolygon(g, x, y, R * 0.17, 8, Math.PI / 8);
+    if (L === 'B') return regularPolygon(g, x, y, R * 0.145, 8, Math.PI / 8);
+    if (L === 'E') {
+        const diamond = n % 2 === 1;
+        if (diamond) return regularPolygon(g, x, y, R * 0.15, 4, 0);
+        return regularPolygon(g, x, y, R * 0.14, 4, Math.PI / 4);
+    }
+    if (L === 'A') return sector(g, ang(n) - 15 * D2R, ang(n) + 15 * D2R, R * 0.62, R * 0.995);
+    return sector(
+        g,
+        ((45 * (n - 1) - 7.5) * Math.PI) / 180,
+        ((45 * (n - 1) + 7.5) * Math.PI) / 180,
+        R * 0.76,
+        R * 0.995
+    );
 }
-SENSORS.push(['C', 0]);
+const SENSOR_NAMES = ['C'];
+for (let n = 1; n <= 8; n++) SENSOR_NAMES.push('A' + n, 'B' + n, 'D' + n, 'E' + n);
 function drawSensors(g, lit) {
-    g.lineWidth = 1;
-    for (const [name, sides] of SENSORS) {
-        const [x, y] = xy(name);
-        const r = { A: 0.15, B: 0.14, D: 0.075, E: 0.09, C: 0.1 }[name[0]] * R;
+    for (const name of SENSOR_NAMES) {
         const on = lit.has(name);
-        g.strokeStyle = on ? '#ffd23f' : 'rgba(255,255,255,.16)';
-        g.fillStyle = on ? 'rgba(255,210,63,.18)' : 'rgba(255,255,255,0)';
-        g.lineWidth = on ? 2 : 1;
-        if (sides === 0) {
-            g.beginPath();
-            g.arc(x, y, r, 0, 7);
-        } else {
-            const rot =
-                name[0] === 'D' || name[0] === 'E'
-                    ? (45 * (+name.slice(1) - 1) * Math.PI) / 180
-                    : ang(+name.slice(1));
-            polygon(g, x, y, r, sides, rot);
-        }
+        const inner = name[0] === 'A' || name[0] === 'D';
+        sensorShape(g, name);
+        g.fillStyle = on
+            ? 'rgba(255,210,63,.22)'
+            : inner
+              ? 'rgba(255,255,255,.015)'
+              : 'rgba(255,255,255,.04)';
         g.fill();
+        g.lineWidth = on ? 2 : 1;
+        g.strokeStyle = on ? '#ffd23f' : inner ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.26)';
         g.stroke();
     }
 }
@@ -405,29 +492,16 @@ function drawRing() {
     C = size / 2;
     R = C - 16;
     const ox = (w - size) / 2;
-    const AP = approach();
     g.fillStyle = '#05060a';
     g.fillRect(0, 0, w, size);
     g.save();
     g.translate(ox, 0);
-    const noteR = R * 0.105 * cfg.note;
-    const slideSz = R * 0.045 * cfg.slideSize;
-    const slideGap = R * 0.09 * cfg.slideGap;
+    const noteR = R * 0.105 * cfg.tapScale;
+    const slideSz = R * 0.045 * cfg.slideScale;
+    const slideGap = R * 0.09 * cfg.slideScale * cfg.slideGap;
 
     if (cfg.guides) {
         drawSensors(g, litSensors());
-        g.strokeStyle = 'rgba(255,255,255,.16)';
-        g.lineWidth = 1;
-        g.setLineDash([2, 6]);
-        for (let n = 1; n <= 8; n++) {
-            const [x, y] = laneAt(n, 1);
-            const [sx, sy] = laneAt(n, 0);
-            g.beginPath();
-            g.moveTo(sx, sy);
-            g.lineTo(x, y);
-            g.stroke();
-        }
-        g.setLineDash([]);
     }
     g.strokeStyle = 'rgba(255,255,255,.95)';
     g.lineWidth = 2.5;
@@ -449,13 +523,10 @@ function drawRing() {
         }
     }
 
-    const prog = (t) => Math.max(0, Math.min(1, 1 - (t - at) / AP));
-    const sc = (p) => 0.3 + 0.7 * p;
-
     // slide strips, then their stars
     for (const e of D.events) {
         if (e.k !== 's') continue;
-        if (e.z < at - TRAIL || e.t - cfg.appear > at) continue;
+        if (e.z < at - TRAIL || e.t - slideLead() > at) continue;
         const col = slideColor(e);
         const tracks = slideTracks(e);
         const moving = at >= e.a && e.z > e.a;
@@ -476,15 +547,16 @@ function drawRing() {
     }
     for (const e of D.events) {
         if (e.k !== 's') continue;
-        if (e.z < at - TRAIL || e.t > at + AP) continue;
+        if (e.z < at - TRAIL || e.t - tapLead() > at) continue;
         const col = slideColor(e);
         const fade = at > e.z ? Math.max(0, 1 - (at - e.z) / TRAIL) : 1;
         g.globalAlpha = fade;
         const tracks = slideTracks(e);
         const r = noteR * (e.w ? 1.25 : 1);
         if (at < e.t) {
-            const [x, y] = laneAt(e.h, prog(e.t));
-            starNote(g, x, y, r * sc(prog(e.t)), col.star, false);
+            const st = tapState(e.t);
+            const [x, y] = laneAt(e.h, st.frac);
+            if (st.scale > 0) starNote(g, x, y, r * st.scale, col.star, false);
         } else if (at < e.a || e.z <= e.a) {
             const [x, y] = dot(e.h);
             starNote(g, x, y, r, col.star, false);
@@ -502,12 +574,15 @@ function drawRing() {
     for (const e of D.events) {
         if (e.k === 's') continue;
         const end = e.z && e.z > e.t ? e.z : e.t;
-        if (e.t > at + AP || end < at - TRAIL) continue;
-        g.globalAlpha = at > end ? Math.max(0, 1 - (at - end) / TRAIL) : 1;
+        const lead = e.n ? touchWhole() : tapLead();
+        if (e.t - lead > at || end < at - TRAIL) continue;
+        const out = at > end ? Math.max(0, 1 - (at - end) / TRAIL) : 1;
         if (e.n) {
+            const ts = touchState(e.t);
+            if (!ts) continue;
+            g.globalAlpha = ts.alpha * out;
             const [x, y] = xy(e.n);
-            const p = prog(e.t);
-            const r = R * 0.055 * cfg.note;
+            const r = R * 0.055 * cfg.touchScale;
             const c = e.e ? COL.each : COL.touch;
             if (e.k === 'th' && at >= e.t && at <= e.z) {
                 g.lineWidth = 3;
@@ -516,24 +591,37 @@ function drawRing() {
                 g.arc(x, y, r * 2.2, 0, 7);
                 g.stroke();
             }
-            touchNote(g, x, y, r, c, (1 - p) * R * 0.1, e.x, e.k === 'th');
+            touchNote(g, x, y, r, c, ts.gap, e.x, e.k === 'th');
             if (cfg.labels) {
                 g.fillStyle = 'rgba(255,255,255,.5)';
                 g.font = '9px sans-serif';
                 g.textAlign = 'center';
-                g.fillText(e.n, x, y - r * 1.9 - (1 - p) * R * 0.1);
+                g.fillText(e.n, x, y - r * 1.9 - ts.gap);
             }
         } else {
-            const p = at >= e.t ? 1 : prog(e.t);
-            const [x, y] = laneAt(e.l, p);
-            const r = noteR * sc(p);
+            g.globalAlpha = out;
+            const st = tapState(e.t);
+            if (st.scale <= 0) {
+                g.globalAlpha = 1;
+                continue;
+            }
+            const [x, y] = laneAt(e.l, st.frac);
             if (e.k === 'h') {
-                const [tx, ty] = laneAt(e.l, prog(e.z));
+                const r = noteR * (cfg.holdScale / cfg.tapScale) * st.scale;
+                const tail = tapState(e.z);
+                const [tx, ty] = laneAt(e.l, at >= e.t ? Math.min(1, tail.frac) : tail.frac);
                 holdNote(g, tx, ty, x, y, r * 0.95, noteColor(e), e.x);
             } else if (e.st) {
-                starNote(g, x, y, r * 1.05, e.e ? COL.slideEach.star : COL.slide.star, e.x);
+                starNote(
+                    g,
+                    x,
+                    y,
+                    noteR * 1.05 * st.scale,
+                    e.e ? COL.slideEach.star : COL.slide.star,
+                    e.x
+                );
             } else {
-                tapNote(g, x, y, r, noteColor(e), e.x, e.k === 'b');
+                tapNote(g, x, y, noteR * st.scale, noteColor(e), e.x, e.k === 'b');
             }
         }
         g.globalAlpha = 1;
@@ -543,11 +631,14 @@ function drawRing() {
 
 // ----- display settings -----
 const CFG = [
-    ['speed', 'Note speed', 1, 10, 0.5],
-    ['note', 'Note size', 0.6, 1.6, 0.05],
-    ['slideSize', 'Slide size', 0.6, 1.8, 0.05],
-    ['slideGap', 'Slide gap', 0.6, 2, 0.05],
-    ['appear', 'Slide appears (s before star lands)', 0, 2, 0.1],
+    ['tapSpeed', 'Tap speed', 1, 12, 0.5],
+    ['touchSpeed', 'Touch speed', 1, 12, 0.5],
+    ['tapScale', 'Tap size', 0.6, 1.6, 0.05],
+    ['holdScale', 'Hold size', 0.6, 1.6, 0.05],
+    ['touchScale', 'Touch size', 0.6, 1.6, 0.05],
+    ['slideScale', 'Slide size', 0.6, 1.8, 0.05],
+    ['slideGap', 'Slide arrow gap', 0.6, 2, 0.05],
+    ['slideOffset', 'Slide fade-in offset (s)', -0.5, 0.5, 0.05],
 ];
 $('cfg').innerHTML =
     CFG.map(
