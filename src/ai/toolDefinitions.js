@@ -28,6 +28,7 @@ const getMaimaiB50ChangesTool = require('../tools/getMaimaiB50Changes');
 const getMaimaiScoreImpactTool = require('../tools/getMaimaiScoreImpact');
 const getMaimaiPlateProgressTool = require('../tools/getMaimaiPlateProgress');
 const getMaimaiJudgementLossTool = require('../tools/getMaimaiJudgementLoss');
+const analyzeMaimaiChartTool = require('../tools/analyzeMaimaiChart');
 const { getAllowedScopes } = require('../permissions/permissionStore');
 
 const TOOLS = [
@@ -61,6 +62,7 @@ const TOOLS = [
     getMaimaiScoreImpactTool,
     getMaimaiPlateProgressTool,
     getMaimaiJudgementLossTool,
+    analyzeMaimaiChartTool,
 ];
 
 /**
@@ -76,6 +78,7 @@ const TOOL_SCOPES = {
     get_maimai_score_breakdown: 'web',
     get_maimai_song_rating: 'web',
     get_maimai_judgement_loss: 'web',
+    analyze_maimai_chart: 'web',
     list_maimai_fandom_wiki_pages: 'web',
     list_maimai_remywiki_pages: 'web',
     list_maimai_account_pages: 'account',

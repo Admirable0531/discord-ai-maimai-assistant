@@ -132,7 +132,7 @@ function adjacentBrush(events, cfg) {
                     time: taps[runStart].time,
                     bar: taps[runStart].bar,
                     notes: taps.slice(runStart, end + 1).map((t) => t.lane),
-                    text: `${length} taps in a row on neighbouring buttons at about ${(1 / gap).toFixed(0)} per second; the finger can brush the next button.`,
+                    text: `${length} taps in a row on neighbouring buttons at about ${((length - 1) / (taps[end].time - taps[runStart].time)).toFixed(0)} per second; the finger can brush the next button.`,
                 });
             }
             runStart = null;
