@@ -27,6 +27,8 @@ const config = {
     discordToken: env.DISCORD_TOKEN,
     ownerUserId: env.OWNER_USER_ID,
     httpPort: num('HTTP_PORT', 3002),
+    // Where /chart is reachable (e.g. http://192.168.0.225:3002). When set, /chartcheck links to it.
+    chartPageBaseUrl: (process.env.CHART_PAGE_BASE_URL || '').replace(/\/+$/, ''),
     // Warnings and errors are mirrored here (see utils/discordLog.js); '' turns it off.
     logChannelId: env.LOG_CHANNEL_ID ?? '1557778665729691759',
 

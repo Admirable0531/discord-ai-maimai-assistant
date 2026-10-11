@@ -16,7 +16,8 @@ services:
       - TZ=Asia/Kuala_Lumpur
     ports:
       # /health + /api/ai-usage for the homelab dashboard / Uptime Kuma —
-      # Pi-internal only, not meant to be exposed publicly. HTTP_PORT in
+      # Pi-internal only, not meant to be exposed publicly (also serves the
+      # /chart viewer on the local network). HTTP_PORT in
       # .env must match the host side if you change it.
       - "3002:3002"
     volumes:

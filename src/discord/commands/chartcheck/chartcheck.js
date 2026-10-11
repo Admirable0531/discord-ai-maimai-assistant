@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { config } = require('../../../config/env');
 const analyzeChart = require('../../../tools/analyzeMaimaiChart');
 const { createOutputs } = require('../../../utils/outputs');
 const { tooSoon, toAttachments, describeFailure, MAX_REPLY } = require('../../commandHelpers');
@@ -60,6 +61,13 @@ module.exports = {
             return;
         }
 
+        const link = config.chartPageBaseUrl
+            ? `${config.chartPageBaseUrl}/chart?${new URLSearchParams({
+                  song: result.song,
+                  difficulty: result.difficulty,
+                  type: result.chart_type,
+              })}`
+            : null;
         const lines = [
             `**${result.song}** — ${result.difficulty} · ${result.length_seconds}s · ${result.total_findings} findings (top ${result.shown.length} below)`,
             ...result.shown.map(
@@ -67,6 +75,7 @@ module.exports = {
                     `${SEVERITY[f.severity] || '•'} bar ${f.bar} · ${f.time} · **${f.name}** — ${f.what}`
             ),
             '',
+            ...(link ? [`Whole chart on your network: <${link}>`] : []),
             '-# The attached .html is the whole chart: open it in a browser to scrub or play it.',
             '-# Risks read from the wiki chart data, not certainties; thresholds are not calibrated yet.',
         ];
