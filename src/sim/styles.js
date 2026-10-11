@@ -23,7 +23,7 @@ const BASE = {
     posSigma: 0.03,
     timeSigma: 0.012,
     onCells: 6, // a contact turns a sensor ON when it covers this many cells of it (a cell is 0.025 ring radii square)
-    pressLen: 0.07,
+    pressLen: 0.05,
     dragSpeed: 3, // ring radii per second for a finger swiping over the glass
     liftBefore: 0.12, // s: a dragging finger leaves the glass this long before its next press
 };

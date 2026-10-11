@@ -40,9 +40,24 @@ function slidePoints(note) {
  */
 function actionsOf(notes, style) {
     const out = [];
+    // a quick tap lets go again before the next press of the same button or sensor
+    const nextGap = new Map();
+    const lastAt = new Map();
+    for (const n of [...notes].sort((a, b) => b.t - a.t)) {
+        const key =
+            n.kind === 'tap' || n.kind === 'hold'
+                ? `L${n.lane}`
+                : n.sIdx !== undefined
+                  ? `S${n.sIdx}`
+                  : null;
+        if (!key) continue;
+        if (lastAt.has(key)) nextGap.set(n.id, lastAt.get(key) - n.t);
+        lastAt.set(key, n.t);
+    }
+    const pressOf = (n) => Math.min(style.pressLen, 0.5 * (nextGap.get(n.id) ?? 9));
     for (const n of notes) {
         if (n.kind === 'tap' || n.kind === 'hold') {
-            const end = n.kind === 'hold' ? n.end : n.t + style.pressLen;
+            const end = n.kind === 'hold' ? n.end : n.t + pressOf(n);
             if (style.tapMode === 'button') {
                 out.push({
                     note: n,
@@ -65,7 +80,7 @@ function actionsOf(notes, style) {
                 });
             }
         } else if (n.kind === 'touch' || n.kind === 'touchHold') {
-            const end = n.kind === 'touchHold' ? n.end : n.t + style.pressLen;
+            const end = n.kind === 'touchHold' ? n.end : n.t + pressOf(n);
             if (style.touchButtons && n.lane) {
                 out.push({
                     note: n,
@@ -161,10 +176,9 @@ function plan(notes, style, random) {
             }
             let pick;
             if (list.length) {
-                // the finger with the least to do: nearest to the target
-                pick = list.reduce((best, c) =>
-                    dist(c.f.pos, a.pos) < dist(best.f.pos, a.pos) ? c : best
-                );
+                // the nearest finger, but one that has only just let go gets a rest (a jack alternates)
+                const score = (c) => dist(c.f.pos, a.pos) + (a.t - c.f.freeAt < 0.15 ? 0.6 : 0);
+                pick = list.reduce((best, c) => (score(c) < score(best) ? c : best));
             } else {
                 pick = candidates(a).reduce((best, c) => (c.s > best.s ? c : best));
             }

@@ -3,12 +3,13 @@
 // the user has marked; they live in DEFAULTS so they can be tuned in one place.
 const { neighbouringButtons, ringDistance, sensorName } = require('./geometry');
 const { slideTracks } = require('./slidePaths');
+const { centre } = require('../sim/sensors');
 
 const DEFAULTS = {
     splashWindow: 0.15, // s: a touch this close to a tap can splash it
     sameTick: 0.03, // s: counts as simultaneous
     brushNps: 12, // notes/s on neighbouring buttons that makes the hand brush the next one
-    jackNps: 12,
+    jackNps: 9,
     burstNps: 14,
     burstWindow: 1.5,
     // Perfect windows (s), from the judging constants of a reimplementation of the game:
@@ -19,7 +20,7 @@ const DEFAULTS = {
     touchLate: 0.2,
     slideEndWindow: 0.2,
     // A finger that has just slid over a sensor is still on or near it when a tap arrives there.
-    passWindow: 0.25,
+    passWindow: 0.15,
     slideEndNext: 0.09, // s: a note this soon after a slide ends beside it (A7)
 };
 
@@ -78,18 +79,19 @@ function touchBesideButton(events, cfg) {
             const hit = near.find((n) => n.button === lane);
             if (!hit) continue;
             const gap = time - t.time; // > 0: the touch comes first
-            if (gap < -cfg.sameTick || gap > cfg.splashWindow) continue;
-            const simultaneous = Math.abs(gap) <= cfg.sameTick;
-            const severity = simultaneous ? 3 : hit.closeness === 0 ? 3 : 2;
+            // Together is fine: both presses belong to one moment. The trouble is the touch
+            // coming a little before the tap, its press then taking the tap early.
+            if (gap < 0.04 || gap > cfg.splashWindow) continue;
             const finding = {
                 rule: 'A1',
-                severity,
+                severity: hit.closeness === 0 ? 2 : 1,
                 time: Math.min(t.time, time),
                 bar: t.bar,
                 notes: [sensorName(t), what],
-                text: simultaneous
-                    ? `The ${sensorName(t)} touch and ${say} happen together. Reaching for the touch can press the A${lane} sensor next to it (a splash), so that note may be hit early.`
-                    : `The ${sensorName(t)} touch comes ${Math.round(gap * 1000)} ms before ${say}. On the way to the touch your hand can brush the A${lane} sensor (a splash), which hits that note early or blocks it.`,
+                text:
+                    hit.closeness === 0
+                        ? `The ${sensorName(t)} touch is on the same sensor as ${say}, ${Math.round(gap * 1000)} ms before it. That press can be taken by the tap and hit it early, whoever plays the touch.`
+                        : `The ${sensorName(t)} touch comes ${Math.round(gap * 1000)} ms before ${say}. A wide finger or the side of the hand on the touch also presses the A${lane} sensor next to it and takes that note early. Fingertips usually stay clear.`,
             };
             out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
         }
@@ -109,12 +111,12 @@ function touchBesideHold(events, cfg) {
             const during = t.time <= h.end;
             const finding = {
                 rule: 'A2',
-                severity: during ? 2 : 1,
+                severity: 1,
                 time: t.time,
                 bar: t.bar,
                 notes: [sensorName(t), `hold ${h.lane}`],
                 text: during
-                    ? `The ${sensorName(t)} touch has to be hit while button ${h.lane} is still held. Your touching hand ends up right beside the held button's sensor and can bump it (a splash), so keep it clear.`
+                    ? `The ${sensorName(t)} touch has to be hit while button ${h.lane} is still held. A wide finger or the side of your hand can bump the held button's sensor, so keep it clear (in simulation fingertips stayed clear).`
                     : `The ${sensorName(t)} touch comes just after the hold on button ${h.lane} lets go, while your hand is still near that spot.`,
             };
             out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
@@ -168,11 +170,11 @@ function adjacentBrush(events, cfg) {
             if (length >= 5) {
                 out.push({
                     rule: 'A9',
-                    severity: length >= 8 ? 3 : 2,
+                    severity: 1,
                     time: taps[runStart].time,
                     bar: taps[runStart].bar,
                     notes: taps.slice(runStart, end + 1).map((t) => t.lane),
-                    text: `${length} taps in a row on neighbouring buttons, about ${((length - 1) / (taps[end].time - taps[runStart].time)).toFixed(0)} a second (a trill or stream). At that speed a finger tends to slide across and press the next button early.`,
+                    text: `${length} taps in a row on neighbouring buttons, about ${((length - 1) / (taps[end].time - taps[runStart].time)).toFixed(0)} a second (a trill or stream). Mostly a speed test: in simulation neighbouring buttons did not splash each other even at 20 a second, unless a finger drags across them.`,
                 });
             }
             runStart = null;
@@ -200,7 +202,7 @@ function jacks(events, cfg) {
                     time: run.start.time,
                     bar: run.start.bar,
                     notes: [e.lane],
-                    text: `Button ${e.lane} comes again and again, about ${(1 / gap).toFixed(0)} times a second (a jack). Alternate fingers or hands instead of hammering it with one.`,
+                    text: `Button ${e.lane} comes again and again, about ${(1 / gap).toFixed(0)} times a second (a jack). Alternate fingers or hands instead of hammering it with one. A press that comes late is taken by the earlier note and the next one is then missed.`,
                 });
             }
         } else {
@@ -357,7 +359,28 @@ function pathsOf(events) {
     return { known, unknown };
 }
 
-/** A4/A5: a note whose sensor lies on a slide's path at about the time the slide passes it. */
+/**
+ * How long a sliding finger stays on one sensor either side of passing its middle
+ * (seconds): half the sensor's width divided by how fast the slide travels.
+ * Slow slides linger, which widens the window in which a tap on that sensor goes wrong.
+ */
+function dwell(steps, i) {
+    const here = steps[i];
+    const other = steps[i + 1] || steps[i - 1];
+    if (!other || other.time === here.time) return 0.1;
+    const [x0, y0] = centre(here.alternatives[0]);
+    const [x1, y1] = centre(other.alternatives[0]);
+    const speed = Math.hypot(x1 - x0, y1 - y0) / Math.abs(other.time - here.time);
+    return Math.min(0.2, Math.max(0.02, 0.2 / Math.max(speed, 0.01)));
+}
+
+/**
+ * A4/A5: a tap on a sensor the sliding finger crosses. Worked out in simulation:
+ * with tau the time the finger stays on the sensor either side of its middle, a tap
+ * from 50 to 150 ms after the finger arrived is taken early by the slide's press
+ * (A4); a tap while the finger is still sitting there gets no fresh press (A5).
+ * That is true for every play style, because it is the very same sensor.
+ */
 function slideBesideNote(paths, events, cfg) {
     const out = [];
     // Touch notes are left out: a slide passing over one is the way they are meant to be
@@ -366,31 +389,31 @@ function slideBesideNote(paths, events, cfg) {
     for (const { slide, steps } of paths) {
         for (const note of notes) {
             const name = `A${note.lane}`;
-            for (const step of steps) {
+            if (
+                note.time < slide.start - cfg.splashWindow ||
+                note.time > slide.end + cfg.passWindow
+            )
+                continue;
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
                 if (step.first && note.lane === slide.head) continue; // the slide's own star
                 if (!step.alternatives.includes(name)) continue;
-                const gap = note.time - step.time; // > 0: the note comes after the slide passes
-                if (gap < -cfg.splashWindow || gap > cfg.passWindow) continue;
-                if (
-                    note.time < slide.start - cfg.splashWindow ||
-                    note.time > slide.end + cfg.splashWindow
-                )
-                    continue;
-                const before = gap < 0;
-                // A press only pushes a slide on if the slide is already at the step before it,
-                // about one step (~0.1 s) away.
-                if (before && gap < -0.1) continue;
-                const finding = {
-                    rule: before ? 'A5' : 'A4',
-                    severity: Math.abs(gap) <= 0.06 ? 3 : Math.abs(gap) <= 0.15 ? 2 : 1,
-                    time: Math.min(note.time, step.time),
+                const tau = dwell(steps, i);
+                const gap = note.time - step.time; // > 0: the tap comes after the finger's middle
+                const sinceArrival = gap + tau; // after the finger first touched the sensor
+                const early = sinceArrival > 0.05 && sinceArrival < 0.15;
+                const sitting = gap > -tau && gap < tau;
+                if (!early && !sitting) continue;
+                out.push({
+                    rule: early ? 'A4' : 'A5',
+                    severity: early ? 3 : 2,
+                    time: Math.min(note.time, step.time - tau),
                     bar: note.bar,
                     notes: [slideLabel(slide), label(note)],
-                    text: before
-                        ? `${cap(phrase(note))} comes ${Math.round(-gap * 1000) < 5 ? 'at the same moment as' : `${Math.round(-gap * 1000)} ms before`} the ${slideLabel(slide)} reaches ${name}. Hitting it that early can push the slide forward a step too soon.`
-                        : `The ${slideLabel(slide)} sweeps over ${name} ${Math.round(gap * 1000)} ms before ${phrase(note)}. The sliding finger can catch that note and hit it early.`,
-                };
-                out.push(finding);
+                    text: early
+                        ? `The ${slideLabel(slide)} reaches ${name} about ${Math.round(sinceArrival * 1000)} ms before ${phrase(note)}. The slide's finger presses that sensor first and takes the tap early (an early Great or Good).`
+                        : `${cap(phrase(note))} comes while the ${slideLabel(slide)}'s finger is still on ${name}. The sensor is already pressed, so the tap gets no fresh press and can be missed or late.`,
+                });
                 break;
             }
         }
@@ -430,7 +453,7 @@ function tapOnSlideRoute(paths, events, cfg) {
                     time: step.time,
                     bar: note.bar,
                     notes: [slideLabel(slide), label(note)],
-                    text: `The ${slideLabel(slide)} passes ${beside} ${Math.round(gap * 1000)} ms before ${phrase(note)}, right beside it. A sliding finger is wider than one sensor and can clip that note and hit it early.`,
+                    text: `The ${slideLabel(slide)} passes ${beside} ${Math.round(gap * 1000)} ms before ${phrase(note)}, right beside it. With a wide finger or the side of the hand, the slide can clip that note and hit it early; fingertips usually stay clear.`,
                 });
                 break;
             }
@@ -440,26 +463,29 @@ function tapOnSlideRoute(paths, events, cfg) {
 }
 
 /**
- * A16: a tap on the lane next to a slide's start, just as the slide begins moving.
- * Button players take the star, then touch the screen on that lane to start the
- * slide; the touching finger covers the neighbouring sensor and catches that tap
- * early (an "early Good"). Named from the Japanese guides' 巻き込み advice.
+ * A16: the next tap on the lane a slide starts from, soon after the slide starts moving.
+ * Button players take the star, then put a finger on the screen at that spot to
+ * set the slide off. That finger presses the same sensor the next tap on that
+ * lane uses, so it takes the tap early (an "early Good"). Found in the Japanese
+ * guides' 巻き込み advice and reproduced in simulation: from about 20 ms to 110 ms
+ * after the slide moves off, and a quarter to half the time when the tap is exactly
+ * on the start, for every play style.
  */
-function tapBesideSlideStart(events) {
+function tapOnSlideStart(events) {
     const out = [];
     const notes = events.filter(isButtonHit);
     for (const slide of events.filter((e) => e.kind === 'slide')) {
         for (const note of notes) {
-            if (ringDistance(note.lane, slide.head) !== 1) continue;
+            if (note.lane !== slide.head) continue;
             const gap = note.time - slide.start; // > 0: the tap comes after the slide starts moving
-            if (gap < -0.1 || gap > 0.15) continue;
+            if (gap < -0.06 || gap > 0.14) continue;
             out.push({
                 rule: 'A16',
-                severity: Math.abs(gap) <= 0.06 ? 2 : 1,
-                time: Math.min(note.time, slide.start),
+                severity: gap >= 0.02 ? 2 : 1,
+                time: slide.start,
                 bar: note.bar,
                 notes: [slideLabel(slide), label(note)],
-                text: `${cap(phrase(note))} sits next to the start of the ${slideLabel(slide)}, ${gap >= 0 ? `${Math.round(gap * 1000)} ms after the slide starts moving` : `${Math.round(-gap * 1000)} ms before the slide starts moving`}. The finger that sets the slide off covers the neighbouring sensor and can catch that note early.`,
+                text: `${cap(phrase(note))} comes ${gap >= 0.02 ? `${Math.round(gap * 1000)} ms after` : 'right as'} the ${slideLabel(slide)} starts moving, on the same button. The finger that sets the slide off is still on that sensor and takes the tap early (an early Good). Lift off the sensor quickly, or set the slide off from a different spot.`,
             });
         }
     }
@@ -530,7 +556,7 @@ function slideEndBesideNote(paths, events, cfg) {
         const lastSteps = steps.filter((s) => s.last);
         for (const note of notes) {
             const gap = note.time - slide.end;
-            if (gap < -cfg.sameTick || gap > cfg.splashWindow) continue;
+            if (gap < -0.05 || gap > 0.1) continue;
             const name = `A${note.lane}`;
             const same = lastSteps.some((s) => s.alternatives.includes(name));
             // Only the same sensor matters: a slide end is forgiving, so a finger that lifts off
@@ -593,7 +619,7 @@ function analyse(chart, overrides = {}) {
         ...touchBesideButton(chart.events, cfg),
         ...touchBesideHold(chart.events, cfg),
         ...tapOnSlideRoute(paths.known, chart.events, cfg),
-        ...tapBesideSlideStart(chart.events),
+        ...tapOnSlideStart(chart.events),
         ...touchGroups(chart.events, cfg),
         ...adjacentBrush(chart.events, cfg),
         ...jacks(chart.events, cfg),

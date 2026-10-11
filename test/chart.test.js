@@ -84,10 +84,12 @@ test('viewer page is self-contained, escapes the title and never embeds chart te
 });
 
 test('A1 is one step softer because a touch has a wide Perfect window, and says so', () => {
-    const found = analyse(buildChart('(120){16}E6/6,,,,E')).find((f) => f.rule === 'A1');
+    const found = analyse(buildChart('(120){16}A6,6,,,,E')).find((f) => f.rule === 'A1');
     assert.ok(found);
-    assert.equal(found.severity, 2); // simultaneous would be 3 for a strict note
+    assert.equal(found.severity, 1); // 2 for a strict note, one step softer for a touch
     assert.match(found.text, /150 ms early to 200 ms late/);
+    // together is fine: both presses belong to one moment
+    assert.ok(!analyse(buildChart('(120){16}A6/6,,,,E')).some((f) => f.rule === 'A1'));
 });
 
 test('A14: a group of three simultaneous touches needs only two', () => {
@@ -164,9 +166,24 @@ test('only a double slide makes a slide strip yellow; a simultaneous tap only ye
     assert.ok(double.every((e) => e.e));
 });
 
-test('a tap beside a slide start is flagged (A16), and two touches beside each other are not', () => {
+test('a tap on the slide start lane soon after it moves off is flagged (A16); other lanes and two touches are not', () => {
     const rules = (text) => analyse(buildChart(text)).map((f) => f.rule);
-    assert.ok(rules('(120){4}1-5[4:1],2,,,\nE').includes('A16'));
-    assert.ok(!rules('(120){4}1-5[4:1],5,,,\nE').includes('A16'));
+    assert.ok(rules('(120){16}1-5[4:1],,,,,1,,,,E').includes('A16'));
+    assert.ok(!rules('(120){16}1-5[4:1],,,,,2,,,,E').includes('A16'));
     assert.ok(!rules('(120){4}A1,A2,,,\nE').includes('A3'));
+});
+
+test('A4 follows the simulation: a tap on the sensor a ring slide crosses is flagged only just after the finger passes', () => {
+    const base = buildChart('(120){4}1>5[2:1],,,,,,E');
+    const slide = base.events.find((e) => e.kind === 'slide');
+    const pass = slide.start + 0.5 * (slide.end - slide.start); // the slide reaches A3 half way
+    const flagged = (g) =>
+        analyse({
+            ...base,
+            events: [...base.events, { kind: 'tap', lane: 3, time: pass + g, bar: 1 }],
+        }).some((f) => f.rule === 'A4' || f.rule === 'A5');
+    assert.ok(flagged(0));
+    assert.ok(flagged(0.05));
+    assert.ok(!flagged(0.4));
+    assert.ok(!flagged(-0.3));
 });

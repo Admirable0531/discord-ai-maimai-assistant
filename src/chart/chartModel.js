@@ -17,8 +17,24 @@ const SLIDE_SHAPE = Object.fromEntries(
  * is the lane of its star), each with `time`, and for slides `start`/`end`
  * times (when the track becomes active and when it should be cleared).
  */
+/**
+ * simai.js misreads a slide length written with its own BPM, `[BPM#x:y]`, giving
+ * slides tens of seconds long. Rewrite each to the same length as `[1000:n]` in the
+ * BPM in force at that point, which it reads correctly.
+ */
+function normaliseSlideLengths(text) {
+    const bpmAt = [];
+    for (const m of text.matchAll(/\((\d+(?:\.\d+)?)\)/g)) bpmAt.push([m.index, Number(m[1])]);
+    return text.replace(/\[(\d+(?:\.\d+)?)#(\d+):(\d+)\]/g, (all, own, x, y, at) => {
+        let bpm = 120;
+        for (const [i, v] of bpmAt) if (i < at) bpm = v;
+        const n = Math.max(1, Math.round(1000 * (Number(y) / Number(x)) * (bpm / Number(own))));
+        return `[1000:${n}]`;
+    });
+}
+
 function buildChart(text) {
-    const parsed = SimaiConvert.deserialize(text);
+    const parsed = SimaiConvert.deserialize(normaliseSlideLengths(text));
     const events = [];
     for (const group of parsed.noteCollections) {
         const time = group.time;
@@ -59,9 +75,17 @@ function buildChart(text) {
         }
     }
     events.sort((a, b) => a.time - b.time);
+    // a slide that still comes out far too long is a parse problem, not a slide: leave it out
+    let dropped = 0;
+    for (let i = events.length - 1; i >= 0; i--) {
+        if (events[i].kind === 'slide' && events[i].end - events[i].start > 12) {
+            events.splice(i, 1);
+            dropped++;
+        }
+    }
     const tempoChanges = parsed.timingChanges;
     for (const e of events) e.bar = barAt(tempoChanges, e.time);
-    return { events, finish: parsed.finishTiming, tempoChanges };
+    return { events, finish: parsed.finishTiming, tempoChanges, droppedSlides: dropped };
 }
 
 /** Bar number (1-based, assuming 4 beats a bar) at `time`, following tempo changes. */
