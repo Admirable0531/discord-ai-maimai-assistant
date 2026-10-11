@@ -414,3 +414,12 @@ Sources: gamerch maimai 攻略wiki (上達・攻略への指南書, 用語集), 
 - **Star then slide**: button players take the star, then touch the screen to slide; that screen touch easily catches the *next* star and gives an early Good. Added as rule A16 (a tap beside a slide's start, from 100 ms before it moves to 150 ms after).
 - **Named patterns**: ウミユリ配置 (EACH + slide star, tap, EACH + slide star, repeated), デスサイズ配置 (outer-rim adjacent taps while slides run), 連続巻き込みスライド (star-and-slide chains where slides wrap round neighbouring stars), 一筆書きスライド. The slide-route rules (A4, A5, A15) and A16 cover the mechanisms; the named patterns themselves are not detected yet.
 - One chart note: やがてその歌声は世界を創った — touching 5 easily drags in 4, which matches the sensor map (E5 borders A4 and A5, rule A1).
+
+### False positives removed (Oct 2026, from the user's review)
+
+- Touch notes are no longer flagged by slides at all (A4/A5): a slide passing over a touch is how they are meant to be played together.
+- A6 (slide beside slide) now only fires when two slides' *judged ends* reach one sensor 30 to 100 ms apart. Overlapping on the way, or reaching it at the same moment (one shared press), is fine.
+- A7 (slide ends next to a note) is gone: a slide end can be taken early, so lifting off never has to brush the neighbour. A13 (note on the very sensor the slide ended on) stays.
+- A5 only counts a tap up to 100 ms before the slide reaches its sensor (a press only advances a slide that is already one step away). A4 over 150 ms is severity 1.
+- Findings of one rule at the same moment are merged into one with "the same happens with N other notes".
+- Thresholds raised: adjacent-button runs 12 per second and 5 taps (was 9 and 4), jacks 12 per second (was 8), bursts 14 per second (was 11), and a rhythm "bunch up" needs both sides to be at least 4 notes a second so a phrase starting after a rest does not count.

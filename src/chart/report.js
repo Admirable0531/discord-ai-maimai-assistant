@@ -6,7 +6,6 @@ const RULE_NAMES = {
     A4: 'slide passing a note',
     A5: 'note passing a slide',
     A6: 'slide beside a slide',
-    A7: 'slide end beside a note',
     A9: 'adjacent-button run',
     A13: 'note blocked by a slide end',
     A15: 'tap beside a slide route',

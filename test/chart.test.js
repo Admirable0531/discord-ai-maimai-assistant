@@ -56,8 +56,9 @@ test('A1: a touch just before a neighbouring tap is flagged, a far one is not', 
     assert.ok(!rules('(120){16}E6,3,,,,,,,E').includes('A1'));
 });
 
-test('A6: two slides on the same sensor at the same time are flagged', () => {
-    assert.ok(rules('(120){4}1-3[2:1]/5-3[2:1],,,,E').includes('A6'));
+test('A6: only slide ends on one sensor a moment apart are flagged, not overlaps or shared presses', () => {
+    assert.ok(rules('(120){32}1-3[4:1],5-3[4:1],,,,,,,,,E').includes('A6'));
+    assert.ok(!rules('(120){4}1-3[2:1]/5-3[2:1],,,,E').includes('A6'));
 });
 
 test('A13: a note on the sensor a slide just ended on is flagged', () => {
