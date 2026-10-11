@@ -1,4 +1,4 @@
-/* global localStorage, D, $, setup, at, draw, active */
+/* global localStorage, D, $, setup, at, draw, active, LEAD, BEAT */
 // Browser-side playfield for the chart viewer. Inlined into the page by
 // viewerPage.js, so it must stay plain browser JavaScript with no imports.
 // Look and layout follow the game's play screen (own drawings, not its art):
@@ -966,6 +966,20 @@ function hitSound(kind, ex, vol, each) {
     if (ex) tone(ac, t, 2400, 2000, 0.07, 0.25 * v);
     if (cfg.soundEachDistinct && each && kind !== 'he')
         tone(ac, t + 0.02, 2800, 2600, 0.06, 0.18 * v);
+}
+/** The metronome count-in before the chart starts: a click on every beat, higher on each "1". */
+// eslint-disable-next-line no-unused-vars
+function countIn(from, to) {
+    if (!cfg.sound || from >= 0 || to <= from || to - from > 0.5) return;
+    const ac = audio();
+    if (!ac) return;
+    const k0 = Math.max(0, Math.ceil((from + LEAD) / BEAT - 1e-9));
+    for (let k = k0; k * BEAT - LEAD <= to && k * BEAT < LEAD - 1e-9; k++) {
+        if (k * BEAT - LEAD <= from && from > -LEAD) continue;
+        const first = k % 4 === 0;
+        const t = ac.currentTime;
+        tone(ac, t, first ? 1760 : 1175, first ? 1700 : 1150, 0.07, 0.5 * cfg.volume);
+    }
 }
 let soundEvents = null;
 // eslint-disable-next-line no-unused-vars

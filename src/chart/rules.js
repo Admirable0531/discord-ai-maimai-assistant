@@ -18,6 +18,9 @@ const DEFAULTS = {
     touchEarly: 0.15,
     touchLate: 0.2,
     slideEndWindow: 0.2,
+    // A finger that has just slid over a sensor is still on or near it when a tap arrives there.
+    passWindow: 0.25,
+    slideEndNext: 0.09, // s: a note this soon after a slide ends beside it (A7)
 };
 
 /**
@@ -115,34 +118,6 @@ function touchBesideHold(events, cfg) {
                     : `The ${sensorName(t)} touch comes just after the hold on button ${h.lane} lets go, while your hand is still near that spot.`,
             };
             out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
-        }
-    }
-    return out;
-}
-
-/** A3: two touches on neighbouring areas close in time. */
-function touchBesideTouch(events, cfg) {
-    const out = [];
-    const touches = events.filter((e) => e.kind === 'touch' && e.sensor !== 'C');
-    for (let i = 0; i < touches.length; i++) {
-        for (let j = i + 1; j < touches.length; j++) {
-            const a = touches[i];
-            const b = touches[j];
-            const gap = b.time - a.time;
-            if (gap > cfg.splashWindow) break;
-            if (gap <= cfg.sameTick) continue; // a deliberate group
-            const shares = neighbouringButtons(a.sensor, a.number).some((n) =>
-                neighbouringButtons(b.sensor, b.number).some((m) => m.button === n.button)
-            );
-            if (!shares || sensorName(a) === sensorName(b)) continue;
-            out.push({
-                rule: 'A3',
-                severity: 1,
-                time: a.time,
-                bar: a.bar,
-                notes: [sensorName(a), sensorName(b)],
-                text: `${sensorName(a)} and ${sensorName(b)} are touched ${Math.round(gap * 1000)} ms apart on neighbouring sensors. One finger sweeping across can catch both, so do not hurry the second.`,
-            });
         }
     }
     return out;
@@ -390,7 +365,7 @@ function slideBesideNote(paths, events, cfg) {
                 if (step.first && !note.sensor && note.lane === slide.head) continue; // the slide's own star
                 if (!step.alternatives.includes(name)) continue;
                 const gap = note.time - step.time; // > 0: the note comes after the slide passes
-                if (Math.abs(gap) > cfg.splashWindow) continue;
+                if (gap < -cfg.splashWindow || gap > cfg.passWindow) continue;
                 if (
                     note.time < slide.start - cfg.splashWindow ||
                     note.time > slide.end + cfg.splashWindow
@@ -422,6 +397,47 @@ function slideBesideNote(paths, events, cfg) {
     return out;
 }
 
+/**
+ * A15: a tap arriving beside the sensor a slide has just passed. A sliding finger
+ * is wider than one sensor and keeps travelling, so it can clip the tap next to
+ * its path and hit it early (or block it). Softer than A4, which is the same
+ * sensor.
+ */
+function tapOnSlideRoute(paths, events, cfg) {
+    const out = [];
+    const notes = events.filter(isButtonHit);
+    for (const { slide, steps } of paths) {
+        for (const note of notes) {
+            if (
+                note.time < slide.start - cfg.splashWindow ||
+                note.time > slide.end + cfg.passWindow
+            )
+                continue;
+            for (const step of steps) {
+                if (step.first) continue;
+                const gap = note.time - step.time; // > 0: the slide passed before the note
+                if (gap < 0 || gap > cfg.splashWindow) continue; // only the tap that follows the pass
+                const beside = step.alternatives.find(
+                    (x) => x[0] === 'A' && ringDistance(Number(x.slice(1)), note.lane) === 1
+                );
+                if (!beside) continue;
+                // the exact sensor is A4/A5's business
+                if (step.alternatives.includes(`A${note.lane}`)) continue;
+                out.push({
+                    rule: 'A15',
+                    severity: 1,
+                    time: step.time,
+                    bar: note.bar,
+                    notes: [slideLabel(slide), label(note)],
+                    text: `The ${slideLabel(slide)} passes ${beside} ${Math.round(gap * 1000)} ms before ${phrase(note)}, right beside it. A sliding finger is wider than one sensor and can clip that note and hit it early.`,
+                });
+                break;
+            }
+        }
+    }
+    return out;
+}
+
 /** A6: two slides that use the same sensor at about the same time. */
 function slideBesideSlide(paths, cfg) {
     const out = [];
@@ -444,10 +460,10 @@ function slideBesideSlide(paths, cfg) {
             for (const sa of a.steps) {
                 for (const sb of b.steps) {
                     if (sa.first || sb.first) continue;
-                    if (Math.abs(sa.time - sb.time) > cfg.splashWindow) continue;
-                    // Crossing through the centre (C) is normal, so it is not counted.
+                    if (Math.abs(sa.time - sb.time) > 0.1) continue;
+                    // Crossing through the middle rings (B, C) is how slides normally cross, so only shared A sensors count.
                     const common = sa.alternatives.filter(
-                        (x) => x !== 'C' && sb.alternatives.includes(x)
+                        (x) => x[0] === 'A' && sb.alternatives.includes(x)
                     );
                     if (common.length)
                         shared.push({
@@ -461,7 +477,7 @@ function slideBesideSlide(paths, cfg) {
             const worst = shared.reduce((m, x) => (x.gap < m.gap ? x : m));
             out.push({
                 rule: 'A6',
-                severity: worst.gap <= 0.06 ? 3 : 2,
+                severity: worst.gap <= 0.03 ? 3 : worst.gap <= 0.06 ? 2 : 1,
                 time: worst.time,
                 bar: a.slide.bar,
                 notes: [slideLabel(a.slide), slideLabel(b.slide)],
@@ -494,7 +510,7 @@ function slideEndBesideNote(paths, events, cfg) {
                         ringDistance(Number(end.slice(1)), note.lane) === 1
                     );
                 });
-            if (!same && !near) continue;
+            if (!same && (!near || gap > cfg.slideEndNext)) continue;
             const finding = {
                 rule: same ? 'A13' : 'A7',
                 severity: same ? 3 : 2,
@@ -520,7 +536,7 @@ function analyse(chart, overrides = {}) {
         ...slideEndBesideNote(paths.known, chart.events, cfg),
         ...touchBesideButton(chart.events, cfg),
         ...touchBesideHold(chart.events, cfg),
-        ...touchBesideTouch(chart.events, cfg),
+        ...tapOnSlideRoute(paths.known, chart.events, cfg),
         ...touchGroups(chart.events, cfg),
         ...adjacentBrush(chart.events, cfg),
         ...jacks(chart.events, cfg),

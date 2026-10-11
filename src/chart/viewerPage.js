@@ -207,7 +207,8 @@ const $=id=>document.getElementById(id);
 $('ttl').textContent=D.title;$('sub').textContent=D.difficulty+' · '+Math.round(D.finish)+'s · '+D.findings.length+' findings';
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const SEV={1:'--s1',2:'--s2',3:'--s3'};
-let at=0,playing=false,speed=1,last=0,active=new Set(Object.keys(D.findings.reduce((a,f)=>(a[f.r]=1,a),{})));
+const BEAT=60/((D.tempo[0]&&D.tempo[0].bpm)||120),LEAD=4*BEAT*Math.max(1,Math.ceil(2.5/(4*BEAT)));
+let at=-LEAD,playing=false,speed=1,last=0,active=new Set(Object.keys(D.findings.reduce((a,f)=>(a[f.r]=1,a),{})));
 const WIN_BEFORE=0.2,WIN_AFTER=0.7;
 function xy(name,R,C){if(name==='C')return[C,C];const L=name[0],n=+name.slice(1);const al=(L==='A'||L==='B')?22.5+45*(n-1):45*(n-1);const a=al*Math.PI/180;const r={A:.8,B:.5,D:.97,E:.68}[L]*R;return[C+r*Math.sin(a),C-r*Math.cos(a)]}
 function setup(c,h){const dpr=window.devicePixelRatio||1,w=c.clientWidth;c.width=w*dpr;c.height=h*dpr;c.style.height=h+'px';const g=c.getContext('2d');g.scale(dpr,dpr);return[g,w]}
@@ -215,26 +216,28 @@ const bins=Math.max(1,Math.ceil(D.finish)),dens=new Array(bins).fill(0);D.events
 function drawTL(){const[g,w]=setup($('tl'),90);const h=90;g.clearRect(0,0,w,h);g.fillStyle=css('--line');
  dens.forEach((d,i)=>{const bh=(d/dmax)*(h-26);g.fillRect(i/D.finish*w,h-bh,Math.max(1,w/bins-0.5),bh)});
  D.findings.filter(f=>active.has(f.r)).forEach(f=>{g.fillStyle=css(SEV[f.s]);const x=f.t/D.finish*w;g.fillRect(x-1,2,2,10+f.s*4)});
- g.fillStyle=css('--ink');const x=at/D.finish*w;g.fillRect(x-1,0,2,h)}
+ g.fillStyle=css('--ink');const x=Math.max(0,at)/D.finish*w;g.fillRect(x-1,0,2,h)}
 __PLAYFIELD__
 function nowText(){const near=D.findings.filter(f=>active.has(f.r)&&at-2.5<=f.t&&f.t<=at+1.5).sort((a,b)=>Math.abs(a.t-at)-Math.abs(b.t-at)).slice(0,2).sort((a,b)=>a.t-b.t);$('now').innerHTML=near.length?near.map(f=>{const d=f.t-at;const when=Math.abs(d)<0.25?'now':d>0?'in '+d.toFixed(1)+' s':(-d).toFixed(1)+' s ago';return '<div class="nl"><b>'+f.r+'</b> <span class="mute">'+when+'</span> '+explain(f.x)+'</div>'}).join(''):'<span class="mute">Nothing flagged right here.</span>'}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function draw(){$('seek').value=at;$('clock').textContent=Math.floor(at/60)+':'+(at%60).toFixed(1).padStart(4,'0');drawTL();drawRing();nowText();updateInfo();updateMaidata();
+function fmtT(t){const a=Math.abs(t);return(t<0?'-':'')+Math.floor(a/60)+':'+(a%60).toFixed(1).padStart(4,'0')}
+function countOverlay(){if(at>=0)return;const c=$('ring'),g=c.getContext('2d'),dpr=window.devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;g.setTransform(dpr,0,0,dpr,0,0);const n=Math.floor((at+LEAD)/BEAT)%4+1;g.fillStyle='rgba(255,255,255,.9)';g.font='bold '+Math.round(h*.22)+'px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(String(n),w/2,h/2);g.font=Math.round(h*.05)+'px sans-serif';g.fillStyle='rgba(255,255,255,.6)';g.fillText(Math.round(60/BEAT)+' BPM',w/2,h/2+h*.16)}
+function draw(){$('seek').value=at;$('clock').textContent=fmtT(at);drawTL();drawRing();countOverlay();nowText();updateInfo();updateMaidata();
  document.querySelectorAll('.f').forEach(el=>el.classList.toggle('cur',Math.abs(+el.dataset.t-at)<0.35))}
-function go(t){if(playing&&!cfg.keepPlay){playing=false;$('play').textContent='▶ Play'}at=Math.max(0,Math.min(D.finish,t));draw()}
+function go(t){if(playing&&!cfg.keepPlay){playing=false;$('play').textContent='▶ Play'}at=Math.max(-LEAD,Math.min(D.finish,t));draw()}
 function list(){const visible=D.findings.filter(f=>active.has(f.r));$('list').innerHTML=visible.map(f=>'<div class="f" data-t="'+f.t+'"><div class="sev" style="background:'+css(SEV[f.s])+'"></div><div><div class="m">'+f.r+' · '+esc(f.n)+' · bar '+f.bar+' · '+f.c+'</div><div class="t">'+explain(f.x)+'</div></div></div>').join('')||'<div class="sub">Nothing flagged.</div>';
  document.querySelectorAll('.f').forEach(el=>el.onclick=()=>{go(+el.dataset.t-0.25)})}
 const rules=[...new Set(D.findings.map(f=>f.r))].sort();
 $('chips').innerHTML=rules.map(r=>'<button class="on" data-r="'+r+'">'+r+'</button>').join('');
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{active.has(b.dataset.r)?active.delete(b.dataset.r):active.add(b.dataset.r);b.classList.toggle('on');list();draw()});
-$('seek').max=D.finish;$('seek').oninput=e=>go(+e.target.value);
+$('seek').min=-LEAD;$('seek').max=D.finish;$('seek').oninput=e=>go(+e.target.value);
 $('play').onclick=()=>{primeAudio();playing=!playing;$('play').textContent=playing?'⏸ Pause':'▶ Play';last=0;if(playing)requestAnimationFrame(tick)};
 $('spd').onchange=()=>{if($('spd').value==='custom'){$('spdc').style.display='';speed=+$('spdc').value||1}else{$('spdc').style.display='none';speed=+$('spd').value}};$('spdc').oninput=()=>{const v=+$('spdc').value;if(v>0)speed=Math.min(4,v)};
 function jump(d){const v=D.findings.filter(f=>active.has(f.r)).map(f=>f.t-0.25);const t=d>0?v.find(x=>x>at+0.05):[...v].reverse().find(x=>x<at-0.05);if(t!==undefined)go(t)}
 $('next').onclick=()=>jump(1);$('prev').onclick=()=>jump(-1);
-$('tl').onclick=e=>go((e.offsetX/e.target.clientWidth)*D.finish);
-function tick(ts){if(!playing)return;const before=at;if(last)at=Math.min(D.finish,at+(ts-last)/1000*speed);last=ts;playSounds(before,at);draw();if(at>=D.finish){playing=false;$('play').textContent='▶ Play'}else requestAnimationFrame(tick)}
-addEventListener('resize',draw);list();go(D.findings.length?Math.max(0,D.findings.find(f=>f.s===3)?.t-0.25||0):0);
+{const tl=$('tl');tl.style.touchAction='none';const at2=e=>{const r=tl.getBoundingClientRect();go(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*D.finish)};let drag=false;tl.onpointerdown=e=>{drag=true;tl.setPointerCapture(e.pointerId);at2(e)};tl.onpointermove=e=>{if(drag)at2(e)};tl.onpointerup=tl.onpointercancel=()=>{drag=false}}
+function tick(ts){if(!playing)return;const before=at;if(last)at=Math.min(D.finish,at+(ts-last)/1000*speed);last=ts;countIn(before,at);playSounds(before,at);draw();if(at>=D.finish){playing=false;$('play').textContent='▶ Play'}else requestAnimationFrame(tick)}
+addEventListener('resize',draw);list();go(-LEAD);
 </script></body></html>`;
 
 module.exports = { buildViewerHtml };
