@@ -6,6 +6,7 @@ const { analyse } = require('../chart/rules');
 const { buildViewerHtml } = require('../chart/viewerPage');
 const { maidataLines } = require('../chart/maidata');
 const { parseCustomChart, describeParseError } = require('../chart/customChart');
+const { config } = require('../config/env');
 
 const DIFFICULTIES = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 const escapeHtml = (v) =>
@@ -39,6 +40,7 @@ input{font:inherit;width:100%;padding:12px 14px;border-radius:10px;border:1px so
 <h1>Chart viewer</h1>
 <div class="search"><input id="q" type="search" placeholder="Search a song or artist (accents and symbols are optional)" autocomplete="off" autofocus>
 <div class="hint" id="hint">Type a few letters, for example <b>rond</b> finds RONDØ.</div></div>
+<div class="song" id="pub" style="display:none"><div class="title">Public link</div><div class="artist">Anyone can open this from outside your network.</div><div class="diffs"><a id="publink" href="#" target="_blank" rel="noopener"></a><a href="#" id="pubcopy">Copy</a></div></div>
 <div id="out"></div>
 <details class="song" id="custom"><summary class="title">Use your own chart</summary>
 <div class="hint">Paste simai text or a whole maidata.txt, or choose the file. It is only read for this view and not saved.</div>
@@ -67,6 +69,7 @@ function search(){
   const my=++seq;
   fetch('/chart/search?q='+encodeURIComponent(v)).then(r=>r.json()).then(r=>{if(my!==seq)return;hint.textContent=r.songs.length+(r.songs.length===1?' song':' songs');render(r.songs)}).catch(()=>{hint.textContent='Search failed; try again.'});
 }
+fetch('/chart/public-link').then(r=>r.ok?r.json():null).then(j=>{if(!j||!j.url)return;const a=document.getElementById('publink');a.textContent=j.url.replace('https://','');a.href=j.url;document.getElementById('pub').style.display='';document.getElementById('pubcopy').onclick=e=>{e.preventDefault();navigator.clipboard&&navigator.clipboard.writeText(j.url);e.target.textContent='Copied'}}).catch(()=>{});
 document.getElementById('cfile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{document.getElementById('ctext').value=String(r.result);if(!document.getElementById('ctitle').value)document.getElementById('ctitle').value=f.name.replace(/\\.[^.]+$/,'')};r.readAsText(f)});
 document.getElementById('copen').addEventListener('click',async e=>{e.preventDefault();const msg=document.getElementById('cmsg');msg.textContent='';
  try{const res=await fetch('/chart/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:document.getElementById('ctext').value,title:document.getElementById('ctitle').value,difficulty:document.getElementById('cdiff').value})});
@@ -117,6 +120,21 @@ function registerChartRoutes(app, { publicMode = false } = {}) {
             next();
         });
         app.get('/', (req, res) => res.redirect('/chart'));
+    }
+
+    // The current public address of the quick tunnel, for the local copy only.
+    if (!publicMode) {
+        app.get('/chart/public-link', async (req, res) => {
+            const base = config.chartTunnelMetricsUrl;
+            if (!base) return res.json({ url: null });
+            try {
+                const r = await fetch(`${base}/quicktunnel`, { signal: AbortSignal.timeout(2000) });
+                const j = await r.json();
+                res.json({ url: j.hostname ? `https://${j.hostname}` : null });
+            } catch {
+                res.json({ url: null });
+            }
+        });
     }
 
     // Song search for the chart page: /chart/search?q=rond

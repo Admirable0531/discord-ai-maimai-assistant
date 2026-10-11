@@ -39,10 +39,12 @@ function rhythmClass(beats) {
 
 /** The compact event list the page draws. */
 function pageEvents(events, tempoChanges) {
-    // Notes sharing a moment are drawn yellow, as in the game ("each" notes).
+    // Notes sharing a moment are drawn yellow, as in the game ("each" notes). A slide's star
+    // head is part of the slide, so it is not counted twice, but every slide track is counted:
+    // two slides from one star start together and are yellow too.
     const perMoment = new Map();
     for (const e of events) {
-        if (e.kind === 'slide') continue; // its star is already counted as a tap
+        if ((e.kind === 'tap' || e.kind === 'break') && e.star) continue;
         const key = Math.round(e.time * 200);
         perMoment.set(key, (perMoment.get(key) || 0) + 1);
     }

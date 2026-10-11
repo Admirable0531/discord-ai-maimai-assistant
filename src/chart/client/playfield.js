@@ -398,7 +398,7 @@ function starPath(g, x, y, r, rot) {
     }
     g.closePath();
 }
-function starNote(g, x, y, r0, sc, ex, rot = 0) {
+function starNote(g, x, y, r0, sc, ex, rot = 0, brk = false) {
     const r = Math.max(r0, 3);
     g.save();
     glow(g, ex);
@@ -419,6 +419,26 @@ function starNote(g, x, y, r0, sc, ex, rot = 0) {
     g.beginPath();
     g.arc(x, y, Math.max(1.5, r * 0.16), 0, 7);
     g.fill();
+    if (brk) {
+        // a break star: a red rim round the orange outline and two sparkles, like a break tap
+        starPath(g, x, y, r * 1.28, rot);
+        g.lineJoin = 'round';
+        g.lineWidth = Math.max(1.6, r * 0.12);
+        g.strokeStyle = '#ff3b2f';
+        g.stroke();
+        g.fillStyle = WHITE;
+        for (const a of [-0.9, 2.2]) {
+            g.beginPath();
+            g.arc(
+                x + Math.cos(a + rot) * r * 0.78,
+                y + Math.sin(a + rot) * r * 0.78,
+                Math.max(1.2, r * 0.1),
+                0,
+                7
+            );
+            g.fill();
+        }
+    }
 }
 /** Hexagon with a point at each end of the lane: regular when the tail is at the head, then stretched. */
 function hexOutline(g, tx, ty, hx, hy, r, ux, uy) {
@@ -859,7 +879,16 @@ function drawRing() {
                     ...laneDirection(e.l)
                 );
             } else if (e.st) {
-                starNote(g, x, y, noteR * 1.05 * st.scale, starHeadColor(e), e.x && cfg.exEmph);
+                starNote(
+                    g,
+                    x,
+                    y,
+                    noteR * 1.05 * st.scale,
+                    e.k === 'b' ? noteColor(e) : starHeadColor(e),
+                    e.x && cfg.exEmph,
+                    0,
+                    e.k === 'b'
+                );
             } else {
                 tapNote(g, x, y, noteR * st.scale, noteColor(e), e.x && cfg.exEmph, e.k === 'b');
             }

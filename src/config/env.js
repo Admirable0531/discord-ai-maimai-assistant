@@ -29,6 +29,9 @@ const config = {
     httpPort: num('HTTP_PORT', 3002),
     // A second, chart-only server that is safe to expose to the internet (0 turns it off).
     chartPort: num('CHART_PORT', 3003),
+    // Where the Cloudflare quick tunnel reports its address (e.g. http://192.168.0.225:20250), so the
+    // local chart page can show the current public link. Empty = not shown.
+    chartTunnelMetricsUrl: (process.env.CHART_TUNNEL_METRICS_URL || '').replace(/\/+$/, ''),
     // Where /chart is reachable (e.g. http://192.168.0.225:3002). When set, /chartcheck links to it.
     chartPageBaseUrl: (process.env.CHART_PAGE_BASE_URL || '').replace(/\/+$/, ''),
     // Warnings and errors are mirrored here (see utils/discordLog.js); '' turns it off.

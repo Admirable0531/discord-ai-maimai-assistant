@@ -52,7 +52,7 @@ function buildChart(text) {
             } else if (note.type === NoteType.Touch || isSensor) {
                 events.push({ ...base, kind: 'touch' });
             } else if (note.type === NoteType.Break) {
-                events.push({ ...base, kind: 'break' });
+                events.push({ ...base, kind: 'break', star: note.slidePaths.length > 0 });
             } else {
                 events.push({ ...base, kind: 'tap', star: note.slidePaths.length > 0 });
             }

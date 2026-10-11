@@ -134,3 +134,10 @@ test('a pasted maidata file gives the chosen difficulty, and raw text is used as
     assert.equal(parseCustomChart('(120){4}1,2,E').text, '(120){4}1,2,E');
     assert.ok(!parseCustomChart('   ').success);
 });
+
+test('a break that starts a slide is a star, and counts once', () => {
+    const chart = buildChart('(120){4}1b-5[4:1],E');
+    const head = chart.events.find((e) => e.kind === 'break');
+    assert.ok(head && head.star);
+    assert.deepEqual(countEvents(chart.events), { tap: 0, hold: 0, slide: 1, touch: 0, break: 1 });
+});

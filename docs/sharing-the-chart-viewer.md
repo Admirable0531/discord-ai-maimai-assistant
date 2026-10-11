@@ -41,3 +41,20 @@ working when you stop the command and the address changes next time.
   pastes themselves does show their own text back to them, and is not stored.
 - The charts are fan transcriptions of official charts. Showing the analysis is one thing; check you are
   comfortable with how widely you share it.
+
+## How it is set up on this machine
+
+A Cloudflare quick tunnel runs as its own container, outside the bot's compose project, so a deploy
+does not change the link:
+
+```
+docker run -d --name atri_chart_tunnel --restart unless-stopped --network host \
+  cloudflare/cloudflared:latest tunnel --no-autoupdate --metrics 0.0.0.0:20250 --url http://localhost:3003
+```
+
+- It starts again by itself after a reboot (`--restart unless-stopped`, and Docker is enabled at boot).
+- The address (`https://….trycloudflare.com`) is random and **changes whenever that container restarts**
+  (for example after a reboot). The local page `http://<pi>:3002/chart` shows the current public link at
+  the top, with a Copy button; or run `curl http://localhost:20250/quicktunnel`.
+- For an address that never changes, switch on Tailscale Funnel once (it needs a click in your Tailscale
+  admin page: `tailscale funnel --bg 3003` prints the link to enable it) and share the `*.ts.net` address.
