@@ -59,7 +59,21 @@ function buildChart(text) {
         }
     }
     events.sort((a, b) => a.time - b.time);
-    return { events, finish: parsed.finishTiming, tempoChanges: parsed.timingChanges };
+    const tempoChanges = parsed.timingChanges;
+    for (const e of events) e.bar = barAt(tempoChanges, e.time);
+    return { events, finish: parsed.finishTiming, tempoChanges };
+}
+
+/** Bar number (1-based, assuming 4 beats a bar) at `time`, following tempo changes. */
+function barAt(tempoChanges, time) {
+    let beats = 0;
+    for (let i = 0; i < tempoChanges.length; i++) {
+        const from = tempoChanges[i].time;
+        if (from >= time) break;
+        const to = Math.min(time, tempoChanges[i + 1]?.time ?? Infinity);
+        beats += ((to - from) * tempoChanges[i].tempo) / 60;
+    }
+    return Math.floor(beats / 4) + 1;
 }
 
 /** Counts per kind, comparable with a chart's published note counts. */
