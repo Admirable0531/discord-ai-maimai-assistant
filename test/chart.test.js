@@ -120,3 +120,17 @@ test('search folds accents and finds a song from part of its name', async () => 
     assert.equal(fold('Straight into the lights'), 'straightintothelights');
     assert.ok(fold('RONDØ').startsWith(fold('rond')));
 });
+
+test('a pasted maidata file gives the chosen difficulty, and raw text is used as it is', () => {
+    const { parseCustomChart } = require('../src/chart/customChart');
+    const file =
+        '&title=My Song\n&lv_4=12\n&inote_4=(120){4}1,2,E\n&inote_5=(120){4}3,4,5,E\n&first=0.1';
+    const auto = parseCustomChart(file);
+    assert.equal(auto.title, 'My Song');
+    assert.equal(auto.label, 'Master');
+    assert.equal(auto.text, '(120){4}3,4,5,E');
+    assert.equal(parseCustomChart(file, { difficulty: 'expert' }).text, '(120){4}1,2,E');
+    assert.match(parseCustomChart(file, { difficulty: 'basic' }).error, /no Basic chart/);
+    assert.equal(parseCustomChart('(120){4}1,2,E').text, '(120){4}1,2,E');
+    assert.ok(!parseCustomChart('   ').success);
+});

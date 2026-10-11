@@ -20,6 +20,9 @@ services:
       # /chart viewer on the local network). HTTP_PORT in
       # .env must match the host side if you change it.
       - "3002:3002"
+      # Chart pages only (nothing else is served here), so this is the port to publish
+      # through a tunnel when sharing the viewer outside the local network.
+      - "3003:3003"
     volumes:
       # SQLite lives here (see src/database/client.js) — without this volume
       # every container recreate wipes saved memories and chat history. If
