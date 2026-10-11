@@ -74,6 +74,7 @@ test('viewer page is self-contained, escapes the title and never embeds chart te
         events: chart.events,
         finish: chart.finish,
         findings: analyse(chart),
+        tempoChanges: chart.tempoChanges,
     });
     assert.ok(!html.includes('<b>x</b>'));
     assert.ok(!html.includes(text));
@@ -93,4 +94,31 @@ test('A14: a group of three simultaneous touches needs only two', () => {
     assert.ok(found);
     assert.match(found.text, /2 of them clear/);
     assert.ok(!analyse(buildChart('(120){4}E1/E3,,,,E')).some((f) => f.rule === 'A14'));
+});
+
+test('a slide sweeping over a touch is not a splash, but a touch landing just before it is, softened', () => {
+    const same = analyse(buildChart('(120){8}1-5[4:1],,,C,,,E')).map((f) => f.rule);
+    assert.ok(!same.includes('A4'));
+    const early = analyse(buildChart('(120){16}1-5[4:1],,,,,C,,,,,,,,,E')).find(
+        (f) => f.rule === 'A5'
+    );
+    if (early) assert.match(early.text, /Perfect from/);
+});
+
+test('maidata lines carry the time of every step', () => {
+    const { maidataLines } = require('../src/chart/maidata');
+    const lines = maidataLines('(120){4}1,2,,3,E');
+    assert.deepEqual(
+        lines.map((l) => l.s),
+        ['(120){4}1', '2', '3']
+    );
+    assert.equal(lines[2].t, 1.5);
+});
+
+test('maidata does not mistake an E touch note for the end marker', () => {
+    const { maidataLines } = require('../src/chart/maidata');
+    assert.deepEqual(
+        maidataLines('(120){4}E3,,E5,,E').map((l) => l.s),
+        ['(120){4}E3', 'E5']
+    );
 });

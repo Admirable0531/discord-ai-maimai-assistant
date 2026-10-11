@@ -377,7 +377,10 @@ function slideBesideNote(paths, events, cfg) {
                 )
                     continue;
                 const before = gap < 0;
-                out.push({
+                // A slide sweeping over a touch just triggers it early or on time, which a touch
+                // allows (Perfect from 150 ms early to 200 ms late), so that is not a splash.
+                if (note.sensor && !before) continue;
+                const finding = {
                     rule: before ? 'A5' : 'A4',
                     severity: Math.abs(gap) <= 0.06 ? 3 : 2,
                     time: Math.min(note.time, step.time),
@@ -386,7 +389,12 @@ function slideBesideNote(paths, events, cfg) {
                     text: before
                         ? `${label(note)} lands ${Math.round(-gap * 1000)} ms before the ${slideLabel(slide)} reaches ${name}; hitting it can advance the slide early.`
                         : `The ${slideLabel(slide)} passes ${name} ${Math.round(gap * 1000)} ms before ${label(note)}; the sliding finger can catch the note.`,
-                });
+                };
+                out.push(
+                    note.sensor
+                        ? lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate)
+                        : finding
+                );
                 break;
             }
         }
@@ -447,7 +455,8 @@ function slideBesideSlide(paths, cfg) {
 /** A7/A13: a note on, or right next to, the sensor a slide ends on, just after it ends. */
 function slideEndBesideNote(paths, events, cfg) {
     const out = [];
-    const notes = events.filter((e) => isButtonHit(e) || e.kind === 'touch');
+    // Touches are left out: a slide ending over a touch is harmless (wide touch window).
+    const notes = events.filter(isButtonHit);
     for (const { slide, steps } of paths) {
         const lastSteps = steps.filter((s) => s.last);
         for (const note of notes) {

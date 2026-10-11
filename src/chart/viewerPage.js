@@ -11,8 +11,34 @@ const { RULE_NAMES, formatTime } = require('./report');
 
 const round = (n) => Math.round(n * 1000) / 1000;
 
+/** Beats (quarter notes) elapsed at `time`, following tempo changes. */
+function beatsAt(tempoChanges, time) {
+    let beats = 0;
+    for (let i = 0; i < tempoChanges.length; i++) {
+        const from = tempoChanges[i].time;
+        if (from >= time) break;
+        const to = Math.min(time, tempoChanges[i + 1]?.time ?? Infinity);
+        beats += ((to - from) * tempoChanges[i].tempo) / 60;
+    }
+    return beats;
+}
+
+/** 0 quarter, 1 eighth, 2 sixteenth, 3 triplet, 4 twenty-fourth, 5 thirty-second, 6 other. */
+function rhythmClass(beats) {
+    const frac = beats - Math.floor(beats);
+    const near = (x) =>
+        Math.abs(frac - x) < 0.02 || Math.abs(frac - x - 1) < 0.02 || Math.abs(frac - x + 1) < 0.02;
+    if (near(0)) return 0;
+    if (near(0.5)) return 1;
+    if (near(1 / 3) || near(2 / 3)) return 3;
+    if (near(0.25) || near(0.75)) return 2;
+    if (near(1 / 6) || near(5 / 6)) return 4;
+    for (const k of [1, 3, 5, 7]) if (near(k / 8)) return 5;
+    return 6;
+}
+
 /** The compact event list the page draws. */
-function pageEvents(events) {
+function pageEvents(events, tempoChanges) {
     // Notes sharing a moment are drawn yellow, as in the game ("each" notes).
     const perMoment = new Map();
     for (const e of events) {
@@ -25,6 +51,7 @@ function pageEvents(events) {
         const out = pageEvent(e);
         if (each) out.e = 1;
         if (e.ex) out.x = 1;
+        out.q = rhythmClass(beatsAt(tempoChanges, e.time));
         return out;
     });
 }
@@ -65,12 +92,28 @@ const safeJson = (value) =>
         .replace(/</g, '\\u003c')
         .replace(/[\u2028\u2029]/g, '');
 
-function buildViewerHtml({ title, difficulty, events, finish, findings }) {
+function buildViewerHtml({
+    title,
+    difficulty,
+    events,
+    finish,
+    findings,
+    tempoChanges = [],
+    maidata = null,
+}) {
     const data = {
         title,
         difficulty,
         finish: round(finish),
-        events: pageEvents(events),
+        events: pageEvents(events, tempoChanges),
+        tempo: tempoChanges.map((c) => ({
+            t: round(c.time),
+            bpm: round(c.tempo),
+            div: c.subdivisions,
+        })),
+        // The chart text follows the timeline only on the local-network page; a file sent
+        // to Discord never carries it.
+        maidata: maidata ? maidata.map((l) => ({ t: l.t, s: l.s })) : undefined,
         findings: findings.map((f) => ({
             r: f.rule,
             n: RULE_NAMES[f.rule] || f.rule,
@@ -110,14 +153,28 @@ input[type=range]{flex:1;min-width:120px}
 .f:first-child{border-top:0}.f .sev{flex:none;width:10px;border-radius:5px}
 .f .m{color:var(--mute);font-size:12px}.f .t{margin-top:2px}.f.cur{background:rgba(127,127,127,.12)}
 .now{font-size:13px;color:var(--mute);min-height:2.6em}
-.sw{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:14px}.sw label{flex:0 0 120px}.sw input[type=range]{flex:1}.sw output{flex:0 0 40px;text-align:right;color:var(--mute)}summary{cursor:pointer;font-weight:600}
+.sw{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:14px}.sw label{flex:0 0 150px}.sw input[type=range]{flex:1}.sw output{flex:0 0 46px;text-align:right;color:var(--mute)}summary{cursor:pointer;font-weight:600}
+.info{height:1.7em;font-size:13px;color:#a6a8b0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.now{height:5.6em;overflow:auto}
+#clock{display:inline-block;min-width:5.2em;text-align:right;font-variant-numeric:tabular-nums}
+#spd{width:6.2em}
+#list{max-height:60vh;overflow:auto}
+.md{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;height:16.5em;overflow:hidden}
+.mdl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.mdl.cur{background:rgba(127,127,127,.28);border-radius:4px}.mdt{color:var(--mute)}
+.mdh{font-weight:600;margin-bottom:6px}
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 12px;margin-top:10px}
+.ck{display:flex;align-items:center;gap:6px;font-size:14px}
+.step{padding:2px 6px;font-size:12px;flex:none}
+.sw select{flex:1}
 .foot{color:var(--mute);font-size:12px;margin-top:14px}
 </style></head><body><div class="wrap">
 <h1 id="ttl"></h1><div class="sub" id="sub"></div>
 <div class="panel"><canvas id="tl" height="90"></canvas>
 <div class="row" style="margin-top:8px"><button id="play">▶ Play</button><button id="prev">◀ Prev</button><button id="next">Next ▶</button>
 <select id="spd" title="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="custom">Custom…</option></select><input id="spdc" type="number" min="0.05" max="4" step="0.05" value="1" style="display:none;width:70px"><input id="seek" type="range" min="0" step="0.01"><span id="clock" class="sub"></span></div></div>
-<div class="panel dark"><canvas id="ring" height="380"></canvas><div class="now" id="now"></div></div>
+<div class="panel dark"><div class="info" id="info"></div><canvas id="ring" height="380"></canvas><div class="now" id="now"></div></div>
+<div class="panel" id="mdp" style="display:none"><div class="mdh">Maidata</div><div class="md" id="md"></div></div>
 <details class="panel" id="cfgbox"><summary>Display settings</summary><div id="cfg"></div></details>
 <div class="panel"><div class="row chips" id="chips"></div><div id="list" style="margin-top:6px"></div></div>
 <div class="foot">Risks read from a fan transcription of the chart, not certainties; thresholds are not calibrated yet. Slide timing assumes even travel. Generated by Atri.</div>
@@ -140,9 +197,9 @@ function drawTL(){const[g,w]=setup($('tl'),90);const h=90;g.clearRect(0,0,w,h);g
 __PLAYFIELD__
 function nowText(){const near=D.findings.filter(f=>active.has(f.r)&&at-0.2<=f.t&&f.t<=at+0.7);$('now').innerHTML=near.length?near.slice(0,3).map(f=>'<b>'+f.r+'</b> '+esc(f.x)).join('<br>'):'';}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function draw(){$('seek').value=at;$('clock').textContent=Math.floor(at/60)+':'+(at%60).toFixed(1).padStart(4,'0');drawTL();drawRing();nowText();
+function draw(){$('seek').value=at;$('clock').textContent=Math.floor(at/60)+':'+(at%60).toFixed(1).padStart(4,'0');drawTL();drawRing();nowText();updateInfo();updateMaidata();
  document.querySelectorAll('.f').forEach(el=>el.classList.toggle('cur',Math.abs(+el.dataset.t-at)<0.35))}
-function go(t){at=Math.max(0,Math.min(D.finish,t));draw()}
+function go(t){if(playing&&!cfg.keepPlay){playing=false;$('play').textContent='▶ Play'}at=Math.max(0,Math.min(D.finish,t));draw()}
 function list(){const visible=D.findings.filter(f=>active.has(f.r));$('list').innerHTML=visible.map(f=>'<div class="f" data-t="'+f.t+'"><div class="sev" style="background:'+css(SEV[f.s])+'"></div><div><div class="m">'+f.r+' · '+esc(f.n)+' · bar '+f.bar+' · '+f.c+'</div><div class="t">'+esc(f.x)+'</div></div></div>').join('')||'<div class="sub">Nothing flagged.</div>';
  document.querySelectorAll('.f').forEach(el=>el.onclick=()=>{go(+el.dataset.t-0.25)})}
 const rules=[...new Set(D.findings.map(f=>f.r))].sort();

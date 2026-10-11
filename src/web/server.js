@@ -5,6 +5,7 @@ const { getChartText } = require('../chart/simaiWiki');
 const { buildChart } = require('../chart/chartModel');
 const { analyse } = require('../chart/rules');
 const { buildViewerHtml } = require('../chart/viewerPage');
+const { maidataLines } = require('../chart/maidata');
 
 const DIFFICULTIES = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 const escapeHtml = (v) =>
@@ -73,6 +74,8 @@ function startServer(port) {
                     events: chart.events,
                     finish: chart.finish,
                     findings: analyse(chart),
+                    tempoChanges: chart.tempoChanges,
+                    maidata: maidataLines(found.text), // local network only
                 })
             );
         } catch (err) {

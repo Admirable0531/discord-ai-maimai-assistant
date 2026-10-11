@@ -390,3 +390,18 @@ outer loops (pp/qq, all eight variants) ≤ 0.007. The outer loops needed a diff
 a tangent leg to a circle of radius cos(π/8)/2 through the centre, a turn round it (a full
 extra lap when the turn would be shorter than 90°), then a tangent line to the end button.
 Arrow spacing in the game is about 0.09 of the ring radius.
+
+### Viewer: sensor layout and options (Oct 2026)
+
+- Sensor positions as the game's play screen draws them, measured from screenshots (units of the
+  ring radius): C at the centre, B at 0.466, E at 0.646, A at 0.83 and D at 0.85 (A and D touch
+  notes share one ring). B shapes are about 0.31 wide, so neighbours are only about 0.02 apart.
+- A slide or a tap passing over a touch is not a splash (a touch is Perfect from 150 ms early to
+  200 ms late), so slides no longer flag touch notes, except a touch landing just before a slide
+  reaches its sensor, which is kept but softened.
+- Options modelled on mai-notes' list: mirror (left-right, up-down, rotate 180), judgement line
+  (normal, simple, none), rhythm (DDR-style) colours, star rotation, slide start pink, EX
+  emphasis, simultaneous breaks yellow, break slides in normal colour, hold-end and touch answer
+  sounds, distinct simultaneous sound, a hitsound offset in ms, BPM and note counts, keep playing
+  after seeking, and the chart text following the timeline (local network page only; a page
+  attached to Discord never carries chart text).

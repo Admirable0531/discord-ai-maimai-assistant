@@ -87,6 +87,7 @@ async function execute(args, context) {
             events: chart.events,
             finish: chart.finish,
             findings,
+            tempoChanges: chart.tempoChanges,
         });
         const attached = attachFile(context, {
             name: `${found.title.replace(/[^\w.-]+/g, '_').slice(0, 40) || 'chart'}-${difficulty}.html`,

@@ -11,14 +11,29 @@ const DEF = {
     touchSpeed: 7.5,
     tapScale: 1,
     holdScale: 1,
-    touchScale: 1,
+    touchScale: 0.8,
     slideScale: 1,
-    slideGap: 1,
+    slideGap: 1.35,
     slideOffset: 0,
-    sound: 1,
     volume: 0.6,
+    offset: 0, // ms: hitsounds later (+) or earlier (-) than the picture
+    mirror: 0, // 0 off, 1 left-right, 2 up-down, 3 rotate 180
+    judgeLine: 0, // 0 normal, 1 simple, 2 none
+    ddr: 0, // 0 off, 1 colour taps/holds by rhythm, 2 also touches and slides
     labels: 1,
     guides: 1,
+    sound: 1,
+    soundHoldEnd: 1,
+    soundTouch: 1,
+    soundEachDistinct: 0,
+    spin: 1,
+    pinkStart: 0,
+    exEmph: 1,
+    eachBreakYellow: 0,
+    breakSlideNormal: 0,
+    keepPlay: 1,
+    info: 1,
+    maidata: 1,
 };
 // What 'normal' looks like here, tuned by eye against the game: a displayed
 // tap speed of 7.5 runs at this internal speed, and the sizes below are the 1.0 sizes.
@@ -32,13 +47,13 @@ const BASE = {
 };
 let cfg = Object.assign({}, DEF);
 try {
-    Object.assign(cfg, JSON.parse(localStorage.getItem('chartViewerCfg2') || '{}'));
+    Object.assign(cfg, JSON.parse(localStorage.getItem('chartViewerCfg3') || '{}'));
 } catch {
     /* storage unavailable: defaults are fine */
 }
 const saveCfg = () => {
     try {
-        localStorage.setItem('chartViewerCfg2', JSON.stringify(cfg));
+        localStorage.setItem('chartViewerCfg3', JSON.stringify(cfg));
     } catch {
         /* ignore */
     }
@@ -84,14 +99,52 @@ const COL = {
     slideBrk: { main: '#ff8a2a', dark: '#7a2a00', star: '#ff8a2a', wifi: '#e0761c' },
 };
 const WHITE = 'rgba(255,255,255,.95)';
-const noteColor = (e) => (e.k === 'b' ? COL.brk : e.e ? COL.each : COL.tap);
-const slideColor = (e) => (e.b ? COL.slideBrk : e.e ? COL.slideEach : COL.slide);
+const DDR = ['#ff3b3b', '#3d82ff', '#ffd23f', '#b469ff', '#ff6fd0', '#ff9a3d', '#9aa5b8'];
+function noteColor(e) {
+    if (cfg.ddr >= 1 && e.q !== undefined) return DDR[e.q];
+    if (e.k === 'b') return e.e && cfg.eachBreakYellow ? COL.each : COL.brk;
+    return e.e ? COL.each : COL.tap;
+}
+/** Colour of a slide star that is a plain note (a slide's own head). */
+function starHeadColor(e) {
+    if (cfg.ddr >= 1 && e.q !== undefined) return DDR[e.q];
+    if (cfg.pinkStart) return '#ff5fa2';
+    return e.e ? COL.slideEach.star : COL.slide.star;
+}
+function slideColor(e) {
+    if (cfg.ddr >= 2 && e.q !== undefined)
+        return { main: DDR[e.q], dark: '#1a1a1a', star: DDR[e.q], wifi: DDR[e.q] };
+    if (e.b && !cfg.breakSlideNormal) return COL.slideBrk;
+    const base = e.e ? COL.slideEach : COL.slide;
+    return cfg.pinkStart ? { ...base, star: '#ff5fa2' } : base;
+}
 // ----- geometry (set at the start of every draw) -----
 let C = 0;
 let R = 0;
 const wrap8 = (n) => ((((n - 1) % 8) + 8) % 8) + 1;
 const ang = (lane) => ((22.5 + 45 * (lane - 1)) * Math.PI) / 180; // clockwise from the top
-const pt = (a, r) => [C + r * Math.sin(a), C - r * Math.cos(a)];
+/** Mirror option: points are flipped about the centre (display only). */
+function mirror(p) {
+    const m = cfg.mirror;
+    if (!m) return p;
+    return [m === 1 || m === 3 ? 2 * C - p[0] : p[0], m === 2 || m === 3 ? 2 * C - p[1] : p[1]];
+}
+const pt = (a, r) => mirror([C + r * Math.sin(a), C - r * Math.cos(a)]);
+/** The same without the mirror: fixed things such as the button numbers. */
+const ptRaw = (a, r) => [C + r * Math.sin(a), C - r * Math.cos(a)];
+/** The name of the sensor now at the place the sensor `name` normally is. */
+function mirrorName(name) {
+    const m = cfg.mirror;
+    if (!m || name === 'C') return name;
+    const L = name[0];
+    const n = +name.slice(1);
+    const lane = L === 'A' || L === 'B';
+    let k;
+    if (m === 1) k = lane ? 9 - n : 2 - n;
+    else if (m === 2) k = lane ? 5 - n : 6 - n;
+    else k = n + 4;
+    return L + wrap8(k);
+}
 const dot = (lane) => pt(ang(lane), R);
 /** Sensor centre. A and B sit on the buttons' angles, D and E between them. */
 function xy(name) {
@@ -99,7 +152,14 @@ function xy(name) {
     const L = name[0];
     const n = +name.slice(1);
     const a = L === 'A' || L === 'B' ? ang(n) : (45 * (n - 1) * Math.PI) / 180;
-    return pt(a, { A: 0.83, B: 0.485, D: 0.85, E: 0.655 }[L] * R);
+    return pt(a, { A: 0.83, B: 0.466, D: 0.85, E: 0.646 }[L] * R);
+}
+/** Unit vector pointing outward along a lane, as drawn. */
+function laneDirection(lane) {
+    const a = laneAt(lane, 0.4);
+    const b = laneAt(lane, 1);
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
 }
 /** A point on a lane at `frac` of the ring radius. */
 const laneAt = (lane, frac) => pt(ang(lane), R * frac);
@@ -155,7 +215,7 @@ function outerLoopRaw(sLane, eLane, dir) {
     const TAU = 2 * Math.PI;
     const mod = (x) => ((x % TAU) + TAU) % TAU;
     const math = (lane) => Math.PI * (5 / 8 - lane / 4);
-    const toS = (p) => [C + p[0] * R, C - p[1] * R];
+    const toS = (p) => mirror([C + p[0] * R, C - p[1] * R]);
     const ts = math(sLane);
     const ppqq = ccw ? ts - (3 * Math.PI) / 8 : ts + (3 * Math.PI) / 8;
     const cc = [b * Math.cos(ppqq), b * Math.sin(ppqq)];
@@ -262,6 +322,7 @@ function along(p, d) {
 // ----- drawing helpers -----
 /** Star rotation (radians) at the current time: the faster the slide, the faster it spins. */
 function starSpin(e, tracks) {
+    if (!cfg.spin) return 0;
     const dur = Math.max(0.15, e.z - e.a);
     const wait = 180 / dur; // degrees a second while it waits and approaches
     const len = tracks[0].total / R;
@@ -589,11 +650,11 @@ function sensorShape(g, name) {
     const n = +name.slice(1);
     const [x, y] = xy(name);
     if (L === 'C') return regularPolygon(g, x, y, R * 0.17, 8, Math.PI / 8);
-    if (L === 'B') return regularPolygon(g, x, y, R * 0.145, 8, Math.PI / 8);
+    if (L === 'B') return regularPolygon(g, x, y, R * 0.165, 8, Math.PI / 8);
     if (L === 'E') {
         const diamond = n % 2 === 1;
-        if (diamond) return regularPolygon(g, x, y, R * 0.15, 4, 0);
-        return regularPolygon(g, x, y, R * 0.14, 4, Math.PI / 4);
+        if (diamond) return regularPolygon(g, x, y, R * 0.146, 4, 0);
+        return regularPolygon(g, x, y, R * 0.148, 4, Math.PI / 4);
     }
     if (L === 'A') return sector(g, ang(n) - 15 * D2R, ang(n) + 15 * D2R, R * 0.62, R * 0.995);
     return sector(
@@ -651,19 +712,24 @@ function drawRing() {
     if (cfg.guides) {
         drawSensors(g, litSensors());
     }
-    g.strokeStyle = 'rgba(255,255,255,.95)';
-    g.lineWidth = 2.5;
-    g.beginPath();
-    g.arc(C, C, R, 0, 7);
-    g.stroke();
-    for (let n = 1; n <= 8; n++) {
-        const [x, y] = dot(n);
-        g.fillStyle = '#fff';
+    if (cfg.judgeLine !== 2) {
+        const simple = cfg.judgeLine === 1;
+        g.strokeStyle = simple ? 'rgba(255,255,255,.4)' : 'rgba(255,255,255,.95)';
+        g.lineWidth = simple ? 1.2 : 2.5;
         g.beginPath();
-        g.arc(x, y, 4.5, 0, 7);
-        g.fill();
+        g.arc(C, C, R, 0, 7);
+        g.stroke();
+    }
+    for (let n = 1; n <= 8; n++) {
+        if (cfg.judgeLine === 0) {
+            const [x, y] = ptRaw(ang(n), R);
+            g.fillStyle = '#fff';
+            g.beginPath();
+            g.arc(x, y, 4.5, 0, 7);
+            g.fill();
+        }
         if (cfg.labels) {
-            const [lx, ly] = pt(ang(n), R * 0.9);
+            const [lx, ly] = ptRaw(ang(n), R * 0.9);
             g.fillStyle = 'rgba(255,255,255,.45)';
             g.font = '11px sans-serif';
             g.textAlign = 'center';
@@ -732,7 +798,7 @@ function drawRing() {
         if (e.k === 's') continue;
         const end = e.z && e.z > e.t ? e.z : e.t;
         const lead = e.n ? touchWhole() : tapLead();
-        const tailT = e.n && e.k !== 'th' ? 0.12 : TRAIL; // a touch note flashes as it is hit
+        const tailT = TRAIL;
         if (e.t - lead > at || end < at - tailT) continue;
         const out = at > end ? Math.max(0, 1 - (at - end) / tailT) : 1;
         if (e.n) {
@@ -748,7 +814,12 @@ function drawRing() {
                 (hold ? 0.3 : 0.16) * (e.n[0] === 'A' || e.n[0] === 'D' ? 0.55 : 1) * ts.alpha +
                 ')';
             g.fill();
-            const c = e.e ? TOUCH_COL.each : TOUCH_COL.single;
+            const c =
+                cfg.ddr >= 2 && e.q !== undefined
+                    ? DDR[e.q]
+                    : e.e
+                      ? TOUCH_COL.each
+                      : TOUCH_COL.single;
             if (e.k === 'th' && at >= e.t && at <= e.z) {
                 g.lineWidth = 3;
                 g.strokeStyle = c;
@@ -756,12 +827,12 @@ function drawRing() {
                 g.arc(x, y, r * 2.2, 0, 7);
                 g.stroke();
             }
-            touchNote(g, x, y, r, c, ts.gap, e.x, e.k === 'th', e.k !== 'th' && at >= e.t);
+            touchNote(g, x, y, r, c, ts.gap, e.x && cfg.exEmph, e.k === 'th', false);
             if (cfg.labels) {
                 g.fillStyle = 'rgba(255,255,255,.5)';
                 g.font = '9px sans-serif';
                 g.textAlign = 'center';
-                g.fillText(e.n, x, y - r * 1.9 - ts.gap);
+                g.fillText(mirrorName(e.n), x, y - r * 1.9 - ts.gap);
             }
         } else {
             g.globalAlpha = out;
@@ -784,21 +855,13 @@ function drawRing() {
                     y,
                     r * 0.95,
                     noteColor(e),
-                    e.x,
-                    Math.sin(ang(e.l)),
-                    -Math.cos(ang(e.l))
+                    e.x && cfg.exEmph,
+                    ...laneDirection(e.l)
                 );
             } else if (e.st) {
-                starNote(
-                    g,
-                    x,
-                    y,
-                    noteR * 1.05 * st.scale,
-                    e.e ? COL.slideEach.star : COL.slide.star,
-                    e.x
-                );
+                starNote(g, x, y, noteR * 1.05 * st.scale, starHeadColor(e), e.x && cfg.exEmph);
             } else {
-                tapNote(g, x, y, noteR * st.scale, noteColor(e), e.x, e.k === 'b');
+                tapNote(g, x, y, noteR * st.scale, noteColor(e), e.x && cfg.exEmph, e.k === 'b');
             }
         }
         g.globalAlpha = 1;
@@ -847,26 +910,31 @@ function noise(ac, when, dur, gain, freq) {
     src.connect(f).connect(g).connect(ac.destination);
     src.start(when);
 }
-function hitSound(kind, ex, vol) {
+function hitSound(kind, ex, vol, each) {
     const ac = audio();
     if (!ac) return;
     const t = ac.currentTime;
     const v = vol;
+    const up = cfg.soundEachDistinct && each ? 1.26 : 1; // simultaneous notes sound a little higher
     if (kind === 'b') {
         noise(ac, t, 0.12, 0.9 * v, 2600);
         tone(ac, t, 520, 140, 0.16, 0.7 * v, 'triangle');
         tone(ac, t, 1500, 900, 0.09, 0.4 * v);
     } else if (kind === 'c' || kind === 'th') {
-        tone(ac, t, 1568, 1500, 0.2, 0.4 * v);
+        tone(ac, t, 1568 * up, 1500 * up, 0.2, 0.4 * v);
         tone(ac, t, 2349, 2300, 0.14, 0.22 * v);
+    } else if (kind === 'he') {
+        tone(ac, t, 900, 500, 0.06, 0.35 * v); // a hold letting go
     } else if (kind === 's') {
         tone(ac, t, 700, 1500, 0.14, 0.3 * v);
         tone(ac, t + 0.05, 1760, 1700, 0.18, 0.25 * v);
     } else {
-        tone(ac, t, 1100, 650, 0.08, 0.55 * v);
+        tone(ac, t, 1100 * up, 650 * up, 0.08, 0.55 * v);
         noise(ac, t, 0.02, 0.4 * v, 4000);
     }
     if (ex) tone(ac, t, 2400, 2000, 0.07, 0.25 * v);
+    if (cfg.soundEachDistinct && each && kind !== 'he')
+        tone(ac, t + 0.02, 2800, 2600, 0.06, 0.18 * v);
 }
 let soundEvents = null;
 // eslint-disable-next-line no-unused-vars
@@ -878,38 +946,168 @@ function primeAudio() {
 function playSounds(from, to) {
     if (!cfg.sound || to <= from || to - from > 0.5) return;
     if (!soundEvents) {
-        soundEvents = D.events
-            .map((e) => ({ t: e.k === 's' ? e.z : e.t, k: e.k, x: e.x }))
-            .sort((a, b) => a.t - b.t);
+        soundEvents = [];
+        for (const e of D.events) {
+            soundEvents.push({ t: e.k === 's' ? e.z : e.t, k: e.k, x: e.x, e: e.e });
+            if ((e.k === 'h' || e.k === 'th') && e.z > e.t) soundEvents.push({ t: e.z, k: 'he' });
+        }
+        soundEvents.sort((a, b) => a.t - b.t);
     }
+    const off = cfg.offset / 1000;
+    // a sound plays when the picture reaches (note time + offset)
+    const lo0 = from - off;
+    const hi0 = to - off;
     let lo = 0;
     let hi = soundEvents.length;
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (soundEvents[mid].t <= from) lo = mid + 1;
+        if (soundEvents[mid].t <= lo0) lo = mid + 1;
         else hi = mid;
     }
     let n = 0;
-    for (let i = lo; i < soundEvents.length && soundEvents[i].t <= to; i++) {
-        if (n++ < 8)
-            hitSound(soundEvents[i].k, soundEvents[i].x, cfg.volume / Math.sqrt(Math.max(1, n)));
+    for (let i = lo; i < soundEvents.length && soundEvents[i].t <= hi0; i++) {
+        const ev = soundEvents[i];
+        if (ev.k === 'he' && !cfg.soundHoldEnd) continue;
+        if ((ev.k === 'c' || ev.k === 'th') && !cfg.soundTouch) continue;
+        if (n++ < 8) hitSound(ev.k, ev.x, cfg.volume / Math.sqrt(Math.max(1, n)), ev.e);
     }
 }
 
+// ----- info row and maidata that follows the timeline -----
+/** Tempo and note division in force at time t. */
+function tempoAt(t) {
+    let cur = D.tempo[0] || { bpm: 120, div: 4 };
+    for (const x of D.tempo) if (x.t <= t + 1e-6) cur = x;
+    return cur;
+}
+let totals = null;
+function countTotals() {
+    if (totals) return totals;
+    const times = [];
+    const breakTimes = [];
+    for (const e of D.events) {
+        const t = e.k === 's' ? e.z : e.t;
+        times.push(t);
+        if (e.k === 'b' || (e.k === 's' && e.b)) breakTimes.push(t);
+    }
+    times.sort((a, b) => a - b);
+    breakTimes.sort((a, b) => a - b);
+    totals = { times, breakTimes };
+    return totals;
+}
+const upTo = (arr, t) => {
+    let lo = 0;
+    let hi = arr.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (arr[mid] <= t) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo;
+};
+// eslint-disable-next-line no-unused-vars
+function updateInfo() {
+    const el = $('info');
+    if (!el) return;
+    el.style.visibility = cfg.info ? 'visible' : 'hidden';
+    if (!cfg.info) return;
+    const tp = tempoAt(at);
+    const tt = countTotals();
+    el.textContent =
+        'BPM ' +
+        Math.round(tp.bpm * 100) / 100 +
+        '  ·  1/' +
+        tp.div +
+        '  ·  Notes ' +
+        upTo(tt.times, at) +
+        '/' +
+        tt.times.length +
+        '  ·  Breaks ' +
+        upTo(tt.breakTimes, at) +
+        '/' +
+        tt.breakTimes.length;
+}
+let mdIndex = -2;
+// eslint-disable-next-line no-unused-vars
+function updateMaidata() {
+    const box = $('mdp');
+    if (!box) return;
+    box.style.display = D.maidata && cfg.maidata ? '' : 'none';
+    if (!D.maidata || !cfg.maidata) return;
+    const lines = D.maidata;
+    let i = Math.max(
+        0,
+        upTo(
+            lines.map((l) => l.t),
+            at + 1e-6
+        ) - 1
+    );
+    if (i === mdIndex) return;
+    mdIndex = i;
+    const from = Math.max(0, i - 4);
+    const out = [];
+    for (let k = from; k < Math.min(lines.length, from + 11); k++) {
+        const l = lines[k];
+        const m = Math.floor(l.t / 60);
+        const sec = (l.t % 60).toFixed(2).padStart(5, '0');
+        out.push(
+            '<div class="mdl' +
+                (k === i ? ' cur' : '') +
+                '"><span class="mdt">' +
+                m +
+                ':' +
+                sec +
+                '</span> ' +
+                String(l.s).replace(
+                    /[&<>]/g,
+                    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]
+                ) +
+                '</div>'
+        );
+    }
+    $('md').innerHTML = out.join('');
+}
+
 // ----- display settings -----
-const CFG = [
+const RANGES = [
     ['tapSpeed', 'Tap speed', 1, 12, 0.5],
     ['touchSpeed', 'Touch speed', 1, 12, 0.5],
     ['tapScale', 'Tap size', 0.6, 1.6, 0.05],
     ['holdScale', 'Hold size', 0.6, 1.6, 0.05],
-    ['touchScale', 'Touch size', 0.6, 1.6, 0.05],
+    ['touchScale', 'Touch size', 0.4, 1.6, 0.05],
     ['slideScale', 'Slide size', 0.6, 1.8, 0.05],
     ['slideGap', 'Slide arrow gap', 0.6, 2, 0.05],
     ['slideOffset', 'Slide fade-in offset (s)', -0.5, 0.5, 0.05],
     ['volume', 'Hitsound volume', 0, 1, 0.05],
 ];
-$('cfg').innerHTML =
-    CFG.map(
+const SELECTS = [
+    ['mirror', 'Mirror', ['Off', 'Left-right', 'Up-down', 'Rotate 180°']],
+    ['judgeLine', 'Judgement line', ['Normal', 'Simple', 'None']],
+    ['ddr', 'Rhythm colours (DDR style)', ['Off', 'On', 'On (extended)']],
+];
+const CHECKS = [
+    ['labels', 'Labels'],
+    ['guides', 'Sensors'],
+    ['sound', 'Hitsounds'],
+    ['soundHoldEnd', 'Hold end sound'],
+    ['soundTouch', 'Touch sound'],
+    ['soundEachDistinct', 'Distinct simultaneous sound'],
+    ['spin', 'Star rotation'],
+    ['pinkStart', 'Slide start pink'],
+    ['exEmph', 'Highlight EX notes'],
+    ['eachBreakYellow', 'Simultaneous breaks yellow'],
+    ['breakSlideNormal', 'Break slides in normal colour'],
+    ['info', 'BPM and note counts'],
+    ['maidata', 'Maidata'],
+    ['keepPlay', 'Keep playing after seeking'],
+];
+const esc2 = (t) =>
+    String(t).replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+    );
+function buildSettings() {
+    const rows = RANGES.map(
         ([k, l, mn, mx, st]) =>
             '<div class="sw"><label>' +
             l +
@@ -926,31 +1124,84 @@ $('cfg').innerHTML =
             '"><output>' +
             cfg[k] +
             '</output></div>'
-    ).join('') +
-    '<div class="sw"><label><input type="checkbox" data-k="labels"' +
-    (cfg.labels ? ' checked' : '') +
-    '> Labels</label><label><input type="checkbox" data-k="guides"' +
-    (cfg.guides ? ' checked' : '') +
-    '> Sensors</label><label><input type="checkbox" data-k="sound"' +
-    (cfg.sound ? ' checked' : '') +
-    '> Hitsounds</label><button id="cfgreset">Reset</button></div>';
-document.querySelectorAll('#cfg input').forEach((i) => {
-    i.oninput = () => {
-        cfg[i.dataset.k] = i.type === 'checkbox' ? (i.checked ? 1 : 0) : +i.value;
-        if (i.nextElementSibling) i.nextElementSibling.textContent = cfg[i.dataset.k];
+    ).join('');
+    const offset =
+        '<div class="sw" style="flex-wrap:wrap"><label>Hitsound offset (ms)</label><output>' +
+        cfg.offset +
+        '</output><div style="flex:1 0 100%;display:flex;gap:6px;align-items:center"><button class="step" data-d="-10">−10</button><button class="step" data-d="-1">−1</button><input type="range" data-k="offset" min="-400" max="400" step="1" value="' +
+        cfg.offset +
+        '"><button class="step" data-d="1">+1</button><button class="step" data-d="10">+10</button></div></div>';
+    const selects = SELECTS.map(
+        ([k, l, opts]) =>
+            '<div class="sw"><label>' +
+            l +
+            '</label><select data-k="' +
+            k +
+            '">' +
+            opts
+                .map(
+                    (o, i) =>
+                        '<option value="' +
+                        i +
+                        '"' +
+                        (cfg[k] === i ? ' selected' : '') +
+                        '>' +
+                        esc2(o) +
+                        '</option>'
+                )
+                .join('') +
+            '</select></div>'
+    ).join('');
+    const checks =
+        '<div class="checks">' +
+        CHECKS.map(
+            ([k, l]) =>
+                '<label class="ck"><input type="checkbox" data-k="' +
+                k +
+                '"' +
+                (cfg[k] ? ' checked' : '') +
+                '> ' +
+                l +
+                '</label>'
+        ).join('') +
+        '</div><div class="sw"><button id="cfgreset">Reset</button></div>';
+    $('cfg').innerHTML = rows + offset + selects + checks;
+    document.querySelectorAll('#cfg input, #cfg select').forEach((i) => {
+        i.oninput = i.onchange = () => {
+            const k = i.dataset.k;
+            cfg[k] =
+                i.type === 'checkbox'
+                    ? i.checked
+                        ? 1
+                        : 0
+                    : i.tagName === 'SELECT'
+                      ? +i.value
+                      : +i.value;
+            const out = i.closest('.sw').querySelector('output');
+            if (out && i.type === 'range') out.textContent = cfg[k];
+            if (k === 'offset' || k === 'mirror') {
+                /* handled by the next draw */
+            }
+            mdIndex = -2;
+            saveCfg();
+            draw();
+        };
+    });
+    document.querySelectorAll('#cfg .step').forEach((b) => {
+        b.onclick = () => {
+            cfg.offset = Math.max(-400, Math.min(400, cfg.offset + +b.dataset.d));
+            const r = document.querySelector('#cfg input[data-k=offset]');
+            r.value = cfg.offset;
+            r.closest('.sw').querySelector('output').textContent = cfg.offset;
+            saveCfg();
+        };
+    });
+    $('cfgreset').onclick = () => {
+        cfg = Object.assign({}, DEF);
         saveCfg();
+        mdIndex = -2;
+        buildSettings();
         draw();
     };
-});
-$('cfgreset').onclick = () => {
-    cfg = Object.assign({}, DEF);
-    saveCfg();
-    document.querySelectorAll('#cfg input').forEach((i) => {
-        if (i.type === 'checkbox') i.checked = !!cfg[i.dataset.k];
-        else {
-            i.value = cfg[i.dataset.k];
-            i.nextElementSibling.textContent = cfg[i.dataset.k];
-        }
-    });
-    draw();
-};
+}
+buildSettings();
