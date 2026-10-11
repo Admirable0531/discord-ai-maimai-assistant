@@ -26,7 +26,7 @@ const BASE = {
     tapSpeed: 11.5 / 7.5,
     tap: 0.95,
     hold: 0.95,
-    touch: 1.35,
+    touch: 2.2,
     slideGap: 1, // the game's arrows sit about 0.09 of the ring radius apart
     slideOffset: -0.15,
 };
@@ -79,9 +79,9 @@ const COL = {
     each: '#ffd23f',
     brk: '#ff8a2a',
     touch: '#27d3df',
-    slide: { main: '#22d8ff', dark: '#04374a', star: '#3d7bff' },
-    slideEach: { main: '#f2d62b', dark: '#2c2800', star: '#ffd23f' },
-    slideBrk: { main: '#ff8a2a', dark: '#7a2a00', star: '#ff8a2a' },
+    slide: { main: '#22d8ff', dark: '#04374a', star: '#3d7bff', wifi: '#22b5b8' },
+    slideEach: { main: '#f2d62b', dark: '#2c2800', star: '#ffd23f', wifi: '#c9c21f' },
+    slideBrk: { main: '#ff8a2a', dark: '#7a2a00', star: '#ff8a2a', wifi: '#e0761c' },
 };
 const WHITE = 'rgba(255,255,255,.95)';
 const noteColor = (e) => (e.k === 'b' ? COL.brk : e.e ? COL.each : COL.tap);
@@ -99,7 +99,7 @@ function xy(name) {
     const L = name[0];
     const n = +name.slice(1);
     const a = L === 'A' || L === 'B' ? ang(n) : (45 * (n - 1) * Math.PI) / 180;
-    return pt(a, { A: 0.78, B: 0.405, D: 0.88, E: 0.575 }[L] * R);
+    return pt(a, { A: 0.83, B: 0.485, D: 0.85, E: 0.655 }[L] * R);
 }
 /** A point on a lane at `frac` of the ring radius. */
 const laneAt = (lane, frac) => pt(ang(lane), R * frac);
@@ -409,7 +409,7 @@ function roundedPoly(g, pts, rad) {
     }
     g.closePath();
 }
-const TOUCH_COL = { single: '#27d3df', each: '#e3e32c', brk: '#ff4b3a' };
+const TOUCH_COL = { single: '#22c7ff', each: '#ffe91f', brk: '#ff4b3a' };
 function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
     const r = Math.max(r0, 3);
     g.save();
@@ -418,12 +418,12 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
         roundedPoly(
             g,
             [
-                [x - r * 1.5, y - r * 1.5],
-                [x + r * 1.5, y - r * 1.5],
-                [x + r * 1.5, y + r * 1.5],
-                [x - r * 1.5, y + r * 1.5],
+                [x - r * 1.35, y - r * 1.35],
+                [x + r * 1.35, y - r * 1.35],
+                [x + r * 1.35, y + r * 1.35],
+                [x - r * 1.35, y + r * 1.35],
             ],
-            r * 0.55
+            r * 0.5
         );
         g.shadowColor = '#fff';
         g.shadowBlur = 12;
@@ -433,8 +433,8 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
         g.restore();
         return;
     }
-    // a dark backing so the sensor lines do not run through the note
-    const d = r * 1.75;
+    // a faint backing so the sensor outline does not cut through the note
+    const d = r * 1.3;
     roundedPoly(
         g,
         [
@@ -443,73 +443,59 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
             [x + d, y + d],
             [x - d, y + d],
         ],
-        r * 0.5
+        r * 0.4
     );
-    g.fillStyle = 'rgba(3,7,16,.78)';
+    g.fillStyle = 'rgba(3,7,16,.28)';
     g.fill();
-    // corner brackets marking the touch area
-    const L = r * 0.7;
-    g.shadowColor = c;
-    g.shadowBlur = 8;
-    g.lineWidth = 2.4;
-    g.lineCap = 'round';
-    g.strokeStyle = c;
-    for (const [sx, sy] of [
-        [1, 1],
-        [1, -1],
-        [-1, 1],
-        [-1, -1],
-    ]) {
-        g.beginPath();
-        g.moveTo(x + sx * d, y + sy * (d - L));
-        g.quadraticCurveTo(x + sx * d, y + sy * d, x + sx * (d - L), y + sy * d);
-        g.stroke();
-    }
-    // four rounded fans, tips toward the centre
+    // four hollow fans, tips toward the centre
     for (let i = 0; i < 4; i++) {
         g.save();
         g.translate(x, y);
         g.rotate((i * Math.PI) / 2);
-        const tip = r * 0.15 + gap;
-        const base = tip + r * 1.15;
+        const tip = r * 0.47 + gap;
+        const base = tip + r * 0.87;
         roundedPoly(
             g,
             [
                 [0, -tip],
-                [-r * 1.2, -base],
-                [r * 1.2, -base],
+                [-r * 0.83, -base],
+                [r * 0.83, -base],
             ],
-            r * 0.3
+            r * 0.14
         );
-        if (ex) {
-            g.shadowColor = '#fff3b0';
-            g.shadowBlur = 14;
-        } else {
-            g.shadowColor = c;
-            g.shadowBlur = 10;
-        }
-        g.fillStyle = c + '66';
+        g.shadowColor = ex ? '#fff3b0' : c;
+        g.shadowBlur = ex ? 14 : 10;
+        g.fillStyle = c + '1a';
         g.fill();
         g.lineJoin = 'round';
-        g.lineWidth = 2.4;
-        g.strokeStyle = WHITE;
+        g.lineWidth = Math.max(2.6, r * 0.2);
+        g.strokeStyle = c;
+        g.stroke();
+        g.shadowBlur = 0;
+        g.lineWidth = 1.2;
+        g.strokeStyle = 'rgba(255,255,255,.75)';
         g.stroke();
         g.restore();
     }
     g.shadowColor = c;
-    g.shadowBlur = 10;
-    g.fillStyle = WHITE;
+    g.shadowBlur = 12;
+    g.fillStyle = c;
     g.beginPath();
-    g.arc(x, y, Math.max(2, r * 0.2), 0, 7);
+    g.arc(x, y, Math.max(2.5, r * 0.19), 0, 7);
+    g.fill();
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    g.beginPath();
+    g.arc(x, y, Math.max(1, r * 0.08), 0, 7);
     g.fill();
     if (held) {
         roundedPoly(
             g,
             [
-                [x, y - r * 1.15],
-                [x + r * 1.15, y],
-                [x, y + r * 1.15],
-                [x - r * 1.15, y],
+                [x, y - r * 1.1],
+                [x + r * 1.1, y],
+                [x, y + r * 1.1],
+                [x - r * 1.1, y],
             ],
             r * 0.3
         );
@@ -520,42 +506,33 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
     g.restore();
 }
 /**
- * The WiFi slide is not three strips: it is a stack of V-shaped neon bars
- * pointing toward the far side that widen as they go, until the last one spans
- * the three end buttons. `f` is how far along (0 at the start, 1 at the end).
+ * One bar of the WiFi slide. i = 0..10. Its apex sits on the line from the
+ * start button to the middle end button, and its arms run parallel to the
+ * lines from that end button to the two neighbouring ones (so they are 67.5
+ * degrees off the axis); the last bar spans the three end buttons exactly.
+ * Flat teal bands, as in the game.
  */
-function wifiBar(g, e, f, col, alpha) {
+function wifiBar(g, e, i, col, alpha) {
     const S = dot(e.h);
-    const left = dot(wrap8(e.h + 3));
-    const mid = dot(wrap8(e.h + 4));
-    const right = dot(wrap8(e.h + 5));
-    const at3 = (E, t) => [S[0] + (E[0] - S[0]) * t, S[1] + (E[1] - S[1]) * t];
-    const L = at3(left, f);
-    const Rr = at3(right, f);
-    const A = at3(mid, Math.min(1, f + 0.1));
+    const E1 = dot(wrap8(e.h + 3));
+    const Ec = dot(wrap8(e.h + 4));
+    const E2 = dot(wrap8(e.h + 5));
+    const f = 0.13 + 0.087 * i; // how far along the axis
+    const q = 0.22 + 0.78 * (i / 10); // how much of the final arm length
+    const A = [S[0] + (Ec[0] - S[0]) * f, S[1] + (Ec[1] - S[1]) * f];
+    const L = [A[0] + (E1[0] - Ec[0]) * q, A[1] + (E1[1] - Ec[1]) * q];
+    const Rr = [A[0] + (E2[0] - Ec[0]) * q, A[1] + (E2[1] - Ec[1]) * q];
     g.save();
-    g.globalAlpha = alpha;
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
-    g.shadowColor = col.main;
-    g.shadowBlur = 10;
-    g.strokeStyle = col.main;
-    g.lineWidth = 6;
+    g.globalAlpha = alpha * 0.85;
+    g.lineJoin = 'miter';
+    g.lineCap = 'butt';
+    g.strokeStyle = col.wifi;
+    g.lineWidth = R * 0.05;
     g.beginPath();
     g.moveTo(L[0], L[1]);
     g.lineTo(A[0], A[1]);
     g.lineTo(Rr[0], Rr[1]);
     g.stroke();
-    g.shadowBlur = 0;
-    g.strokeStyle = WHITE;
-    g.lineWidth = 2;
-    g.stroke();
-    g.fillStyle = WHITE;
-    for (const q of [L, Rr]) {
-        g.beginPath();
-        g.arc(q[0], q[1], 3.4, 0, 7);
-        g.fill();
-    }
     g.restore();
 }
 function chevron(g, x, y, tx, ty, size, col, alpha) {
@@ -707,8 +684,8 @@ function drawRing() {
             // eleven bars along the axis; the stars have passed those behind them
             const a = slideAlpha(e) * out;
             for (let i = 0; i < 11; i++) {
-                const f = 0.06 + 0.076 * i;
-                if (f > k && a > 0.01) wifiBar(g, e, f, col, a);
+                const f = 0.13 + 0.087 * i;
+                if (f > k && a > 0.01) wifiBar(g, e, i, col, a);
             }
             continue;
         }
