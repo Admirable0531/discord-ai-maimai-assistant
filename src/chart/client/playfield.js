@@ -7,14 +7,16 @@
 // dense chevron strips that follow the slide's real shape.
 
 const DEF = {
-    tapSpeed: 7.5,
+    tapSpeed: 11.5,
     touchSpeed: 7.5,
-    tapScale: 1,
-    holdScale: 1,
-    touchScale: 1,
+    tapScale: 0.95,
+    holdScale: 0.95,
+    touchScale: 1.35,
     slideScale: 1,
-    slideGap: 1,
-    slideOffset: 0,
+    slideGap: 1.3,
+    slideOffset: -0.15,
+    sound: 1,
+    volume: 0.6,
     labels: 1,
     guides: 1,
 };
@@ -59,13 +61,13 @@ function touchState(t) {
 }
 /** Slide arrows start to fade in this long before the star lands. */
 const slideLead = () => 3.926913 / cfg.tapSpeed + cfg.slideOffset;
-const TRAIL = 0.25;
+const TRAIL = 0.05; // notes vanish as they are hit; just long enough to avoid a flicker
 
 const COL = {
     tap: '#ff4fa3',
     each: '#ffd23f',
     brk: '#ff8a2a',
-    touch: '#2f8bff',
+    touch: '#3aa3ff',
     slide: { main: '#1fd6ff', dark: '#07607d', star: '#3d7bff' },
     slideEach: { main: '#ffd23f', dark: '#8a5a00', star: '#ffd23f' },
     slideBrk: { main: '#ff8a2a', dark: '#7a2a00', star: '#ff8a2a' },
@@ -125,7 +127,27 @@ function loopPts(sLane, eLane, dir) {
  * along the ring; the longer variants finish with a pass through the centre.
  * Built to match the sensor sequences of the judging tables.
  */
+function smoothPts(pts, rounds) {
+    let p = pts;
+    for (let k = 0; k < rounds; k++) {
+        const q = [p[0]];
+        for (let i = 0; i < p.length - 1; i++) {
+            const a = p[i];
+            const b = p[i + 1];
+            q.push(
+                [a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25],
+                [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]
+            );
+        }
+        q.push(p[p.length - 1]);
+        p = q;
+    }
+    return p;
+}
 function outerLoopPts(sLane, eLane, dir) {
+    return smoothPts(outerLoopRaw(sLane, eLane, dir), 3);
+}
+function outerLoopRaw(sLane, eLane, dir) {
     const rc = R * 0.4619;
     const a0 = ang(sLane);
     const ac = a0 - dir * ((67.5 * Math.PI) / 180); // direction of the circle's centre
@@ -234,6 +256,16 @@ function along(p, d) {
 }
 
 // ----- drawing helpers -----
+/** Star rotation (radians) at the current time: the faster the slide, the faster it spins. */
+function starSpin(e, tracks) {
+    const dur = Math.max(0.15, e.z - e.a);
+    const wait = 180 / dur; // degrees a second while it waits and approaches
+    const len = tracks[0].total / R;
+    const move = Math.min(1080, (150 * len) / dur);
+    const before = Math.min(at, e.a) - e.t;
+    const during = at > e.a ? at - e.a : 0;
+    return (-(wait * before + move * during) * Math.PI) / 180;
+}
 /** The strip's opacity: 0.5 after a 0.2 s fade-in, 1 from 50 ms before the star reaches its button. */
 function slideAlpha(e) {
     const lead = slideLead();
@@ -292,20 +324,20 @@ function tapNote(g, x, y, r0, c, ex, brk) {
         g.stroke();
     }
 }
-function starPath(g, x, y, r) {
+function starPath(g, x, y, r, rot) {
     g.beginPath();
     for (let i = 0; i < 10; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5 + rot;
         const rr = i % 2 ? r * 0.5 : r;
         g.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a));
     }
     g.closePath();
 }
-function starNote(g, x, y, r0, sc, ex) {
+function starNote(g, x, y, r0, sc, ex, rot = 0) {
     const r = Math.max(r0, 3);
     g.save();
     glow(g, ex);
-    starPath(g, x, y, r);
+    starPath(g, x, y, r, rot);
     g.fillStyle = 'rgba(6,14,50,.92)';
     g.fill();
     g.lineJoin = 'round';
@@ -313,7 +345,7 @@ function starNote(g, x, y, r0, sc, ex) {
     g.strokeStyle = WHITE;
     g.stroke();
     g.restore();
-    starPath(g, x, y, r);
+    starPath(g, x, y, r, rot);
     g.lineJoin = 'round';
     g.lineWidth = Math.max(3, r * 0.3);
     g.strokeStyle = sc;
@@ -362,19 +394,25 @@ function touchNote(g, x, y, r0, c, gap, ex, held) {
     const r = Math.max(r0, 3);
     g.save();
     glow(g, ex);
+    g.shadowColor = c;
+    g.shadowBlur = Math.max(g.shadowBlur, 12);
     for (let i = 0; i < 4; i++) {
         g.save();
         g.translate(x, y);
         g.rotate((i * Math.PI) / 2);
         g.beginPath();
-        g.moveTo(0, -(r * 0.25 + gap));
-        g.lineTo(-r * 0.8, -(r * 1.15 + gap));
-        g.lineTo(r * 0.8, -(r * 1.15 + gap));
+        g.moveTo(0, -(r * 0.2 + gap));
+        g.lineTo(-r * 0.95, -(r * 1.3 + gap));
+        g.lineTo(r * 0.95, -(r * 1.3 + gap));
         g.closePath();
         g.fillStyle = c;
         g.fill();
+        g.shadowBlur = 0;
         g.lineJoin = 'round';
-        g.lineWidth = 2.2;
+        g.lineWidth = 4.5;
+        g.strokeStyle = 'rgba(0,0,0,.65)';
+        g.stroke();
+        g.lineWidth = 2.4;
         g.strokeStyle = WHITE;
         g.stroke();
         g.restore();
@@ -383,7 +421,7 @@ function touchNote(g, x, y, r0, c, gap, ex, held) {
     if (held) {
         g.fillStyle = WHITE;
         g.beginPath();
-        g.arc(x, y, r * 0.2, 0, 7);
+        g.arc(x, y, r * 0.22, 0, 7);
         g.fill();
     }
 }
@@ -556,15 +594,15 @@ function drawRing() {
         if (at < e.t) {
             const st = tapState(e.t);
             const [x, y] = laneAt(e.h, st.frac);
-            if (st.scale > 0) starNote(g, x, y, r * st.scale, col.star, false);
+            if (st.scale > 0) starNote(g, x, y, r * st.scale, col.star, false, starSpin(e, tracks));
         } else if (at < e.a || e.z <= e.a) {
             const [x, y] = dot(e.h);
-            starNote(g, x, y, r, col.star, false);
+            starNote(g, x, y, r, col.star, false, starSpin(e, tracks));
         } else {
             const k = Math.min(1, (at - e.a) / (e.z - e.a));
             for (const tr of tracks) {
                 const [x, y] = along(tr, k * tr.total);
-                starNote(g, x, y, r, col.star, false);
+                starNote(g, x, y, r, col.star, false, starSpin(e, tracks));
             }
         }
         g.globalAlpha = 1;
@@ -583,6 +621,13 @@ function drawRing() {
             g.globalAlpha = ts.alpha * out;
             const [x, y] = xy(e.n);
             const r = R * 0.055 * cfg.touchScale;
+            const hold = e.k === 'th' && at >= e.t && at <= e.z;
+            sensorShape(g, e.n);
+            g.fillStyle =
+                (e.e ? 'rgba(255,210,63,' : 'rgba(58,163,255,') +
+                (hold ? 0.3 : 0.16) * (e.n[0] === 'A' || e.n[0] === 'D' ? 0.55 : 1) * ts.alpha +
+                ')';
+            g.fill();
             const c = e.e ? COL.each : COL.touch;
             if (e.k === 'th' && at >= e.t && at <= e.z) {
                 g.lineWidth = 3;
@@ -629,6 +674,96 @@ function drawRing() {
     g.restore();
 }
 
+// ----- hitsounds: simple synthesized sounds, one per kind of note -----
+let audioCtx = null;
+function audio() {
+    if (!audioCtx) {
+        const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
+        try {
+            audioCtx = AC ? new AC() : null;
+        } catch {
+            audioCtx = null;
+        }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+}
+function tone(ac, when, f0, f1, dur, gain, type) {
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f0, when);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), when + dur);
+    g.gain.setValueAtTime(gain, when);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    o.connect(g).connect(ac.destination);
+    o.start(when);
+    o.stop(when + dur + 0.02);
+}
+function noise(ac, when, dur, gain, freq) {
+    const n = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, n, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const f = ac.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = freq;
+    const g = ac.createGain();
+    g.gain.value = gain;
+    src.connect(f).connect(g).connect(ac.destination);
+    src.start(when);
+}
+function hitSound(kind, ex, vol) {
+    const ac = audio();
+    if (!ac) return;
+    const t = ac.currentTime;
+    const v = vol;
+    if (kind === 'b') {
+        noise(ac, t, 0.12, 0.9 * v, 2600);
+        tone(ac, t, 520, 140, 0.16, 0.7 * v, 'triangle');
+        tone(ac, t, 1500, 900, 0.09, 0.4 * v);
+    } else if (kind === 'c' || kind === 'th') {
+        tone(ac, t, 1568, 1500, 0.2, 0.4 * v);
+        tone(ac, t, 2349, 2300, 0.14, 0.22 * v);
+    } else if (kind === 's') {
+        tone(ac, t, 700, 1500, 0.14, 0.3 * v);
+        tone(ac, t + 0.05, 1760, 1700, 0.18, 0.25 * v);
+    } else {
+        tone(ac, t, 1100, 650, 0.08, 0.55 * v);
+        noise(ac, t, 0.02, 0.4 * v, 4000);
+    }
+    if (ex) tone(ac, t, 2400, 2000, 0.07, 0.25 * v);
+}
+let soundEvents = null;
+// eslint-disable-next-line no-unused-vars
+function primeAudio() {
+    audio(); // must be started from a click
+}
+/** Play the sounds of every note whose time lies in (from, to]. Called while playing. */
+// eslint-disable-next-line no-unused-vars
+function playSounds(from, to) {
+    if (!cfg.sound || to <= from || to - from > 0.5) return;
+    if (!soundEvents) {
+        soundEvents = D.events
+            .map((e) => ({ t: e.k === 's' ? e.z : e.t, k: e.k, x: e.x }))
+            .sort((a, b) => a.t - b.t);
+    }
+    let lo = 0;
+    let hi = soundEvents.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (soundEvents[mid].t <= from) lo = mid + 1;
+        else hi = mid;
+    }
+    let n = 0;
+    for (let i = lo; i < soundEvents.length && soundEvents[i].t <= to; i++) {
+        if (n++ < 8)
+            hitSound(soundEvents[i].k, soundEvents[i].x, cfg.volume / Math.sqrt(Math.max(1, n)));
+    }
+}
+
 // ----- display settings -----
 const CFG = [
     ['tapSpeed', 'Tap speed', 1, 12, 0.5],
@@ -639,6 +774,7 @@ const CFG = [
     ['slideScale', 'Slide size', 0.6, 1.8, 0.05],
     ['slideGap', 'Slide arrow gap', 0.6, 2, 0.05],
     ['slideOffset', 'Slide fade-in offset (s)', -0.5, 0.5, 0.05],
+    ['volume', 'Hitsound volume', 0, 1, 0.05],
 ];
 $('cfg').innerHTML =
     CFG.map(
@@ -663,7 +799,9 @@ $('cfg').innerHTML =
     (cfg.labels ? ' checked' : '') +
     '> Labels</label><label><input type="checkbox" data-k="guides"' +
     (cfg.guides ? ' checked' : '') +
-    '> Sensors</label><button id="cfgreset">Reset</button></div>';
+    '> Sensors</label><label><input type="checkbox" data-k="sound"' +
+    (cfg.sound ? ' checked' : '') +
+    '> Hitsounds</label><button id="cfgreset">Reset</button></div>';
 document.querySelectorAll('#cfg input').forEach((i) => {
     i.oninput = () => {
         cfg[i.dataset.k] = i.type === 'checkbox' ? (i.checked ? 1 : 0) : +i.value;

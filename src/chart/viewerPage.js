@@ -148,12 +148,12 @@ const rules=[...new Set(D.findings.map(f=>f.r))].sort();
 $('chips').innerHTML=rules.map(r=>'<button class="on" data-r="'+r+'">'+r+'</button>').join('');
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{active.has(b.dataset.r)?active.delete(b.dataset.r):active.add(b.dataset.r);b.classList.toggle('on');list();draw()});
 $('seek').max=D.finish;$('seek').oninput=e=>go(+e.target.value);
-$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'⏸ Pause':'▶ Play';last=0;if(playing)requestAnimationFrame(tick)};
+$('play').onclick=()=>{primeAudio();playing=!playing;$('play').textContent=playing?'⏸ Pause':'▶ Play';last=0;if(playing)requestAnimationFrame(tick)};
 $('spd').onclick=()=>{speed=speed===1?.5:speed===.5?.25:1;$('spd').textContent=speed+'×'};
 function jump(d){const v=D.findings.filter(f=>active.has(f.r)).map(f=>f.t-0.25);const t=d>0?v.find(x=>x>at+0.05):[...v].reverse().find(x=>x<at-0.05);if(t!==undefined)go(t)}
 $('next').onclick=()=>jump(1);$('prev').onclick=()=>jump(-1);
 $('tl').onclick=e=>go((e.offsetX/e.target.clientWidth)*D.finish);
-function tick(ts){if(!playing)return;if(last)at=Math.min(D.finish,at+(ts-last)/1000*speed);last=ts;draw();if(at>=D.finish){playing=false;$('play').textContent='▶ Play'}else requestAnimationFrame(tick)}
+function tick(ts){if(!playing)return;const before=at;if(last)at=Math.min(D.finish,at+(ts-last)/1000*speed);last=ts;playSounds(before,at);draw();if(at>=D.finish){playing=false;$('play').textContent='▶ Play'}else requestAnimationFrame(tick)}
 addEventListener('resize',draw);list();go(D.findings.length?Math.max(0,D.findings.find(f=>f.s===3)?.t-0.25||0):0);
 </script></body></html>`;
 
