@@ -71,7 +71,7 @@ document.getElementById('cfile').addEventListener('change',e=>{const f=e.target.
 document.getElementById('copen').addEventListener('click',async e=>{e.preventDefault();const msg=document.getElementById('cmsg');msg.textContent='';
  try{const res=await fetch('/chart/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:document.getElementById('ctext').value,title:document.getElementById('ctitle').value,difficulty:document.getElementById('cdiff').value})});
   const body=await res.text();if(!res.ok){try{msg.textContent=JSON.parse(body).error}catch{msg.textContent='Could not open that chart.'}return}
-  document.open();document.write(body);document.close()}catch{msg.textContent='Could not reach the server.'}});
+  location.href=URL.createObjectURL(new Blob([body],{type:'text/html'}))}catch{msg.textContent='Could not reach the server.'}});
 q.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,120)});
 out.addEventListener('click',e=>{const a=e.target.closest('a');if(!a)return;try{const r=JSON.parse(localStorage.getItem('chartRecent')||'[]').filter(x=>x.u!==a.getAttribute('href'));r.unshift({u:a.getAttribute('href'),t:a.dataset.s+' · '+a.textContent});localStorage.setItem('chartRecent',JSON.stringify(r.slice(0,8)))}catch{}});
 try{const r=JSON.parse(localStorage.getItem('chartRecent')||'[]');if(r.length)document.getElementById('recent').innerHTML='<h2>Recently opened</h2>'+r.map(x=>'<div class="song"><a style="color:inherit;text-decoration:none" href="'+esc(x.u)+'">'+esc(x.t)+'</a></div>').join('')}catch{}
