@@ -69,6 +69,10 @@ Layout:
 | `src/database` | SQLite schema and repositories |
 | `test` | tests (chart parsing, rules, search) |
 
+## Play simulation
+
+The viewer has a "Play simulation" panel: virtual hands (full buttons, fingertips, dragging fingers, palm slides, big-hand touch, mixed) play the chart through a copy of the game's judging many times with small aiming and timing errors, and the spots where one input hits or blocks another are listed with a chance per style and drawn as hands on the sensor ring. It runs in a worker thread (`src/sim`), is also available as `simulate: true` on the chart tool, and is explained in [docs/play-simulation-plan.md](docs/play-simulation-plan.md) and [docs/judge-facts.md](docs/judge-facts.md).
+
 ## Deployment
 
 A push to `main` runs `.github/workflows/deploy.yml` on a self-hosted runner: `git pull`, `docker compose down`, `docker compose up -d --build`. The container is `atri_bot`.

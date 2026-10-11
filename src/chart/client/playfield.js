@@ -1,4 +1,4 @@
-/* global localStorage, D, $, setup, at, draw, active, LEAD, BEAT */
+/* global localStorage, D, $, setup, at, draw, active, LEAD, BEAT, go, esc */
 // Browser-side playfield for the chart viewer. Inlined into the page by
 // viewerPage.js, so it must stay plain browser JavaScript with no imports.
 // Look and layout follow the game's play screen (own drawings, not its art):
@@ -713,6 +713,8 @@ function litSensors() {
         if (!active.has(f.r) || f.t < at - 0.2 || f.t > at + 0.7) continue;
         (f.x.match(/\b([ABDE][1-8]|C)\b/g) || []).forEach((s) => lit.add(s));
     }
+    if (simReplay)
+        for (const [i, a, b] of simReplay.sensors) if (a <= at && at < b) lit.add(SENSOR_NAMES[i]);
     return lit;
 }
 // eslint-disable-next-line no-unused-vars
@@ -897,6 +899,7 @@ function drawRing() {
         }
         g.globalAlpha = 1;
     }
+    drawHands(g);
     g.restore();
 }
 
@@ -1022,7 +1025,6 @@ function playSounds(from, to) {
 const TERM_RE =
     /\b(splash|brush|trill|stream|jack|burst|triplets?|touch group|BPM|Perfect|[ABDE][1-8]|C)\b/gi;
 /** Escaped text with known terms wrapped so a tap shows their meaning. */
-// eslint-disable-next-line no-unused-vars
 function explain(text) {
     const safe = String(text).replace(
         /[&<>"]/g,
@@ -1307,3 +1309,159 @@ function buildSettings() {
     };
 }
 buildSettings();
+
+// ----- simulation: virtual hands playing the chart -----
+let simReplay = null; // {sensors: [[index, from, to]], strokes: [...]} of the style shown
+let SIM = null; // the last result from the server
+const simPos = (pts, t) => {
+    if (t <= pts[1]) return [pts[2], pts[3]];
+    for (let i = 3; i < pts.length; i += 3) {
+        if (t <= pts[i + 1 - 1] || i + 3 >= pts.length) {
+            const a = i - 3;
+            const k =
+                pts[i] === pts[a] ? 1 : Math.min(1, Math.max(0, (t - pts[a]) / (pts[i] - pts[a])));
+            return [
+                pts[a + 1] + (pts[i + 1] - pts[a + 1]) * k,
+                pts[a + 2] + (pts[i + 2] - pts[a + 2]) * k,
+            ];
+        }
+    }
+    return [pts[pts.length - 2], pts[pts.length - 1]];
+};
+function drawHands(g) {
+    if (!simReplay || !cfg.simHands) return;
+    for (const [mode, t0, t1, r, lane, pts] of simReplay.strokes) {
+        if (at < t0 || at > t1) continue;
+        if (mode === 0) {
+            const [x, y] = mirror(ptRaw(ang(lane), R * 1.06));
+            g.fillStyle = 'rgba(255,170,60,.85)';
+            g.beginPath();
+            g.arc(x, y, 9, 0, 7);
+            g.fill();
+            continue;
+        }
+        const [px, py] = simPos(pts, at);
+        const [x, y] = mirror([C + px * R, C + py * R]);
+        g.fillStyle = 'rgba(120,200,255,.28)';
+        g.strokeStyle = 'rgba(160,220,255,.9)';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(x, y, Math.max(3, r * R), 0, 7);
+        g.fill();
+        g.stroke();
+    }
+}
+// eslint-disable-next-line no-unused-vars
+function simSpots() {
+    return SIM ? SIM.spots : [];
+}
+// eslint-disable-next-line no-unused-vars
+function simInit() {
+    const panel = $('simp');
+    if (!panel || !D.sim) return;
+    panel.style.display = '';
+    $('simstyles').innerHTML = D.simStyles
+        .map(
+            (s) =>
+                '<label class="ck" title="' +
+                esc(s.about) +
+                '"><input type="checkbox" data-s="' +
+                s.id +
+                '" checked> ' +
+                esc(s.label) +
+                '</label>'
+        )
+        .join('');
+    $('simgo').onclick = simRun;
+}
+async function simRun() {
+    const styles = [...document.querySelectorAll('#simstyles input:checked')].map(
+        (x) => x.dataset.s
+    );
+    if (!styles.length) {
+        $('simst').textContent = 'Pick at least one style.';
+        return;
+    }
+    $('simgo').disabled = true;
+    $('simst').textContent = 'Playing the chart… this takes several seconds.';
+    try {
+        const res = await fetch('/chart/sim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({ styles, runs: +$('simruns').value }, D.sim)),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'failed');
+        SIM = data;
+        $('simst').textContent = '';
+        simShow(styles[0]);
+        renderSim();
+        draw();
+    } catch (e) {
+        $('simst').textContent = 'Could not run it: ' + e.message;
+    } finally {
+        $('simgo').disabled = false;
+    }
+}
+function simShow(id) {
+    simReplay = SIM && id && SIM.replay[id] ? SIM.replay[id] : null;
+    cfg.simHands = !!simReplay;
+}
+function renderSim() {
+    const box = $('simres');
+    const ag = Object.entries(SIM.agreement || {})
+        .map(([r, v]) => r + ' ' + v.confirmed + '/' + v.total + ' (chance ' + v.chance + ')')
+        .join(' · ');
+    const un = SIM.styles
+        .filter((s) => s.unreachable > 0)
+        .map((s) => s.label + ': ' + s.unreachable);
+    box.innerHTML =
+        '<div class="row" style="margin-top:8px"><label class="sub">Show hands: <select id="simshow"><option value="">off</option>' +
+        SIM.styles
+            .map(
+                (s) =>
+                    '<option value="' +
+                    s.id +
+                    '"' +
+                    (simReplay === SIM.replay[s.id] ? ' selected' : '') +
+                    '>' +
+                    esc(s.label) +
+                    '</option>'
+            )
+            .join('') +
+        '</select></label></div>' +
+        '<div class="sub" style="margin-top:6px">' +
+        SIM.spots.length +
+        ' simulated splash spots. ' +
+        (ag ? 'Rule findings the simulation also sees: ' + esc(ag) + '. ' : '') +
+        (un.length
+            ? 'Notes two hands could not reach in time (not counted): ' + esc(un.join(', ')) + '.'
+            : '') +
+        '</div>' +
+        '<div id="simlist"></div>';
+    $('simshow').onchange = (e) => {
+        simShow(e.target.value);
+        draw();
+    };
+    const list = SIM.spots.slice().sort((a, b) => b.p - a.p || a.t - b.t);
+    $('simlist').innerHTML = list
+        .slice(0, 150)
+        .map(
+            (s) =>
+                '<div class="f" data-t="' +
+                s.t +
+                '"><div class="sev" style="background:#9a5cf0"></div><div><div class="m">' +
+                Math.floor(s.t / 60) +
+                ':' +
+                (s.t % 60).toFixed(1).padStart(4, '0') +
+                ' · bar ' +
+                s.bar +
+                ' · up to ' +
+                Math.round(s.p * 100) +
+                '%</div><div class="t">' +
+                explain(s.text) +
+                '</div></div></div>'
+        )
+        .join('');
+    box.querySelectorAll('.f').forEach((el) => (el.onclick = () => go(+el.dataset.t - 0.4)));
+}

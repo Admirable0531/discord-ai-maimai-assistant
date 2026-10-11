@@ -6,6 +6,9 @@ const { buildChart } = require('../chart/chartModel');
 const { analyse } = require('../chart/rules');
 const { summarise, pickFindings, formatTime } = require('../chart/report');
 const { buildViewerHtml } = require('../chart/viewerPage');
+const { simulate } = require('../sim/service');
+const { agreement } = require('../sim/report');
+const { STYLES } = require('../sim/styles');
 const { attachFile } = require('../utils/outputs');
 const { drawCard } = require('../render/drawCard');
 const { buildChartMomentHtml, WIDTH } = require('../render/chartMomentCard');
@@ -32,6 +35,11 @@ const declaration = {
                 type: 'boolean',
                 description:
                     'Also attach a self-contained HTML page of the whole chart (density timeline, play/scrub sensor ring, all findings). Use for "the full chart" or when many moments matter.',
+            },
+            simulate: {
+                type: 'boolean',
+                description:
+                    'Also play the chart with virtual hands (full buttons, fingertips, dragging fingers, palm slides, big-hand touch, mixed) and report where an input meant for one note hits or blocks another, with a chance per play style. Takes several seconds. Use for "would a palm slide splash here", "which play style avoids this".',
             },
             as_image: {
                 type: 'boolean',
@@ -80,6 +88,26 @@ async function execute(args, context) {
             'Bar numbers assume 4 beats per bar.',
         ],
     };
+    if (args?.simulate === true) {
+        try {
+            const sim = await simulate(`tool:${found.id}:${difficulty}`, chart.events, {
+                styleIds: Object.keys(STYLES),
+                runs: 12,
+            });
+            result.simulation = {
+                styles: sim.styles.map((x) => x.label),
+                spots_found: sim.spots.length,
+                strongest: [...sim.spots]
+                    .sort((a, b) => b.p - a.p)
+                    .slice(0, 6)
+                    .map((x) => ({ at: formatTime(x.t), bar: x.bar, chance: x.p, what: x.text })),
+                rules_confirmed: agreement(findings, sim.spots),
+                note: 'Virtual hands with estimated sizes and speeds, not real data; chances rank spots and compare play styles.',
+            };
+        } catch (err) {
+            result.simulation_error = err.message;
+        }
+    }
     if (args?.as_page === true) {
         const page = buildViewerHtml({
             title: found.title,

@@ -7,6 +7,9 @@ const { buildViewerHtml } = require('../chart/viewerPage');
 const { maidataLines } = require('../chart/maidata');
 const { parseCustomChart, describeParseError } = require('../chart/customChart');
 const { config } = require('../config/env');
+const { STYLES } = require('../sim/styles');
+const { simulate } = require('../sim/service');
+const { agreement } = require('../sim/report');
 
 const DIFFICULTIES = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 const escapeHtml = (v) =>
@@ -183,10 +186,58 @@ function registerChartRoutes(app, { publicMode = false } = {}) {
                     tempoChanges: chart.tempoChanges,
                     maidata: maidataLines(parsed.text), // the visitor's own text, back to them
                     backUrl: '/chart',
+                    simSource: { text: parsed.text, difficulty: parsed.label },
                 })
             );
         } catch (err) {
             res.status(400).json({ error: describeParseError(err) });
+        }
+    });
+
+    // Simulation: POST {song, difficulty, type} or {text, difficulty} for a custom chart,
+    // plus {styles: [...], runs}. Plays the chart with virtual hands and returns the spots.
+    app.post('/chart/sim', limit(6), express.json({ limit: '400kb' }), async (req, res) => {
+        try {
+            const body = req.body || {};
+            const styleIds = (Array.isArray(body.styles) ? body.styles : Object.keys(STYLES))
+                .filter((id) => STYLES[id])
+                .slice(0, Object.keys(STYLES).length);
+            if (!styleIds.length)
+                return res.status(400).json({ error: 'Pick at least one play style.' });
+            const runs = Math.min(Math.max(parseInt(body.runs, 10) || 16, 4), publicMode ? 24 : 48);
+            const difficulty = DIFFICULTIES.includes(body.difficulty) ? body.difficulty : 'master';
+            let text;
+            let key;
+            if (typeof body.text === 'string' && body.text) {
+                const parsed = parseCustomChart(body.text, { difficulty });
+                if (!parsed.success) return res.status(400).json({ error: parsed.error });
+                text = parsed.text;
+                key = `custom:${text.length}:${text.slice(0, 80)}:${text.slice(-80)}`;
+            } else {
+                const type = body.type === 'std' ? 'std' : 'dx';
+                const found = await getChartText(
+                    String(body.song || '').slice(0, 120),
+                    difficulty,
+                    type
+                );
+                if (!found.success) return res.status(404).json({ error: found.error });
+                text = found.text;
+                key = `song:${found.id}:${difficulty}`;
+            }
+            const chart = buildChart(text);
+            if (!chart.events.length)
+                return res.status(400).json({ error: 'No notes were found in that chart.' });
+            const result = await simulate(`${key}:${styleIds.join(',')}:${runs}`, chart.events, {
+                styleIds,
+                runs,
+            });
+            res.json({
+                ...result,
+                agreement: agreement(analyse(chart), result.spots),
+            });
+        } catch (err) {
+            logger.error('web', 'POST /chart/sim failed', err);
+            res.status(500).json({ error: 'The simulation failed.' });
         }
     });
 
@@ -222,6 +273,7 @@ function registerChartRoutes(app, { publicMode = false } = {}) {
                     tempoChanges: chart.tempoChanges,
                     maidata: publicMode ? null : maidataLines(found.text),
                     backUrl: '/chart',
+                    simSource: { song: found.title, difficulty, type },
                 })
             );
         } catch (err) {

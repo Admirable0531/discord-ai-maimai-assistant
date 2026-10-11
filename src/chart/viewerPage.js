@@ -110,6 +110,7 @@ function buildViewerHtml({
     tempoChanges = [],
     maidata = null,
     backUrl = null,
+    simSource = null,
 }) {
     const data = {
         title,
@@ -117,6 +118,8 @@ function buildViewerHtml({
         finish: round(finish),
         glossary: GLOSSARY.map(([t, d]) => ({ t, d })),
         sensors: SENSORS,
+        sim: simSource,
+        simStyles: Object.values(STYLES).map((x) => ({ id: x.id, label: x.label, about: x.about })),
         events: pageEvents(events, tempoChanges),
         tempo: tempoChanges.map((c) => ({
             t: round(c.time),
@@ -144,6 +147,7 @@ function buildViewerHtml({
         .replace(/__TITLE__/g, () => `${title} — ${difficulty}`.replace(/[<>&"]/g, ''));
 }
 
+const { STYLES } = require('../sim/styles');
 const PLAYFIELD = fs.readFileSync(path.join(__dirname, 'client', 'playfield.js'), 'utf8');
 
 const TEMPLATE = `<!doctype html>
@@ -196,6 +200,7 @@ __BACK__<h1 id="ttl"></h1><div class="sub" id="sub"></div>
 <select id="spd" title="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="custom">Custom…</option></select><input id="spdc" type="number" min="0.05" max="4" step="0.05" value="1" style="display:none;width:70px"><input id="seek" type="range" min="0" step="0.01"><span id="clock" class="sub"></span></div></div>
 <div class="panel dark"><div class="info" id="info"></div><canvas id="ring" height="380"></canvas><div class="now" id="now"></div></div>
 <div class="panel" id="mdp" style="display:none"><div class="mdh">Maidata</div><div class="md" id="md"></div></div>
+<div class="panel" id="simp" style="display:none"><div class="mdh">Play simulation</div><div class="sub">Virtual hands play the chart with a copy of the game's judging, many times with small aiming and timing errors. It shows where an input meant for one note ends up hitting or blocking another. Hand sizes and speeds are estimates.</div><div class="checks" id="simstyles"></div><div class="row" style="margin-top:8px"><label class="sub">Runs per style <select id="simruns"><option>12</option><option selected>24</option><option>48</option></select></label><button id="simgo">Run simulation</button><span id="simst" class="sub"></span></div><div id="simres"></div></div>
 <details class="panel"><summary>Glossary</summary><dl id="gloss"></dl></details>
 <details class="panel" id="cfgbox"><summary>Display settings</summary><div id="cfg"></div></details>
 <div class="panel"><div class="row chips" id="chips"></div><div id="list" style="margin-top:6px"></div></div>
@@ -216,6 +221,7 @@ const bins=Math.max(1,Math.ceil(D.finish)),dens=new Array(bins).fill(0);D.events
 function drawTL(){const[g,w]=setup($('tl'),90);const h=90;g.clearRect(0,0,w,h);g.fillStyle=css('--line');
  dens.forEach((d,i)=>{const bh=(d/dmax)*(h-26);g.fillRect(i/D.finish*w,h-bh,Math.max(1,w/bins-0.5),bh)});
  D.findings.filter(f=>active.has(f.r)).forEach(f=>{g.fillStyle=css(SEV[f.s]);const x=f.t/D.finish*w;g.fillRect(x-1,2,2,10+f.s*4)});
+ if(typeof simSpots==='function')simSpots().forEach(sp=>{g.fillStyle='rgba(154,92,240,'+(0.35+0.65*sp.p)+')';g.fillRect(sp.t/D.finish*w-1,h-8,2,8)});
  g.fillStyle=css('--ink');const x=Math.max(0,at)/D.finish*w;g.fillRect(x-1,0,2,h)}
 __PLAYFIELD__
 function nowText(){const near=D.findings.filter(f=>active.has(f.r)&&at-2.5<=f.t&&f.t<=at+1.5).sort((a,b)=>Math.abs(a.t-at)-Math.abs(b.t-at)).slice(0,2).sort((a,b)=>a.t-b.t);$('now').innerHTML=near.length?near.map(f=>{const d=f.t-at;const when=Math.abs(d)<0.25?'now':d>0?'in '+d.toFixed(1)+' s':(-d).toFixed(1)+' s ago';return '<div class="nl"><b>'+f.r+'</b> <span class="mute">'+when+'</span> '+explain(f.x)+'</div>'}).join(''):'<span class="mute">Nothing flagged right here.</span>'}
@@ -237,7 +243,7 @@ function jump(d){const v=D.findings.filter(f=>active.has(f.r)).map(f=>f.t-0.25);
 $('next').onclick=()=>jump(1);$('prev').onclick=()=>jump(-1);
 {const tl=$('tl');tl.style.touchAction='none';const at2=e=>{const r=tl.getBoundingClientRect();go(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*D.finish)};let drag=false;tl.onpointerdown=e=>{drag=true;tl.setPointerCapture(e.pointerId);at2(e)};tl.onpointermove=e=>{if(drag)at2(e)};tl.onpointerup=tl.onpointercancel=()=>{drag=false}}
 function tick(ts){if(!playing)return;const before=at;if(last)at=Math.min(D.finish,at+(ts-last)/1000*speed);last=ts;countIn(before,at);playSounds(before,at);draw();if(at>=D.finish){playing=false;$('play').textContent='▶ Play'}else requestAnimationFrame(tick)}
-addEventListener('resize',draw);list();go(-LEAD);
+addEventListener('resize',draw);list();simInit();go(-LEAD);
 </script></body></html>`;
 
 module.exports = { buildViewerHtml };
