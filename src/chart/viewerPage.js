@@ -100,6 +100,7 @@ function buildViewerHtml({
     findings,
     tempoChanges = [],
     maidata = null,
+    backUrl = null,
 }) {
     const data = {
         title,
@@ -125,6 +126,9 @@ function buildViewerHtml({
         })),
     };
     return TEMPLATE.replace('__PLAYFIELD__', () => PLAYFIELD)
+        .replace('__BACK__', () =>
+            backUrl ? `<a class="back" href="${backUrl.replace(/["<>&]/g, '')}">← Songs</a>` : ''
+        )
         .replace('__DATA__', () => safeJson(data))
         .replace(/__TITLE__/g, () => `${title} — ${difficulty}`.replace(/[<>&"]/g, ''));
 }
@@ -167,9 +171,10 @@ input[type=range]{flex:1;min-width:120px}
 .ck{display:flex;align-items:center;gap:6px;font-size:14px}
 .step{padding:2px 6px;font-size:12px;flex:none}
 .sw select{flex:1}
+.back{display:inline-block;margin:0 0 6px;color:var(--mute);text-decoration:none;font-size:14px;padding:4px 0}
 .foot{color:var(--mute);font-size:12px;margin-top:14px}
 </style></head><body><div class="wrap">
-<h1 id="ttl"></h1><div class="sub" id="sub"></div>
+__BACK__<h1 id="ttl"></h1><div class="sub" id="sub"></div>
 <div class="panel"><canvas id="tl" height="90"></canvas>
 <div class="row" style="margin-top:8px"><button id="play">▶ Play</button><button id="prev">◀ Prev</button><button id="next">Next ▶</button>
 <select id="spd" title="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="custom">Custom…</option></select><input id="spdc" type="number" min="0.05" max="4" step="0.05" value="1" style="display:none;width:70px"><input id="seek" type="range" min="0" step="0.01"><span id="clock" class="sub"></span></div></div>

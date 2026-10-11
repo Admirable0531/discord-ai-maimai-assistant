@@ -69,12 +69,19 @@ async function fetchPage(id) {
     }
 }
 
-const normalise = (title) =>
-    decode(String(title))
-        .normalize('NFKC')
+const FOLD_MAP = { ø: 'o', æ: 'ae', œ: 'oe', ß: 'ss', đ: 'd', ł: 'l', þ: 'th' };
+/**
+ * Title as a search key: accents and look-alike letters folded (Ø -> o), case,
+ * spaces and punctuation dropped, so "rondo" finds "RONDØ" and "ro nd" finds it too.
+ */
+function fold(text) {
+    return decode(String(text))
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
-        .replace(/[\s\u3000]+/g, '');
-
+        .replace(/[øæœßđłþ]/g, (c) => FOLD_MAP[c])
+        .replace(/[^\p{L}\p{N}]+/gu, '');
+}
 /** [{title, id, difficulties[]}] from an index page: one row per song. */
 function parseIndex(html) {
     const songs = [];
@@ -147,33 +154,85 @@ async function loadManifest() {
         if (!byId.has(chart.song_id)) byId.set(chart.song_id, []);
         if (chart.has_chart_data) {
             const name = String(chart.difficulty).toLowerCase().replace(':', '').replace(/\s/g, '');
-            byId.get(chart.song_id).push(name);
+            byId.get(chart.song_id).push({ name, level: chart.level });
         }
     }
+    const ORDER = ['basic', 'advanced', 'expert', 'master', 'remaster'];
     const songs = Object.values(data.songs || {})
         .filter((s) => s.simai_id)
         .map((s) => ({
-            title: s.title,
+            title:
+                String(s.title)
+                    .replace(/[\u200e\u200f]/g, '')
+                    .trim() || '(untitled)',
+            artist: s.artist || '',
             id: Number(s.simai_id),
             type: s.type === 'standard' ? 'std' : 'dx',
-            difficulties: byId.get(s.id) || [],
+            difficulties: (byId.get(s.id) || [])
+                .map((c) => c.name)
+                .sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)),
+            levels: Object.fromEntries((byId.get(s.id) || []).map((c) => [c.name, c.level])),
+            key: fold(s.title),
+            artistKey: fold(s.artist || ''),
         }));
     manifestHeld = { at: Date.now(), songs };
     return songs;
 }
 
-/** The wiki's entry for a title (exact match after normalising), or null. */
+/** Songs that match a search, best first: exact, prefix, word start, contains, in-order letters. */
+async function searchSongs(query, { limit = 40, type = null } = {}) {
+    const songs = await loadManifest();
+    const q = fold(query);
+    if (!songs || !q) return [];
+    const inOrder = (key) => {
+        let at = 0;
+        for (const ch of q) {
+            at = key.indexOf(ch, at);
+            if (at === -1) return false;
+            at += 1;
+        }
+        return true;
+    };
+    const scored = [];
+    for (const song of songs) {
+        if (type && song.type !== type) continue;
+        let score = null;
+        if (song.key === q) score = 0;
+        else if (song.key.startsWith(q)) score = 1;
+        else if (song.key.includes(q)) score = 3;
+        else if (song.artistKey.includes(q)) score = 5;
+        else if (q.length >= 3 && inOrder(song.key)) score = 6;
+        if (score !== null) scored.push({ song, score });
+    }
+    // Loose in-order matches only help when there are few real ones.
+    const real = scored.filter((x) => x.score < 6).length;
+    if (real >= 5) scored.splice(0, scored.length, ...scored.filter((x) => x.score < 6));
+    scored.sort(
+        (a, b) =>
+            a.score - b.score ||
+            a.song.key.length - b.song.key.length ||
+            a.song.title.localeCompare(b.song.title)
+    );
+    return scored.slice(0, limit).map((x) => x.song);
+}
+
+/** The wiki's entry for a title: exact after folding, else the one song it unambiguously means. */
 async function findSong(title, chartType = 'dx') {
-    const wanted = normalise(title);
+    const wanted = fold(title);
     const fromManifest = await loadManifest();
     if (fromManifest) {
-        const hit = fromManifest.find((s) => s.type === chartType && normalise(s.title) === wanted);
-        // The manifest lists every song, so a miss is a real "not on the wiki".
-        return hit || null;
+        const sameType = fromManifest.filter((s) => s.type === chartType);
+        const exact = sameType.find((s) => s.key === wanted);
+        if (exact) return exact;
+        const near = (await searchSongs(title, { limit: 3, type: chartType })).filter(
+            (s) => s.key.startsWith(wanted) || s.key.includes(wanted)
+        );
+        // "rond" -> RONDØ when nothing else fits; several candidates is a genuine miss.
+        return near.length === 1 ? near[0] : null;
     }
     // The manifest is unreachable: fall back to the wiki's own index.
     const index = parseIndex(await fetchPage(INDEX_PAGES[chartType] || INDEX_PAGES.dx));
-    return index.find((s) => normalise(s.title) === wanted) || null;
+    return index.find((s) => fold(s.title) === wanted) || null;
 }
 
 /**
@@ -182,8 +241,16 @@ async function findSong(title, chartType = 'dx') {
  */
 async function getChartText(title, difficulty, chartType = 'dx') {
     const entry = await findSong(title, chartType);
-    if (!entry)
-        return { success: false, error: `"${title}" is not on the simai wiki ${chartType} list.` };
+    if (!entry) {
+        const suggestions = (await searchSongs(title, { limit: 5 })).map(
+            (x) => `${x.title} (${x.type.toUpperCase()})`
+        );
+        return {
+            success: false,
+            error: `"${title}" is not on the simai wiki ${chartType} list.${suggestions.length ? ` Did you mean: ${suggestions.join(', ')}?` : ''}`,
+            suggestions,
+        };
+    }
     const text = extractChart(await fetchPage(entry.id), difficulty);
     if (!text) {
         return {
@@ -195,4 +262,4 @@ async function getChartText(title, difficulty, chartType = 'dx') {
     return { success: true, text, id: entry.id, title: entry.title };
 }
 
-module.exports = { getChartText, findSong, parseIndex };
+module.exports = { getChartText, findSong, searchSongs, fold, parseIndex };

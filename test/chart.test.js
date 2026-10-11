@@ -122,3 +122,10 @@ test('maidata does not mistake an E touch note for the end marker', () => {
         ['(120){4}E3', 'E5']
     );
 });
+
+test('search folds accents and finds a song from part of its name', async () => {
+    const { fold } = require('../src/chart/simaiWiki');
+    assert.equal(fold('RONDØ'), 'rondo');
+    assert.equal(fold('Straight into the lights'), 'straightintothelights');
+    assert.ok(fold('RONDØ').startsWith(fold('rond')));
+});
