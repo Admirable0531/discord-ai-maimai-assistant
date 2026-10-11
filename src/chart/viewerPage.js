@@ -101,6 +101,7 @@ h1{font-size:22px;margin:0 0 2px}.sub{color:var(--mute);font-size:13px}
 .panel{background:var(--card);border-radius:12px;padding:12px;margin-top:12px}
 canvas{display:block;width:100%}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,input[type=number]{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 button{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
 button.on{background:var(--ink);color:var(--bg)}
 input[type=range]{flex:1;min-width:120px}
@@ -115,7 +116,7 @@ input[type=range]{flex:1;min-width:120px}
 <h1 id="ttl"></h1><div class="sub" id="sub"></div>
 <div class="panel"><canvas id="tl" height="90"></canvas>
 <div class="row" style="margin-top:8px"><button id="play">▶ Play</button><button id="prev">◀ Prev</button><button id="next">Next ▶</button>
-<button id="spd">1×</button><input id="seek" type="range" min="0" step="0.01"><span id="clock" class="sub"></span></div></div>
+<select id="spd" title="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="custom">Custom…</option></select><input id="spdc" type="number" min="0.05" max="4" step="0.05" value="1" style="display:none;width:70px"><input id="seek" type="range" min="0" step="0.01"><span id="clock" class="sub"></span></div></div>
 <div class="panel dark"><canvas id="ring" height="380"></canvas><div class="now" id="now"></div></div>
 <details class="panel" id="cfgbox"><summary>Display settings</summary><div id="cfg"></div></details>
 <div class="panel"><div class="row chips" id="chips"></div><div id="list" style="margin-top:6px"></div></div>
@@ -149,7 +150,7 @@ $('chips').innerHTML=rules.map(r=>'<button class="on" data-r="'+r+'">'+r+'</butt
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{active.has(b.dataset.r)?active.delete(b.dataset.r):active.add(b.dataset.r);b.classList.toggle('on');list();draw()});
 $('seek').max=D.finish;$('seek').oninput=e=>go(+e.target.value);
 $('play').onclick=()=>{primeAudio();playing=!playing;$('play').textContent=playing?'⏸ Pause':'▶ Play';last=0;if(playing)requestAnimationFrame(tick)};
-$('spd').onclick=()=>{speed=speed===1?.5:speed===.5?.25:1;$('spd').textContent=speed+'×'};
+$('spd').onchange=()=>{if($('spd').value==='custom'){$('spdc').style.display='';speed=+$('spdc').value||1}else{$('spdc').style.display='none';speed=+$('spd').value}};$('spdc').oninput=()=>{const v=+$('spdc').value;if(v>0)speed=Math.min(4,v)};
 function jump(d){const v=D.findings.filter(f=>active.has(f.r)).map(f=>f.t-0.25);const t=d>0?v.find(x=>x>at+0.05):[...v].reverse().find(x=>x<at-0.05);if(t!==undefined)go(t)}
 $('next').onclick=()=>jump(1);$('prev').onclick=()=>jump(-1);
 $('tl').onclick=e=>go((e.offsetX/e.target.clientWidth)*D.finish);

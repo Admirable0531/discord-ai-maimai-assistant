@@ -11,7 +11,26 @@ const DEFAULTS = {
     jackNps: 8,
     burstNps: 11,
     burstWindow: 1.5,
+    // Perfect windows (s), from the judging constants of a reimplementation of the game:
+    // a tap is only +-50 ms, a touch is Perfect from 150 ms early to 200 ms late,
+    // a slide's end is Perfect up to roughly 200 ms either way. Touches and slide
+    // ends can therefore be taken earlier or later to keep a splash off a neighbour.
+    touchEarly: 0.15,
+    touchLate: 0.2,
+    slideEndWindow: 0.2,
 };
+
+/**
+ * A finding that the player can dodge by timing a lenient note differently:
+ * one step less severe, and the sentence says how far it can move.
+ */
+function lenient(finding, what, early, late) {
+    return {
+        ...finding,
+        severity: Math.max(1, finding.severity - 1),
+        text: `${finding.text} ${what} stays Perfect from ${Math.round(early * 1000)} ms early to ${Math.round(late * 1000)} ms late, so it can be taken earlier or later to keep the splash off the other note.`,
+    };
+}
 
 const isButtonHit = (e) => e.kind === 'tap' || e.kind === 'break' || e.kind === 'hold';
 const label = (e) =>
@@ -44,7 +63,7 @@ function touchBesideButton(events, cfg) {
             if (gap < -cfg.sameTick || gap > cfg.splashWindow) continue;
             const simultaneous = Math.abs(gap) <= cfg.sameTick;
             const severity = simultaneous ? 3 : hit.closeness === 0 ? 3 : 2;
-            out.push({
+            const finding = {
                 rule: 'A1',
                 severity,
                 time: Math.min(t.time, time),
@@ -53,7 +72,8 @@ function touchBesideButton(events, cfg) {
                 text: simultaneous
                     ? `${sensorName(t)} lands together with ${what}; the hand reaching the touch can switch on the neighbouring A sensor.`
                     : `${sensorName(t)} lands ${Math.round(gap * 1000)} ms before ${what}; brushing the A sensor on the way hits it early or blocks it.`,
-            });
+            };
+            out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
         }
     }
     return out;
@@ -69,7 +89,7 @@ function touchBesideHold(events, cfg) {
             if (!(h.time < t.time - cfg.sameTick && t.time < h.end + cfg.splashWindow)) continue;
             if (!near.some((n) => n.button === h.lane)) continue;
             const during = t.time <= h.end;
-            out.push({
+            const finding = {
                 rule: 'A2',
                 severity: during ? 2 : 1,
                 time: t.time,
@@ -78,7 +98,8 @@ function touchBesideHold(events, cfg) {
                 text: during
                     ? `${sensorName(t)} is touched while button ${h.lane} is held; the touch hand sits next to the held button's sensor.`
                     : `${sensorName(t)} lands just after hold ${h.lane} ends.`,
-            });
+            };
+            out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
         }
     }
     return out;
@@ -108,6 +129,35 @@ function touchBesideTouch(events, cfg) {
                 text: `${sensorName(a)} then ${sensorName(b)} ${Math.round(gap * 1000)} ms later, sharing a neighbouring sensor.`,
             });
         }
+    }
+    return out;
+}
+
+/**
+ * A14 (information): a group of simultaneous touches. Once more than half of
+ * the group is activated, the rest are credited the same judgement, so a
+ * group of n only needs floor(n/2)+1 of its sensors touched, and a stray
+ * sensor inside the group is harmless.
+ */
+function touchGroups(events, cfg) {
+    const out = [];
+    const touches = events.filter((e) => e.kind === 'touch' || e.kind === 'touchHold');
+    for (let i = 0; i < touches.length;) {
+        let j = i + 1;
+        while (j < touches.length && touches[j].time - touches[i].time <= cfg.sameTick) j++;
+        const n = j - i;
+        if (n >= 3) {
+            const need = Math.floor(n / 2) + 1;
+            out.push({
+                rule: 'A14',
+                severity: 1,
+                time: touches[i].time,
+                bar: touches[i].bar,
+                notes: touches.slice(i, j).map(sensorName),
+                text: `${n} touches at once (${touches.slice(i, j).map(sensorName).join(', ')}): more than half counts, so ${need} of them clear the whole group.`,
+            });
+        }
+        i = j;
     }
     return out;
 }
@@ -416,7 +466,7 @@ function slideEndBesideNote(paths, events, cfg) {
                     );
                 });
             if (!same && !near) continue;
-            out.push({
+            const finding = {
                 rule: same ? 'A13' : 'A7',
                 severity: same ? 3 : 2,
                 time: slide.end,
@@ -425,7 +475,8 @@ function slideEndBesideNote(paths, events, cfg) {
                 text: same
                     ? `${label(note)} is on ${name}, where the ${slideLabel(slide)} ends ${Math.round(gap * 1000)} ms earlier; if that finger is still down the note cannot activate.`
                     : `${label(note)} lands ${Math.round(gap * 1000)} ms after the ${slideLabel(slide)} ends on the next sensor.`,
-            });
+            };
+            out.push(lenient(finding, 'The slide end', cfg.slideEndWindow, cfg.slideEndWindow));
         }
     }
     return out;
@@ -441,6 +492,7 @@ function analyse(chart, overrides = {}) {
         ...touchBesideButton(chart.events, cfg),
         ...touchBesideHold(chart.events, cfg),
         ...touchBesideTouch(chart.events, cfg),
+        ...touchGroups(chart.events, cfg),
         ...adjacentBrush(chart.events, cfg),
         ...jacks(chart.events, cfg),
         ...bursts(chart.events, cfg),

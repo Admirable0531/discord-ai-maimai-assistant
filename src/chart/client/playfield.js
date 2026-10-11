@@ -7,28 +7,38 @@
 // dense chevron strips that follow the slide's real shape.
 
 const DEF = {
-    tapSpeed: 11.5,
+    tapSpeed: 7.5,
     touchSpeed: 7.5,
-    tapScale: 0.95,
-    holdScale: 0.95,
-    touchScale: 1.35,
+    tapScale: 1,
+    holdScale: 1,
+    touchScale: 1,
     slideScale: 1,
-    slideGap: 1.3,
-    slideOffset: -0.15,
+    slideGap: 1,
+    slideOffset: 0,
     sound: 1,
     volume: 0.6,
     labels: 1,
     guides: 1,
 };
+// What 'normal' looks like here, tuned by eye against the game: a displayed
+// tap speed of 7.5 runs at this internal speed, and the sizes below are the 1.0 sizes.
+const BASE = {
+    tapSpeed: 11.5 / 7.5,
+    tap: 0.95,
+    hold: 0.95,
+    touch: 1.35,
+    slideGap: 1.3,
+    slideOffset: -0.15,
+};
 let cfg = Object.assign({}, DEF);
 try {
-    Object.assign(cfg, JSON.parse(localStorage.getItem('chartViewerCfg') || '{}'));
+    Object.assign(cfg, JSON.parse(localStorage.getItem('chartViewerCfg2') || '{}'));
 } catch {
     /* storage unavailable: defaults are fine */
 }
 const saveCfg = () => {
     try {
-        localStorage.setItem('chartViewerCfg', JSON.stringify(cfg));
+        localStorage.setItem('chartViewerCfg2', JSON.stringify(cfg));
     } catch {
         /* ignore */
     }
@@ -39,13 +49,13 @@ const INNER = 1.225; // a button note appears here and grows in place before it 
 const RATE = 0.265;
 /** Where a button note due at time t is on its lane (fraction of the ring radius) and how big it is. */
 function tapState(t) {
-    const d = U - (t - at) * cfg.tapSpeed;
+    const d = U - (t - at) * cfg.tapSpeed * BASE.tapSpeed;
     if (d >= INNER) return { frac: Math.min(1, d / U), scale: 1 };
     const scale = d * RATE + (1 - RATE * INNER);
     return { frac: INNER / U, scale: Math.max(0, Math.min(1, scale)) };
 }
 /** Seconds before the hit that a button note first appears. */
-const tapLead = () => (U + (1 - RATE * INNER) / RATE) / cfg.tapSpeed;
+const tapLead = () => (U + (1 - RATE * INNER) / RATE) / (cfg.tapSpeed * BASE.tapSpeed);
 const touchWhole = () => 3.209385682 * Math.pow(cfg.touchSpeed, -0.9549621752);
 /** A touch note fades in, then its four triangles close in, quickly at the end. */
 function touchState(t) {
@@ -60,14 +70,15 @@ function touchState(t) {
     return { alpha, gap: (gap / U) * R };
 }
 /** Slide arrows start to fade in this long before the star lands. */
-const slideLead = () => 3.926913 / cfg.tapSpeed + cfg.slideOffset;
+const slideLead = () =>
+    3.926913 / (cfg.tapSpeed * BASE.tapSpeed) + cfg.slideOffset + BASE.slideOffset;
 const TRAIL = 0.05; // notes vanish as they are hit; just long enough to avoid a flicker
 
 const COL = {
     tap: '#ff4fa3',
     each: '#ffd23f',
     brk: '#ff8a2a',
-    touch: '#3aa3ff',
+    touch: '#27d3df',
     slide: { main: '#1fd6ff', dark: '#07607d', star: '#3d7bff' },
     slideEach: { main: '#ffd23f', dark: '#8a5a00', star: '#ffd23f' },
     slideBrk: { main: '#ff8a2a', dark: '#7a2a00', star: '#ff8a2a' },
@@ -145,32 +156,81 @@ function smoothPts(pts, rounds) {
     return p;
 }
 function outerLoopPts(sLane, eLane, dir) {
-    return smoothPts(outerLoopRaw(sLane, eLane, dir), 3);
+    return smoothPts(outerLoopRaw(sLane, eLane, dir), 2);
 }
+/**
+ * pp/qq slide, in the game's own geometry (unit = ring radius, y up): a
+ * tangent leg from the button to a circle of radius b through the centre, a
+ * turn round it, a transfer arc that meets the ring tangentially, then the ring.
+ * Longer variants return inside for a pass through the centre.
+ */
 function outerLoopRaw(sLane, eLane, dir) {
-    const rc = R * 0.4619;
-    const a0 = ang(sLane);
-    const ac = a0 - dir * ((67.5 * Math.PI) / 180); // direction of the circle's centre
-    const [cx, cy] = pt(ac, rc);
-    const onCircle = (phi) => [cx + rc * Math.sin(phi), cy - rc * Math.cos(phi)];
-    const phi0 = ac + Math.PI; // the circle passes through the centre of the screen
-    const out = [pt(a0, R), [C, C]];
-    const sweep = (135 * Math.PI) / 180;
-    const n = 14;
-    for (let i = 1; i <= n; i++) out.push(onCircle(phi0 + (dir * sweep * i) / n));
-    const entry = wrap8(sLane - 2 * dir);
+    const ccw = dir === -1;
+    const b = Math.cos(Math.PI / 8) / 2;
+    const a = 1 - b;
+    const th = Math.PI / 4;
+    const sT = (a * a + b * b - 2 * a * b * Math.cos(th)) / (2 * a - 2 * b * Math.cos(th));
+    const TR = b + sT; // transfer circle radius
+    const math = (lane) => Math.PI * (5 / 8 - lane / 4);
+    const TAU = 2 * Math.PI;
+    const mod = (x) => ((x % TAU) + TAU) % TAU;
+    const toS = (p) => [C + p[0] * R, C - p[1] * R];
+    const polar = (r, ang0) => [r * Math.cos(ang0), r * Math.sin(ang0)];
+    const ts = math(sLane);
+    const ppqq = ccw ? ts - (3 * Math.PI) / 8 : ts + (3 * Math.PI) / 8;
+    const cc = polar(b, ppqq);
+    const P = polar(1, ts);
+    const hv = [P[0] - cc[0], P[1] - cc[1]];
+    const tanRad =
+        Math.atan2(hv[1], hv[0]) + (ccw ? 1 : -1) * Math.acos(b / Math.hypot(hv[0], hv[1]));
+    const endRad = ppqq + (ccw ? th : -th);
+    const ct = polar(1 - TR, endRad);
+    const exitRad = Math.atan2(cc[1] - ct[1], cc[0] - ct[0]); // where the two circles touch
+    const sweep1 = ccw ? mod(exitRad - tanRad) : mod(tanRad - exitRad);
+    const sweep2 = ccw ? mod(endRad - exitRad) : mod(exitRad - endRad);
+    const pts = [P];
+    const arc = (center, rad, from, sweep, n) => {
+        for (let i = 0; i <= n; i++)
+            pts.push([
+                center[0] + rad * Math.cos(from + ((ccw ? 1 : -1) * (sweep * i)) / n),
+                center[1] + rad * Math.sin(from + ((ccw ? 1 : -1) * (sweep * i)) / n),
+            ]);
+    };
+    arc(cc, b, tanRad, sweep1, 18);
+    const join = pts.length - 1;
+    arc(ct, TR, exitRad, sweep2, 14);
+    const transferEnd = pts.length - 1;
+    // along the ring back to the start button
+    const ringTo = (target) => {
+        const sw = ccw ? mod(target - endRad) : mod(endRad - target);
+        const n = Math.max(2, Math.ceil(sw / 0.09));
+        for (let i = 1; i <= n; i++) pts.push(polar(1, endRad + ((ccw ? 1 : -1) * (sw * i)) / n));
+    };
+    ringTo(ts);
     const k = (((dir * (eLane - sLane)) % 8) + 8) % 8;
-    out.push(dot(entry));
-    if (k === 6) return out;
-    const rimSteps = k === 0 ? 2 : 1;
-    out.push(...arcPts(ang(entry), dir * rimSteps * (Math.PI / 4), R * 0.97, R * 0.97).slice(1));
-    if (k === 7 || k === 0) return out;
-    // tail through the inside back out to the end button
-    const b = (lane) => pt(ang(lane), R * 0.405);
-    if (k >= 3) out.push(b(sLane), [C, C], b(eLane), dot(eLane));
-    else if (k === 2) out.push(b(sLane), b(wrap8(sLane + dir)), dot(eLane));
-    else out.push(b(sLane), dot(eLane));
-    return out;
+    const te = math(eLane);
+    const cut = (from, to) => {
+        // first point between from..to whose polar angle has reached the end button
+        for (let i = from; i <= to; i++) {
+            const d = ((Math.atan2(pts[i][1], pts[i][0]) - te + 3 * Math.PI) % TAU) - Math.PI;
+            if (ccw ? d >= 0 : d <= 0) return i;
+        }
+        return to;
+    };
+    const inner = (lane) => polar(0.405, math(lane));
+    if (k === 6) return pts.slice(0, join + 1).map(toS);
+    if (k === 7) return pts.slice(0, cut(join, transferEnd) + 1).map(toS);
+    if (k === 0) return pts.map(toS);
+    const out = pts.slice();
+    if (k === 1) {
+        for (let i = 1; i <= 6; i++)
+            out.push(polar(1, ts + ((ccw ? 1 : -1) * ((Math.PI / 4) * i)) / 6));
+    } else if (k === 2) {
+        out.push(inner(sLane), inner(wrap8(sLane + dir)), polar(1, te));
+    } else {
+        out.push(inner(sLane), [0, 0], inner(eLane), polar(1, te));
+    }
+    return out.map(toS);
 }
 function segPts(shape, s, via) {
     const e = via[via.length - 1];
@@ -355,12 +415,12 @@ function starNote(g, x, y, r0, sc, ex, rot = 0) {
     g.arc(x, y, Math.max(1.5, r * 0.16), 0, 7);
     g.fill();
 }
-function hexOutline(g, x1, y1, x2, y2, w, k) {
+function hexOutline(g, x1, y1, x2, y2, w, k, dirx, diry) {
     const dx = x2 - x1;
     const dy = y2 - y1;
-    const L = Math.hypot(dx, dy) || 1;
-    const ux = dx / L;
-    const uy = dy / L;
+    const L = Math.hypot(dx, dy);
+    const ux = L > 0.5 ? dx / L : dirx;
+    const uy = L > 0.5 ? dy / L : diry;
     const nx = -uy;
     const ny = ux;
     g.beginPath();
@@ -372,11 +432,11 @@ function hexOutline(g, x1, y1, x2, y2, w, k) {
     g.lineTo(x1 - nx * w, y1 - ny * w);
     g.closePath();
 }
-function holdNote(g, tx, ty, hx, hy, r0, c, ex) {
+function holdNote(g, tx, ty, hx, hy, r0, c, ex, dirx, diry) {
     const r = Math.max(r0, 4);
     g.save();
     glow(g, ex);
-    hexOutline(g, tx, ty, hx, hy, r, r * 0.75);
+    hexOutline(g, tx, ty, hx, hy, r, r * 0.75, dirx, diry);
     g.fillStyle = 'rgba(0,0,0,.35)';
     g.fill();
     g.lineJoin = 'round';
@@ -384,46 +444,126 @@ function holdNote(g, tx, ty, hx, hy, r0, c, ex) {
     g.strokeStyle = WHITE;
     g.stroke();
     g.restore();
-    hexOutline(g, tx, ty, hx, hy, r, r * 0.75);
+    hexOutline(g, tx, ty, hx, hy, r, r * 0.75, dirx, diry);
     g.lineJoin = 'round';
     g.lineWidth = Math.max(4, r * 0.34);
     g.strokeStyle = c;
     g.stroke();
 }
-function touchNote(g, x, y, r0, c, gap, ex, held) {
+function roundedPoly(g, pts, rad) {
+    const n = pts.length;
+    g.beginPath();
+    for (let i = 0; i < n; i++) {
+        const p = pts[i];
+        const a = pts[(i + n - 1) % n];
+        const b = pts[(i + 1) % n];
+        const da = Math.hypot(a[0] - p[0], a[1] - p[1]);
+        const db = Math.hypot(b[0] - p[0], b[1] - p[1]);
+        const ra = Math.min(rad, da / 2);
+        const rb = Math.min(rad, db / 2);
+        const p1 = [p[0] + ((a[0] - p[0]) / da) * ra, p[1] + ((a[1] - p[1]) / da) * ra];
+        const p2 = [p[0] + ((b[0] - p[0]) / db) * rb, p[1] + ((b[1] - p[1]) / db) * rb];
+        i ? g.lineTo(p1[0], p1[1]) : g.moveTo(p1[0], p1[1]);
+        g.quadraticCurveTo(p[0], p[1], p2[0], p2[1]);
+    }
+    g.closePath();
+}
+const TOUCH_COL = { single: '#27d3df', each: '#e3e32c', brk: '#ff4b3a' };
+function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
     const r = Math.max(r0, 3);
     g.save();
-    glow(g, ex);
+    if (flash) {
+        // the moment it is hit: a rounded white square
+        roundedPoly(
+            g,
+            [
+                [x - r * 1.5, y - r * 1.5],
+                [x + r * 1.5, y - r * 1.5],
+                [x + r * 1.5, y + r * 1.5],
+                [x - r * 1.5, y + r * 1.5],
+            ],
+            r * 0.55
+        );
+        g.shadowColor = '#fff';
+        g.shadowBlur = 12;
+        g.lineWidth = 3.2;
+        g.strokeStyle = WHITE;
+        g.stroke();
+        g.restore();
+        return;
+    }
+    // corner brackets marking the touch area
+    const d = r * 1.75;
+    const L = r * 0.7;
     g.shadowColor = c;
-    g.shadowBlur = Math.max(g.shadowBlur, 12);
+    g.shadowBlur = 8;
+    g.lineWidth = 2.4;
+    g.lineCap = 'round';
+    g.strokeStyle = c;
+    for (const [sx, sy] of [
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
+    ]) {
+        g.beginPath();
+        g.moveTo(x + sx * d, y + sy * (d - L));
+        g.quadraticCurveTo(x + sx * d, y + sy * d, x + sx * (d - L), y + sy * d);
+        g.stroke();
+    }
+    // four rounded fans, tips toward the centre
     for (let i = 0; i < 4; i++) {
         g.save();
         g.translate(x, y);
         g.rotate((i * Math.PI) / 2);
-        g.beginPath();
-        g.moveTo(0, -(r * 0.2 + gap));
-        g.lineTo(-r * 0.95, -(r * 1.3 + gap));
-        g.lineTo(r * 0.95, -(r * 1.3 + gap));
-        g.closePath();
-        g.fillStyle = c;
+        const tip = r * 0.15 + gap;
+        const base = tip + r * 1.15;
+        roundedPoly(
+            g,
+            [
+                [0, -tip],
+                [-r * 1.2, -base],
+                [r * 1.2, -base],
+            ],
+            r * 0.3
+        );
+        if (ex) {
+            g.shadowColor = '#fff3b0';
+            g.shadowBlur = 14;
+        } else {
+            g.shadowColor = c;
+            g.shadowBlur = 10;
+        }
+        g.fillStyle = c + '66';
         g.fill();
-        g.shadowBlur = 0;
         g.lineJoin = 'round';
-        g.lineWidth = 4.5;
-        g.strokeStyle = 'rgba(0,0,0,.65)';
-        g.stroke();
         g.lineWidth = 2.4;
         g.strokeStyle = WHITE;
         g.stroke();
         g.restore();
     }
-    g.restore();
+    g.shadowColor = c;
+    g.shadowBlur = 10;
+    g.fillStyle = WHITE;
+    g.beginPath();
+    g.arc(x, y, Math.max(2, r * 0.2), 0, 7);
+    g.fill();
     if (held) {
-        g.fillStyle = WHITE;
-        g.beginPath();
-        g.arc(x, y, r * 0.22, 0, 7);
-        g.fill();
+        roundedPoly(
+            g,
+            [
+                [x, y - r * 1.15],
+                [x + r * 1.15, y],
+                [x, y + r * 1.15],
+                [x - r * 1.15, y],
+            ],
+            r * 0.3
+        );
+        g.lineWidth = 2.2;
+        g.strokeStyle = WHITE;
+        g.stroke();
     }
+    g.restore();
 }
 function chevron(g, x, y, tx, ty, size, col, alpha) {
     const px = -ty;
@@ -534,9 +674,9 @@ function drawRing() {
     g.fillRect(0, 0, w, size);
     g.save();
     g.translate(ox, 0);
-    const noteR = R * 0.105 * cfg.tapScale;
+    const noteR = R * 0.105 * cfg.tapScale * BASE.tap;
     const slideSz = R * 0.045 * cfg.slideScale;
-    const slideGap = R * 0.09 * cfg.slideScale * cfg.slideGap;
+    const slideGap = R * 0.09 * cfg.slideScale * cfg.slideGap * BASE.slideGap;
 
     if (cfg.guides) {
         drawSensors(g, litSensors());
@@ -613,22 +753,23 @@ function drawRing() {
         if (e.k === 's') continue;
         const end = e.z && e.z > e.t ? e.z : e.t;
         const lead = e.n ? touchWhole() : tapLead();
-        if (e.t - lead > at || end < at - TRAIL) continue;
-        const out = at > end ? Math.max(0, 1 - (at - end) / TRAIL) : 1;
+        const tailT = e.n && e.k !== 'th' ? 0.12 : TRAIL; // a touch note flashes as it is hit
+        if (e.t - lead > at || end < at - tailT) continue;
+        const out = at > end ? Math.max(0, 1 - (at - end) / tailT) : 1;
         if (e.n) {
             const ts = touchState(e.t);
             if (!ts) continue;
             g.globalAlpha = ts.alpha * out;
             const [x, y] = xy(e.n);
-            const r = R * 0.055 * cfg.touchScale;
+            const r = R * 0.055 * cfg.touchScale * BASE.touch;
             const hold = e.k === 'th' && at >= e.t && at <= e.z;
             sensorShape(g, e.n);
             g.fillStyle =
-                (e.e ? 'rgba(255,210,63,' : 'rgba(58,163,255,') +
+                (e.e ? 'rgba(227,227,44,' : 'rgba(39,211,223,') +
                 (hold ? 0.3 : 0.16) * (e.n[0] === 'A' || e.n[0] === 'D' ? 0.55 : 1) * ts.alpha +
                 ')';
             g.fill();
-            const c = e.e ? COL.each : COL.touch;
+            const c = e.e ? TOUCH_COL.each : TOUCH_COL.single;
             if (e.k === 'th' && at >= e.t && at <= e.z) {
                 g.lineWidth = 3;
                 g.strokeStyle = c;
@@ -636,7 +777,7 @@ function drawRing() {
                 g.arc(x, y, r * 2.2, 0, 7);
                 g.stroke();
             }
-            touchNote(g, x, y, r, c, ts.gap, e.x, e.k === 'th');
+            touchNote(g, x, y, r, c, ts.gap, e.x, e.k === 'th', e.k !== 'th' && at >= e.t);
             if (cfg.labels) {
                 g.fillStyle = 'rgba(255,255,255,.5)';
                 g.font = '9px sans-serif';
@@ -652,10 +793,22 @@ function drawRing() {
             }
             const [x, y] = laneAt(e.l, st.frac);
             if (e.k === 'h') {
-                const r = noteR * (cfg.holdScale / cfg.tapScale) * st.scale;
+                const r =
+                    noteR * ((cfg.holdScale * BASE.hold) / (cfg.tapScale * BASE.tap)) * st.scale;
                 const tail = tapState(e.z);
                 const [tx, ty] = laneAt(e.l, at >= e.t ? Math.min(1, tail.frac) : tail.frac);
-                holdNote(g, tx, ty, x, y, r * 0.95, noteColor(e), e.x);
+                holdNote(
+                    g,
+                    tx,
+                    ty,
+                    x,
+                    y,
+                    r * 0.95,
+                    noteColor(e),
+                    e.x,
+                    Math.sin(ang(e.l)),
+                    -Math.cos(ang(e.l))
+                );
             } else if (e.st) {
                 starNote(
                     g,

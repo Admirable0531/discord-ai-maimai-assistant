@@ -357,3 +357,25 @@ used, and the code here is independently written.
   entered and left along tangents from the buttons; outer-loop circles radius ≈ 0.462R.
 - **Slide arrow fade is the game's own behaviour**: arrows fade in to 50% opacity over about
   0.2 s, then jump to full opacity 50 ms before the star lands. The viewer now does the same.
+
+### Judgement leniency and touch groups (from majdata's judging constants, Oct 2026)
+
+Frame = 16.67 ms. Only facts were taken; nothing was copied.
+
+| Note | Perfect window | Great | Good |
+|---|---|---|---|
+| Tap / hold head | up to 3 frames (50 ms) either way | to 6 frames (100 ms) | to 9 frames (150 ms) |
+| Touch | up to 9 frames (150 ms) early, late Perfect to 12 frames (200 ms) | to 15 frames | to 18 frames (300 ms) |
+| Slide end | Perfect to about 14 frames (230 ms) late, similar early | 21 to 29 frames | |
+
+Consequences for the rules:
+
+- **A touch, and the end of a slide, can be taken earlier or later without losing Perfect.**
+  A splash that involves only such a note can be dodged by timing, so A1, A2, A7 and A13 are
+  one step softer when they involve a touch or a slide end, and the sentence says how far it
+  can move. A tap or hold head is strict, so findings that only involve those keep their
+  severity.
+- **Touch groups, and touch-hold groups: more than 50% activated is enough.** The rest of the
+  group take the same judgement. A group of n simultaneous touches needs `floor(n/2)+1`; a
+  stray sensor inside a group is harmless. Reported as information (A14). Not applied to
+  ordinary holds: no such rule was found for them.

@@ -80,3 +80,17 @@ test('viewer page is self-contained, escapes the title and never embeds chart te
     assert.ok(!/https?:\/\//.test(html), 'no external requests');
     assert.ok(html.includes('const D={'));
 });
+
+test('A1 is one step softer because a touch has a wide Perfect window, and says so', () => {
+    const found = analyse(buildChart('(120){16}E6/6,,,,E')).find((f) => f.rule === 'A1');
+    assert.ok(found);
+    assert.equal(found.severity, 2); // simultaneous would be 3 for a strict note
+    assert.match(found.text, /150 ms early to 200 ms late/);
+});
+
+test('A14: a group of three simultaneous touches needs only two', () => {
+    const found = analyse(buildChart('(120){4}E1/E3/E5,,,,E')).find((f) => f.rule === 'A14');
+    assert.ok(found);
+    assert.match(found.text, /2 of them clear/);
+    assert.ok(!analyse(buildChart('(120){4}E1/E3,,,,E')).some((f) => f.rule === 'A14'));
+});
