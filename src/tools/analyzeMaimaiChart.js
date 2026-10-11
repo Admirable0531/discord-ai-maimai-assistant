@@ -4,7 +4,9 @@
 const { getChartText } = require('../chart/simaiWiki');
 const { buildChart } = require('../chart/chartModel');
 const { analyse } = require('../chart/rules');
-const { summarise } = require('../chart/report');
+const { summarise, pickFindings, formatTime } = require('../chart/report');
+const { drawCard } = require('../render/drawCard');
+const { buildChartMomentHtml, WIDTH } = require('../render/chartMomentCard');
 
 const declaration = {
     name: 'analyze_maimai_chart',
@@ -24,12 +26,17 @@ const declaration = {
                 enum: ['basic', 'advanced', 'expert', 'master', 'remaster'],
             },
             chart_type: { type: 'string', enum: ['dx', 'std'] },
+            as_image: {
+                type: 'boolean',
+                description:
+                    'Also draw the most severe moments as pictures of the sensor ring (notes, slide paths, millisecond offsets) and attach them to the reply.',
+            },
         },
         required: ['song_name', 'difficulty'],
     },
 };
 
-async function execute(args) {
+async function execute(args, context) {
     const title = String(args?.song_name || '').trim();
     const difficulty = String(args?.difficulty || '').toLowerCase();
     const chartType = args?.chart_type === 'std' ? 'std' : 'dx';
@@ -51,7 +58,7 @@ async function execute(args) {
         };
     }
     const findings = analyse(chart);
-    return {
+    const result = {
         success: true,
         song: found.title,
         difficulty,
@@ -66,6 +73,40 @@ async function execute(args) {
             'Bar numbers assume 4 beats per bar.',
         ],
     };
+    if (args?.as_image === true) {
+        // Findings within 0.3 s are one moment: one picture, all their sentences.
+        const moments = [];
+        for (const f of pickFindings(
+            findings.filter((x) => x.rule[0] === 'A'),
+            { limit: 8, perRule: 3 }
+        )) {
+            const same = moments.find((m) => Math.abs(m.time - f.time) <= 0.3);
+            if (same) {
+                same.severity = Math.max(same.severity, f.severity);
+                same.text += ` ${f.text}`;
+            } else if (moments.length < 3) {
+                moments.push({ ...f, clock: formatTime(f.time) });
+            }
+        }
+        const drawn = await drawCard(context, {
+            html: buildChartMomentHtml({
+                title: found.title,
+                difficulty,
+                events: chart.events,
+                findings: moments,
+            }),
+            width: WIDTH,
+            filename: 'chart-check.png',
+        });
+        if (drawn.ok) {
+            result.image_attached = true;
+            result.image_note =
+                "The picture of the top moments is attached automatically and you can't see it; add a short comment and don't re-list them.";
+        } else {
+            result.image_error = drawn.error;
+        }
+    }
+    return result;
 }
 
 module.exports = { declaration, execute };

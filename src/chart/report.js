@@ -18,11 +18,10 @@ const RULE_NAMES = {
 
 const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 
-function summarise(findings, { limit = 10, perRule = 3 } = {}) {
-    const counts = {};
-    for (const f of findings) counts[f.rule] = (counts[f.rule] || 0) + 1;
+/** The findings worth showing, by time, with at most `perRule` of each rule. */
+function pickFindings(findings, { limit = 10, perRule = 3 } = {}) {
     const taken = {};
-    const picked = [...findings]
+    return [...findings]
         .sort((a, b) => b.severity - a.severity || a.time - b.time)
         .filter((f) => {
             taken[f.rule] = (taken[f.rule] || 0) + 1;
@@ -30,6 +29,12 @@ function summarise(findings, { limit = 10, perRule = 3 } = {}) {
         })
         .slice(0, limit)
         .sort((a, b) => a.time - b.time);
+}
+
+function summarise(findings, options) {
+    const counts = {};
+    for (const f of findings) counts[f.rule] = (counts[f.rule] || 0) + 1;
+    const picked = pickFindings(findings, options);
     return {
         shown: picked.map((f) => ({
             rule: f.rule,
@@ -49,4 +54,4 @@ function summarise(findings, { limit = 10, perRule = 3 } = {}) {
     };
 }
 
-module.exports = { summarise, RULE_NAMES, formatTime };
+module.exports = { summarise, pickFindings, RULE_NAMES, formatTime };

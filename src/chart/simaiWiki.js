@@ -10,20 +10,63 @@ const INDEX_PAGES = { dx: 808, std: 32 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 const USER_AGENT = 'AtriDiscordBot/1.0 (chart analysis; contact via Discord)';
 
-const cache = new Map();
+const fs = require('fs');
+const path = require('path');
 
+const CACHE_DIR =
+    process.env.CHART_CACHE_DIR || path.join(__dirname, '..', '..', 'data', 'simai-cache');
+// Index pages change when charts are added; song pages rarely change.
+const TTL_MS = { index: DAY_MS, song: 7 * DAY_MS };
+// Memory copy so repeated questions in one run never touch the disk or the wiki.
+const memory = new Map();
+
+function readCached(id) {
+    const file = path.join(CACHE_DIR, `${id}.html`);
+    try {
+        const stat = fs.statSync(file);
+        return { html: fs.readFileSync(file, 'utf8'), at: stat.mtimeMs };
+    } catch {
+        return null;
+    }
+}
+
+function writeCached(id, html) {
+    try {
+        fs.mkdirSync(CACHE_DIR, { recursive: true });
+        fs.writeFileSync(path.join(CACHE_DIR, `${id}.html`), html);
+    } catch {
+        // A cache that cannot be written only costs a refetch.
+    }
+}
+
+/**
+ * One wiki page. Fresh copies come from the cache; a failed fetch (the site is
+ * behind a bot challenge that can block for a while) falls back to a stale
+ * copy rather than failing, and says so plainly when there is none.
+ */
 async function fetchPage(id) {
     const key = String(id);
-    const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < DAY_MS) return hit.html;
-    const res = await fetch(`${BASE}/${id}.html`, {
-        headers: { 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) throw new Error(`simai wiki page ${id} returned HTTP ${res.status}`);
-    const html = await res.text();
-    cache.set(key, { at: Date.now(), html });
-    return html;
+    const kind = Object.values(INDEX_PAGES).includes(Number(id)) ? 'index' : 'song';
+    const held = memory.get(key) || readCached(key);
+    if (held && Date.now() - held.at < TTL_MS[kind]) {
+        memory.set(key, held);
+        return held.html;
+    }
+    try {
+        const res = await fetch(`${BASE}/${id}.html`, {
+            headers: { 'User-Agent': USER_AGENT },
+            signal: AbortSignal.timeout(20000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const html = await res.text();
+        if (/<title>Just a moment/i.test(html)) throw new Error('blocked by a bot check');
+        memory.set(key, { html, at: Date.now() });
+        writeCached(key, html);
+        return html;
+    } catch (err) {
+        if (held) return held.html;
+        throw new Error(`simai wiki page ${id} unavailable (${err.message})`);
+    }
 }
 
 const normalise = (title) =>
