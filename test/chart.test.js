@@ -141,3 +141,24 @@ test('a break that starts a slide is a star, and counts once', () => {
     assert.ok(head && head.star);
     assert.deepEqual(countEvents(chart.events), { tap: 0, hold: 0, slide: 1, touch: 0, break: 1 });
 });
+
+test('only a double slide makes a slide strip yellow; a simultaneous tap only yellows its head', () => {
+    const { buildViewerHtml } = require('../src/chart/viewerPage');
+    const dataOf = (text) => {
+        const chart = buildChart(text);
+        const html = buildViewerHtml({
+            title: 't',
+            difficulty: 'master',
+            events: chart.events,
+            finish: chart.finish,
+            findings: [],
+            tempoChanges: chart.tempoChanges,
+        });
+        return JSON.parse(/const D=(\{.*?\});\n/s.exec(html)[1].replace(/\\u003c/g, '<'));
+    };
+    const withTap = dataOf('(120){4}1-5[4:1]/3,,,,E').events.find((e) => e.k === 's');
+    assert.ok(!withTap.e, 'strip stays blue');
+    assert.ok(withTap.he, 'head is yellow');
+    const double = dataOf('(120){4}1-5[4:1]/2-6[4:1],,,,E').events.filter((e) => e.k === 's');
+    assert.ok(double.every((e) => e.e));
+});

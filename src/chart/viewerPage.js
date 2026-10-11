@@ -40,18 +40,25 @@ function rhythmClass(beats) {
 /** The compact event list the page draws. */
 function pageEvents(events, tempoChanges) {
     // Notes sharing a moment are drawn yellow, as in the game ("each" notes). A slide's star
-    // head is part of the slide, so it is not counted twice, but every slide track is counted:
-    // two slides from one star start together and are yellow too.
+    // head is part of the slide, so it is not counted twice, but every slide track is counted.
+    // A slide's own strip is yellow only when another slide starts with it (a double slide); a
+    // yellow star head from a simultaneous tap leaves the slide blue.
     const perMoment = new Map();
+    const slidesPerMoment = new Map();
     for (const e of events) {
-        if ((e.kind === 'tap' || e.kind === 'break') && e.star) continue;
         const key = Math.round(e.time * 200);
+        if (e.kind === 'slide') slidesPerMoment.set(key, (slidesPerMoment.get(key) || 0) + 1);
+        if ((e.kind === 'tap' || e.kind === 'break') && e.star) continue;
         perMoment.set(key, (perMoment.get(key) || 0) + 1);
     }
     return events.map((e) => {
-        const each = perMoment.get(Math.round(e.time * 200)) > 1 ? 1 : undefined;
+        const key = Math.round(e.time * 200);
+        const each = perMoment.get(key) > 1 ? 1 : undefined;
         const out = pageEvent(e);
-        if (each) out.e = 1;
+        if (e.kind === 'slide') {
+            if (slidesPerMoment.get(key) > 1) out.e = 1; // a double slide: the strip is yellow
+            if (each) out.he = 1; // the star head is yellow whenever something else is with it
+        } else if (each) out.e = 1;
         if (e.ex) out.x = 1;
         out.q = rhythmClass(beatsAt(tempoChanges, e.time));
         return out;

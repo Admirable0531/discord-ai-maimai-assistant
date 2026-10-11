@@ -115,8 +115,10 @@ function slideColor(e) {
     if (cfg.ddr >= 2 && e.q !== undefined)
         return { main: DDR[e.q], dark: '#1a1a1a', star: DDR[e.q], wifi: DDR[e.q] };
     if (e.b && !cfg.breakSlideNormal) return COL.slideBrk;
-    const base = e.e ? COL.slideEach : COL.slide;
-    return cfg.pinkStart ? { ...base, star: '#ff5fa2' } : base;
+    // the strip is yellow only for a double slide; the star head is yellow for any simultaneous note
+    const strip = e.e ? COL.slideEach : COL.slide;
+    const head = e.he || e.e ? COL.slideEach.star : COL.slide.star;
+    return { ...strip, star: cfg.pinkStart ? '#ff5fa2' : head };
 }
 // ----- geometry (set at the start of every draw) -----
 let C = 0;
