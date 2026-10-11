@@ -2,6 +2,7 @@
 // text, notes}. Thresholds are placeholders until calibrated against charts
 // the user has marked; they live in DEFAULTS so they can be tuned in one place.
 const { neighbouringButtons, ringDistance, sensorName } = require('./geometry');
+const { slideTracks } = require('./slidePaths');
 
 const DEFAULTS = {
     splashWindow: 0.15, // s: a touch this close to a tap can splash it
@@ -281,9 +282,162 @@ function rhythmChanges(chart, cfg) {
     return out;
 }
 
+/** When each step of a track is reached, assuming even travel between start and end. */
+function stepTimes(slide, track) {
+    const span = slide.end - slide.start;
+    return track.map((alternatives, i) => ({
+        alternatives,
+        time: slide.start + (track.length === 1 ? 0 : (i / (track.length - 1)) * span),
+        first: i === 0,
+        last: i === track.length - 1,
+    }));
+}
+
+const slideLabel = (s) => `slide from ${s.head}`;
+
+/** Slides with their sensor paths; slides the table does not cover are returned in `unknown`. */
+function pathsOf(events) {
+    const known = [];
+    const unknown = [];
+    for (const slide of events.filter((e) => e.kind === 'slide')) {
+        const tracks = slideTracks(slide);
+        if (tracks) known.push({ slide, steps: tracks.flatMap((t) => stepTimes(slide, t)) });
+        else unknown.push(slide);
+    }
+    return { known, unknown };
+}
+
+/** A4/A5: a note whose sensor lies on a slide's path at about the time the slide passes it. */
+function slideBesideNote(paths, events, cfg) {
+    const out = [];
+    const notes = events.filter(
+        (e) => isButtonHit(e) || e.kind === 'touch' || e.kind === 'touchHold'
+    );
+    for (const { slide, steps } of paths) {
+        for (const note of notes) {
+            const name = note.sensor ? sensorName(note) : `A${note.lane}`;
+            for (const step of steps) {
+                if (step.first && !note.sensor && note.lane === slide.head) continue; // the slide's own star
+                if (!step.alternatives.includes(name)) continue;
+                const gap = note.time - step.time; // > 0: the note comes after the slide passes
+                if (Math.abs(gap) > cfg.splashWindow) continue;
+                if (
+                    note.time < slide.start - cfg.splashWindow ||
+                    note.time > slide.end + cfg.splashWindow
+                )
+                    continue;
+                const before = gap < 0;
+                out.push({
+                    rule: before ? 'A5' : 'A4',
+                    severity: Math.abs(gap) <= 0.06 ? 3 : 2,
+                    time: Math.min(note.time, step.time),
+                    bar: note.bar,
+                    notes: [slideLabel(slide), label(note)],
+                    text: before
+                        ? `${label(note)} lands ${Math.round(-gap * 1000)} ms before the ${slideLabel(slide)} reaches ${name}; hitting it can advance the slide early.`
+                        : `The ${slideLabel(slide)} passes ${name} ${Math.round(gap * 1000)} ms before ${label(note)}; the sliding finger can catch the note.`,
+                });
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+/** A6: two slides that use the same sensor at about the same time. */
+function slideBesideSlide(paths, cfg) {
+    const out = [];
+    for (let i = 0; i < paths.length; i++) {
+        for (let j = i + 1; j < paths.length; j++) {
+            const a = paths[i];
+            const b = paths[j];
+            if (
+                a.slide.end < b.slide.start - cfg.splashWindow ||
+                b.slide.end < a.slide.start - cfg.splashWindow
+            )
+                continue;
+            // Slides written from one star share their opening on purpose.
+            if (
+                a.slide.head === b.slide.head &&
+                Math.abs(a.slide.time - b.slide.time) <= cfg.sameTick
+            )
+                continue;
+            const shared = [];
+            for (const sa of a.steps) {
+                for (const sb of b.steps) {
+                    if (sa.first || sb.first) continue;
+                    if (Math.abs(sa.time - sb.time) > cfg.splashWindow) continue;
+                    // Crossing through the centre (C) is normal, so it is not counted.
+                    const common = sa.alternatives.filter(
+                        (x) => x !== 'C' && sb.alternatives.includes(x)
+                    );
+                    if (common.length)
+                        shared.push({
+                            sensor: common[0],
+                            time: Math.min(sa.time, sb.time),
+                            gap: Math.abs(sa.time - sb.time),
+                        });
+                }
+            }
+            if (!shared.length) continue;
+            const worst = shared.reduce((m, x) => (x.gap < m.gap ? x : m));
+            out.push({
+                rule: 'A6',
+                severity: worst.gap <= 0.06 ? 3 : 2,
+                time: worst.time,
+                bar: a.slide.bar,
+                notes: [slideLabel(a.slide), slideLabel(b.slide)],
+                text: `The ${slideLabel(a.slide)} and the ${slideLabel(b.slide)} both pass ${worst.sensor} within ${Math.round(worst.gap * 1000)} ms; one finger can clear the other.`,
+            });
+        }
+    }
+    return out;
+}
+
+/** A7/A13: a note on, or right next to, the sensor a slide ends on, just after it ends. */
+function slideEndBesideNote(paths, events, cfg) {
+    const out = [];
+    const notes = events.filter((e) => isButtonHit(e) || e.kind === 'touch');
+    for (const { slide, steps } of paths) {
+        const lastSteps = steps.filter((s) => s.last);
+        for (const note of notes) {
+            const gap = note.time - slide.end;
+            if (gap < -cfg.sameTick || gap > cfg.splashWindow) continue;
+            const name = note.sensor ? sensorName(note) : `A${note.lane}`;
+            const same = lastSteps.some((s) => s.alternatives.includes(name));
+            const near =
+                !same &&
+                lastSteps.some((s) => {
+                    const end = s.alternatives[0];
+                    return (
+                        end[0] === 'A' &&
+                        !note.sensor &&
+                        ringDistance(Number(end.slice(1)), note.lane) === 1
+                    );
+                });
+            if (!same && !near) continue;
+            out.push({
+                rule: same ? 'A13' : 'A7',
+                severity: same ? 3 : 2,
+                time: slide.end,
+                bar: note.bar,
+                notes: [slideLabel(slide), label(note)],
+                text: same
+                    ? `${label(note)} is on ${name}, where the ${slideLabel(slide)} ends ${Math.round(gap * 1000)} ms earlier; if that finger is still down the note cannot activate.`
+                    : `${label(note)} lands ${Math.round(gap * 1000)} ms after the ${slideLabel(slide)} ends on the next sensor.`,
+            });
+        }
+    }
+    return out;
+}
+
 function analyse(chart, overrides = {}) {
     const cfg = { ...DEFAULTS, ...overrides };
+    const paths = pathsOf(chart.events);
     const findings = [
+        ...slideBesideNote(paths.known, chart.events, cfg),
+        ...slideBesideSlide(paths.known, cfg),
+        ...slideEndBesideNote(paths.known, chart.events, cfg),
         ...touchBesideButton(chart.events, cfg),
         ...touchBesideHold(chart.events, cfg),
         ...touchBesideTouch(chart.events, cfg),
@@ -293,6 +447,7 @@ function analyse(chart, overrides = {}) {
         ...tempoChanges(chart),
         ...rhythmChanges(chart, cfg),
     ];
+    findings.unknownSlides = paths.unknown.length;
     return findings.sort((a, b) => a.time - b.time);
 }
 
