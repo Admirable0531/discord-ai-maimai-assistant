@@ -199,7 +199,7 @@ function bursts(events, cfg) {
 function tempoChanges(chart) {
     return chart.tempoChanges
         .filter((t, i, all) => i > 0 && t.tempo !== all[i - 1].tempo)
-        .map((t, i, list) => ({
+        .map((t) => ({
             rule: 'B2',
             severity: 2,
             time: t.time,
@@ -221,7 +221,7 @@ function tempoAt(chart, time) {
  * straight <-> triplet spacing, or the spacing halving/doubling inside a dense
  * passage. Gaps are measured in beats between successive distinct note times.
  */
-function rhythmChanges(chart, cfg) {
+function rhythmChanges(chart) {
     const times = [...new Set(chart.events.map((e) => Math.round(e.time * 1000) / 1000))];
     const gaps = [];
     for (let i = 1; i < times.length; i++) {
@@ -445,7 +445,7 @@ function analyse(chart, overrides = {}) {
         ...jacks(chart.events, cfg),
         ...bursts(chart.events, cfg),
         ...tempoChanges(chart),
-        ...rhythmChanges(chart, cfg),
+        ...rhythmChanges(chart),
     ];
     findings.unknownSlides = paths.unknown.length;
     return findings.sort((a, b) => a.time - b.time);

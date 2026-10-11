@@ -73,7 +73,7 @@ const normalise = (title) =>
     decode(String(title))
         .normalize('NFKC')
         .toLowerCase()
-        .replace(/[\s　]+/g, '');
+        .replace(/[\s\u3000]+/g, '');
 
 /** [{title, id, difficulties[]}] from an index page: one row per song. */
 function parseIndex(html) {
