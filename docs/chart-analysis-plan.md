@@ -340,3 +340,20 @@ cases themselves, so they are marked **[you]** and need chart examples to calibr
 8. Who writes the advice table — you, in your words, or me drafting for you to correct?
 9. Can you give 3–5 charts where you already know the tricky spots, including "Straight
    into the lights" MASTER?
+
+---
+
+## 9. Cross-check against majdata (Oct 2026)
+
+I read MajdataPlay's slide judging tables (`SlideTables.cs`) as a reference. It is GPL-3.0,
+so nothing was copied: only facts (which sensors each shape passes, geometry constants) were
+used, and the code here is independently written.
+
+- **Sensor path table verified.** Every shape in `slidePaths.js` (straight `-`, centre `v`,
+  reflect `V`, zigzag `s`/`z`, inner loop `p`/`q` including the long way round, outer loop
+  `pp`/`qq`) matches majdata's judge queue row for row, once mirrored for direction. This
+  closes the "check the TRG transcription" item.
+- **Geometry constants** used by the viewer: inner-loop circle radius = R·cos(3π/8) ≈ 0.383R,
+  entered and left along tangents from the buttons; outer-loop circles radius ≈ 0.462R.
+- **Slide arrow fade is the game's own behaviour**: arrows fade in to 50% opacity over about
+  0.2 s, then jump to full opacity 50 ms before the star lands. The viewer now does the same.
