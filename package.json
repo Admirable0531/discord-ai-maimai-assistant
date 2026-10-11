@@ -23,6 +23,7 @@
     "express": "^4.21.2",
     "opencc-js": "^1.4.2",
     "playwright": "^1.62.1",
+    "simai.js": "^1.2.0",
     "wanakana": "^5.3.1"
   },
   "devDependencies": {
