@@ -168,9 +168,10 @@ async function findSong(title, chartType = 'dx') {
     const fromManifest = await loadManifest();
     if (fromManifest) {
         const hit = fromManifest.find((s) => s.type === chartType && normalise(s.title) === wanted);
-        if (hit) return hit;
+        // The manifest lists every song, so a miss is a real "not on the wiki".
+        return hit || null;
     }
-    // Not in the manifest (or it was unreachable): fall back to the wiki's own index.
+    // The manifest is unreachable: fall back to the wiki's own index.
     const index = parseIndex(await fetchPage(INDEX_PAGES[chartType] || INDEX_PAGES.dx));
     return index.find((s) => normalise(s.title) === wanted) || null;
 }
