@@ -99,10 +99,79 @@ function parseIndex(html) {
     return songs;
 }
 
+const MANIFEST_URL = 'https://mai-notes.com/data/manifest.json';
+let manifestHeld = null;
+
+/**
+ * mai-notes publishes a static manifest of every song with its simai wiki page
+ * id and which charts have data. Using it to find the page id means the wiki's
+ * big index page is never needed; one small song page is fetched per new song.
+ * Returns [{title, id, type, difficulties[]}] or null if it cannot be read.
+ */
+async function loadManifest() {
+    if (manifestHeld && Date.now() - manifestHeld.at < DAY_MS) return manifestHeld.songs;
+    const file = path.join(CACHE_DIR, 'mai-notes-manifest.json');
+    let raw = null;
+    try {
+        const stat = fs.statSync(file);
+        if (Date.now() - stat.mtimeMs < DAY_MS) raw = fs.readFileSync(file, 'utf8');
+    } catch {
+        // no cached copy yet
+    }
+    if (!raw) {
+        try {
+            const res = await fetch(MANIFEST_URL, {
+                headers: { 'User-Agent': USER_AGENT },
+                signal: AbortSignal.timeout(30000),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            raw = await res.text();
+            JSON.parse(raw);
+            try {
+                fs.mkdirSync(CACHE_DIR, { recursive: true });
+                fs.writeFileSync(file, raw);
+            } catch {
+                // an unwritable cache only costs a refetch
+            }
+        } catch {
+            try {
+                raw = fs.readFileSync(file, 'utf8'); // stale beats nothing
+            } catch {
+                return null;
+            }
+        }
+    }
+    const data = JSON.parse(raw);
+    const byId = new Map();
+    for (const chart of data.charts || []) {
+        if (!byId.has(chart.song_id)) byId.set(chart.song_id, []);
+        if (chart.has_chart_data) {
+            const name = String(chart.difficulty).toLowerCase().replace(':', '').replace(/\s/g, '');
+            byId.get(chart.song_id).push(name);
+        }
+    }
+    const songs = Object.values(data.songs || {})
+        .filter((s) => s.simai_id)
+        .map((s) => ({
+            title: s.title,
+            id: Number(s.simai_id),
+            type: s.type === 'standard' ? 'std' : 'dx',
+            difficulties: byId.get(s.id) || [],
+        }));
+    manifestHeld = { at: Date.now(), songs };
+    return songs;
+}
+
 /** The wiki's entry for a title (exact match after normalising), or null. */
 async function findSong(title, chartType = 'dx') {
-    const index = parseIndex(await fetchPage(INDEX_PAGES[chartType] || INDEX_PAGES.dx));
     const wanted = normalise(title);
+    const fromManifest = await loadManifest();
+    if (fromManifest) {
+        const hit = fromManifest.find((s) => s.type === chartType && normalise(s.title) === wanted);
+        if (hit) return hit;
+    }
+    // Not in the manifest (or it was unreachable): fall back to the wiki's own index.
+    const index = parseIndex(await fetchPage(INDEX_PAGES[chartType] || INDEX_PAGES.dx));
     return index.find((s) => normalise(s.title) === wanted) || null;
 }
 
