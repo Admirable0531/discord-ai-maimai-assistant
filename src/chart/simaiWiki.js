@@ -204,9 +204,9 @@ async function searchSongs(query, { limit = 40, type = null } = {}) {
         else if (q.length >= 3 && inOrder(song.key)) score = 6;
         if (score !== null) scored.push({ song, score });
     }
-    // Loose in-order matches only help when there are few real ones.
-    const real = scored.filter((x) => x.score < 6).length;
-    if (real >= 5) scored.splice(0, scored.length, ...scored.filter((x) => x.score < 6));
+    // Loose in-order matches are only a fallback for typos: drop them whenever a title matches.
+    if (scored.some((x) => x.score < 5))
+        scored.splice(0, scored.length, ...scored.filter((x) => x.score < 6));
     scored.sort(
         (a, b) =>
             a.score - b.score ||
