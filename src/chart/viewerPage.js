@@ -12,36 +12,50 @@ const round = (n) => Math.round(n * 1000) / 1000;
 
 /** The compact event list the page draws. */
 function pageEvents(events) {
+    // Notes sharing a moment are drawn yellow, as in the game ("each" notes).
+    const perMoment = new Map();
+    for (const e of events) {
+        if (e.kind === 'slide') continue; // its star is already counted as a tap
+        const key = Math.round(e.time * 200);
+        perMoment.set(key, (perMoment.get(key) || 0) + 1);
+    }
     return events.map((e) => {
-        if (e.kind === 'slide') {
-            const tracks = slideTracks(e);
-            return {
-                k: 's',
-                t: round(e.time),
-                a: round(e.start),
-                z: round(e.end),
-                h: e.head,
-                b: e.isBreak ? 1 : 0,
-                p: tracks ? tracks.map((track) => track.map((alts) => alts[0])) : [],
-            };
-        }
-        const base = { t: round(e.time) };
-        if (e.sensor)
-            return {
-                ...base,
-                k: e.kind === 'touchHold' ? 'th' : 'c',
-                n: sensorName(e),
-                z: e.end ? round(e.end) : undefined,
-            };
-        const kind = { tap: 't', break: 'b', hold: 'h' }[e.kind] || 't';
+        const each = perMoment.get(Math.round(e.time * 200)) > 1 ? 1 : undefined;
+        const out = pageEvent(e);
+        if (each) out.e = 1;
+        return out;
+    });
+}
+
+function pageEvent(e) {
+    if (e.kind === 'slide') {
+        const tracks = slideTracks(e);
+        return {
+            k: 's',
+            t: round(e.time),
+            a: round(e.start),
+            z: round(e.end),
+            h: e.head,
+            b: e.isBreak ? 1 : 0,
+            p: tracks ? tracks.map((track) => track.map((alts) => alts[0])) : [],
+        };
+    }
+    const base = { t: round(e.time) };
+    if (e.sensor)
         return {
             ...base,
-            k: kind,
-            l: e.lane,
+            k: e.kind === 'touchHold' ? 'th' : 'c',
+            n: sensorName(e),
             z: e.end ? round(e.end) : undefined,
-            st: e.star ? 1 : undefined,
         };
-    });
+    const kind = { tap: 't', break: 'b', hold: 'h' }[e.kind] || 't';
+    return {
+        ...base,
+        k: kind,
+        l: e.lane,
+        z: e.end ? round(e.end) : undefined,
+        st: e.star ? 1 : undefined,
+    };
 }
 
 const safeJson = (value) =>
@@ -115,21 +129,55 @@ function drawTL(){const[g,w]=setup($('tl'),90);const h=90;g.clearRect(0,0,w,h);g
  dens.forEach((d,i)=>{const bh=(d/dmax)*(h-26);g.fillRect(i/D.finish*w,h-bh,Math.max(1,w/bins-0.5),bh)});
  D.findings.filter(f=>active.has(f.r)).forEach(f=>{g.fillStyle=css(SEV[f.s]);const x=f.t/D.finish*w;g.fillRect(x-1,2,2,10+f.s*4)});
  g.fillStyle=css('--ink');const x=at/D.finish*w;g.fillRect(x-1,0,2,h)}
+const APPROACH=0.9,TRAIL=0.25;
+const PAL={single:'#ff5fa2',each:'#ffd23f',brk:'#ff8a2a',slide:'#4d8dff',slideEach:'#ffd23f'};
+const pick=e=>e.k==='b'?PAL.brk:e.e?PAL.each:PAL.single;
+function ring(g,x,y,r,c){g.lineWidth=Math.max(2.5,r*.32);g.strokeStyle=c;g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.lineWidth=1.2;g.strokeStyle='rgba(255,255,255,.85)';g.beginPath();g.arc(x,y,r-Math.max(2.5,r*.32)*.9,0,7);g.stroke()}
+function star(g,x,y,r,c){g.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.45:r;g.lineTo(x+rr*Math.cos(a),y+rr*Math.sin(a))}g.closePath();g.fillStyle=c;g.fill();g.lineWidth=2;g.strokeStyle='rgba(255,255,255,.9)';g.stroke()}
+function hex(g,x1,y1,x2,y2,w,c){const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,nx=-uy,ny=ux,k=w*.6;
+ g.beginPath();g.moveTo(x1,y1);g.lineTo(x1+nx*w+ux*k,y1+ny*w+uy*k);g.lineTo(x2+nx*w-ux*k,y2+ny*w-uy*k);g.lineTo(x2,y2);g.lineTo(x2-nx*w-ux*k,y2-ny*w-uy*k);g.lineTo(x1-nx*w+ux*k,y1-ny*w+uy*k);g.closePath();g.fillStyle=c;g.globalAlpha*=.9;g.fill();g.globalAlpha/=.9;g.lineWidth=2;g.strokeStyle='rgba(255,255,255,.9)';g.stroke()}
+function touch(g,x,y,r,c,gap){for(let i=0;i<4;i++){const a=i*Math.PI/2;g.save();g.translate(x,y);g.rotate(a);g.beginPath();g.moveTo(0,-(r*.2+gap));g.lineTo(-r*.7,-(r*1.1+gap));g.lineTo(r*.7,-(r*1.1+gap));g.closePath();g.fillStyle=c;g.fill();g.lineWidth=1.5;g.strokeStyle='rgba(255,255,255,.9)';g.stroke();g.restore()}}
+function chevrons(g, pts, c) {
+    let d = 0; // distance already used along the path into the next segment
+    for (let i = 0; i < pts.length - 1; i++) {
+        const [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+        const L = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / L, uy = (y2 - y1) / L;
+        for (; d < L - 3; d += 15) {
+            const x = x1 + ux * d, y = y1 + uy * d;
+            g.beginPath();
+            g.moveTo(x - uy * 6 - ux * 5, y + ux * 6 - uy * 5);
+            g.lineTo(x + ux * 5, y + uy * 5);
+            g.lineTo(x + uy * 6 - ux * 5, y - ux * 6 - uy * 5);
+            g.lineWidth = 3.2;
+            g.strokeStyle = c;
+            g.stroke();
+        }
+        d -= L;
+    }
+}
 function drawRing(){const c=$('ring'),[g,w]=setup(c,Math.min(c.clientWidth,380));const S=Math.min(w,380),C=S/2,R=C-18,ox=(w-S)/2;g.clearRect(0,0,w,S);g.save();g.translate(ox,0);
- g.strokeStyle=css('--line');g.lineWidth=1.5;g.beginPath();g.arc(C,C,R,0,7);g.stroke();
- for(let n=1;n<=8;n++){const[x,y]=xy('A'+n,R,C);g.beginPath();g.arc(x,y,13,0,7);g.stroke();g.fillStyle=css('--mute');g.font='11px sans-serif';g.textAlign='center';g.fillText(n,x,y+4)}
- const col=k=>css(k==='b'?'--brk':k==='h'?'--hold':k==='c'||k==='th'?'--touch':'--tap');
- const prog=t=>Math.max(0,Math.min(1,1-(t-at)/WIN_AFTER));
- D.events.forEach(e=>{if(e.k!=='s')return;if(e.z<at-WIN_BEFORE||e.a>at+WIN_AFTER+0.3)return;const on=at>=e.a-0.05&&at<=e.z+0.05;
-  e.p.forEach(path=>{g.strokeStyle=css('--slide');g.globalAlpha=on?.95:.4;g.lineWidth=on?3.5:1.5;g.beginPath();path.forEach((s,i)=>{const[x,y]=xy(s,R,C);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
-   if(on&&e.z>e.a){const f=Math.max(0,Math.min(1,(at-e.a)/(e.z-e.a)))*(path.length-1),i=Math.floor(f),[x1,y1]=xy(path[i],R,C),[x2,y2]=xy(path[Math.min(path.length-1,i+1)],R,C),k=f-i;g.globalAlpha=1;g.fillStyle=css('--slide');g.beginPath();g.arc(x1+(x2-x1)*k,y1+(y2-y1)*k,6,0,7);g.fill()}});
-  g.globalAlpha=1;const[hx,hy]=xy('A'+e.h,R,C);g.fillStyle=css('--slide');g.font='15px sans-serif';g.textAlign='center';g.fillText('★',hx,hy+5)});
- D.events.forEach(e=>{if(e.k==='s')return;const t1=e.z&&e.z>e.t?e.z:e.t;if(e.t>at+WIN_AFTER||t1<at-WIN_BEFORE)return;
-  const p=e.n?xy(e.n,R,C):xy('A'+e.l,R,C),pr=prog(e.t),near=Math.abs(e.t-at)<0.06;g.globalAlpha=near?1:.35+.65*pr;g.fillStyle=col(e.k);
-  const rad=(e.n?7:8)+(1-pr)*8*(e.t>at?1:0);
-  if(e.n){g.fillRect(p[0]-rad,p[1]-rad,rad*2,rad*2)}else{g.beginPath();g.arc(p[0],p[1],rad,0,7);g.fill()}
-  if(e.z&&e.z>e.t&&(e.k==='h'||e.k==='th')&&at>=e.t&&at<=e.z){g.strokeStyle=col(e.k);g.lineWidth=3;g.beginPath();g.arc(p[0],p[1],rad+4,0,7);g.stroke()}
-  g.globalAlpha=1;g.fillStyle=css('--mute');g.font='10px sans-serif';g.textAlign='center';if(e.n)g.fillText(e.n,p[0],p[1]-rad-3)});
+ g.strokeStyle=css('--line');g.lineWidth=1.5;g.beginPath();g.arc(C,C,R,0,7);g.stroke();g.beginPath();g.arc(C,C,R*.8,0,7);g.setLineDash([2,5]);g.stroke();g.setLineDash([]);
+ for(let n=1;n<=8;n++){const[x,y]=xy('A'+n,R,C);g.lineWidth=1.5;g.strokeStyle=css('--line');g.beginPath();g.arc(x,y,13,0,7);g.stroke();g.fillStyle=css('--mute');g.font='11px sans-serif';g.textAlign='center';g.fillText(n,x,y+4)}
+ const prog=t=>Math.max(0,Math.min(1,1-(t-at)/APPROACH));
+ const lane=(l,p)=>{const[tx,ty]=xy('A'+l,R,C),sx=C+(tx-C)*.28,sy=C+(ty-C)*.28;return[sx+(tx-sx)*p,sy+(ty-sy)*p]};
+ // slides: chevron trail from the star's start to the end, the star running along it once it moves
+ D.events.forEach(e=>{if(e.k!=='s')return;if(e.z<at-TRAIL||e.t>at+APPROACH)return;const on=at>=e.a-0.02&&at<=e.z+0.02,col=e.b?PAL.brk:e.e?PAL.slideEach:PAL.slide;
+  g.globalAlpha=at<e.a?Math.max(.25,prog(e.a)):1;
+  e.p.forEach(path=>{const pts=path.map(s=>xy(s,R,C));chevrons(g,pts,col);
+   if(on&&e.z>e.a){const f=Math.max(0,Math.min(1,(at-e.a)/(e.z-e.a)))*(pts.length-1),i=Math.min(pts.length-2,Math.floor(f)),k=f-i,x=pts[i][0]+(pts[i+1][0]-pts[i][0])*k,y=pts[i][1]+(pts[i+1][1]-pts[i][1])*k;star(g,x,y,10,col)}});
+  g.globalAlpha=1});
+ // notes
+ D.events.forEach(e=>{if(e.k==='s'){if(at<=e.a+0.05&&e.t<=at+APPROACH&&e.t>=at-TRAIL){const p=prog(e.t),[x,y]=lane(e.h,p);g.globalAlpha=at>e.t?Math.max(0,1-(at-e.t)/TRAIL):1;star(g,x,y,8+4*p,e.b?PAL.brk:e.e?PAL.slideEach:PAL.slide);g.globalAlpha=1}return}
+  const end=e.z&&e.z>e.t?e.z:e.t;if(e.t>at+APPROACH||end<at-TRAIL)return;
+  const fade=at>end?Math.max(0,1-(at-end)/TRAIL):1;g.globalAlpha=fade;
+  if(e.n){const[x,y]=xy(e.n,R,C),p=prog(e.t),r=10,gap=(1-p)*14,c=e.e?PAL.each:PAL.slide;
+   if(e.k==='th'&&at>=e.t&&at<=e.z){g.lineWidth=3;g.strokeStyle=c;g.beginPath();g.arc(x,y,r*1.9,0,7);g.stroke()}
+   touch(g,x,y,r,c,gap);if(e.k==='th'&&e.z>e.t){g.fillStyle=c;g.beginPath();g.arc(x,y,3,0,7);g.fill()}
+   g.fillStyle=css('--mute');g.font='9px sans-serif';g.textAlign='center';g.fillText(e.n,x,y-r*1.6-gap)}
+  else{const p=prog(e.t),[x,y]=lane(e.l,at>=e.t?1:p),r=7+5*(at>=e.t?1:p);
+   if(e.k==='h'){const[tx,ty]=lane(e.l,prog(e.z));hex(g,tx,ty,x,y,r*.85,pick(e))}
+   else if(e.st){star(g,x,y,r+1,pick(e))}else ring(g,x,y,r,pick(e))}
+  g.globalAlpha=1});
  g.restore()}
 function nowText(){const near=D.findings.filter(f=>active.has(f.r)&&at-0.2<=f.t&&f.t<=at+0.7);$('now').innerHTML=near.length?near.slice(0,3).map(f=>'<b>'+f.r+'</b> '+esc(f.x)).join('<br>'):'';}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
