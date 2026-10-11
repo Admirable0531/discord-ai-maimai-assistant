@@ -973,6 +973,56 @@ function playSounds(from, to) {
     }
 }
 
+// ----- plain-language terms: tap a dotted word to see what it means -----
+const TERM_RE =
+    /\b(splash|brush|trill|stream|jack|burst|triplets?|touch group|BPM|Perfect|[ABDE][1-8]|C)\b/gi;
+/** Escaped text with known terms wrapped so a tap shows their meaning. */
+// eslint-disable-next-line no-unused-vars
+function explain(text) {
+    const safe = String(text).replace(
+        /[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
+    );
+    return safe.replace(TERM_RE, (m) => {
+        const sensor = /^[abde][1-8]$|^c$/i.test(m);
+        let def;
+        if (sensor) {
+            if (m !== m.toUpperCase()) return m;
+            def = D.sensors[m[0]];
+        } else {
+            const key = m.toLowerCase().replace(/s$/, '');
+            const g = D.glossary.find(
+                (x) => x.t.toLowerCase() === key || x.t.toLowerCase() === m.toLowerCase()
+            );
+            def = g && g.d;
+        }
+        return def
+            ? '<span class="term" data-d="' + def.replace(/"/g, '&quot;') + '">' + m + '</span>'
+            : m;
+    });
+}
+(function termTips() {
+    const tip = document.createElement('div');
+    tip.id = 'tip';
+    document.body.appendChild(tip);
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest && e.target.closest('.term');
+        if (t) {
+            tip.textContent = t.dataset.d;
+            tip.style.display = 'block';
+            e.stopPropagation();
+        } else tip.style.display = 'none';
+    });
+    const dl = $('gloss');
+    if (dl) {
+        dl.innerHTML =
+            D.glossary.map((g) => '<dt>' + g.t + '</dt><dd>' + g.d + '</dd>').join('') +
+            Object.keys(D.sensors)
+                .map((k) => '<dt>' + k + ' sensors</dt><dd>' + D.sensors[k] + '</dd>')
+                .join('');
+    }
+})();
+
 // ----- info row and maidata that follows the timeline -----
 /** Tempo and note division in force at time t. */
 function tempoAt(t) {
@@ -1027,7 +1077,7 @@ function updateInfo() {
         '/' +
         tt.breakTimes.length;
 }
-let mdIndex = -2;
+let mdIndex = '';
 // eslint-disable-next-line no-unused-vars
 function updateMaidata() {
     const box = $('mdp');
@@ -1035,21 +1085,31 @@ function updateMaidata() {
     box.style.display = D.maidata && cfg.maidata ? '' : 'none';
     if (!D.maidata || !cfg.maidata) return;
     const lines = D.maidata;
-    let i = Math.max(
-        0,
-        upTo(
-            lines.map((l) => l.t),
-            at + 1e-6
-        ) - 1
-    );
-    if (i === mdIndex) return;
-    mdIndex = i;
-    const from = Math.max(0, i - 4);
+    let i = 0;
+    while (i + 1 < lines.length && lines[i + 1].t <= at + 1e-6) i++;
+    // which comma-separated step of that line is playing now
+    let step = -1;
+    const steps = lines[i].steps;
+    for (let k = 0; k < steps.length; k++) if (steps[k].t <= at + 1e-6) step = k;
+    const key = i + ':' + step;
+    if (key === mdIndex) return;
+    mdIndex = key;
+    const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
     const out = [];
-    for (let k = from; k < Math.min(lines.length, from + 11); k++) {
+    for (let k = Math.max(0, i - 1); k < Math.min(lines.length, i + 9); k++) {
         const l = lines[k];
         const m = Math.floor(l.t / 60);
-        const sec = (l.t % 60).toFixed(2).padStart(5, '0');
+        const sec = (l.t % 60).toFixed(1).padStart(4, '0');
+        let body;
+        if (k === i && step >= 0) {
+            const st = steps[step];
+            body =
+                esc(l.s.slice(0, st.from)) +
+                '<mark>' +
+                esc(l.s.slice(st.from, st.to)) +
+                '</mark>' +
+                esc(l.s.slice(st.to));
+        } else body = esc(l.s);
         out.push(
             '<div class="mdl' +
                 (k === i ? ' cur' : '') +
@@ -1058,10 +1118,7 @@ function updateMaidata() {
                 ':' +
                 sec +
                 '</span> ' +
-                String(l.s).replace(
-                    /[&<>]/g,
-                    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]
-                ) +
+                body +
                 '</div>'
         );
     }
@@ -1182,7 +1239,7 @@ function buildSettings() {
             if (k === 'offset' || k === 'mirror') {
                 /* handled by the next draw */
             }
-            mdIndex = -2;
+            mdIndex = '';
             saveCfg();
             draw();
         };
@@ -1199,7 +1256,7 @@ function buildSettings() {
     $('cfgreset').onclick = () => {
         cfg = Object.assign({}, DEF);
         saveCfg();
-        mdIndex = -2;
+        mdIndex = '';
         buildSettings();
         draw();
     };

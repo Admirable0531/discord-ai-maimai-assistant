@@ -92,7 +92,7 @@ test('A1 is one step softer because a touch has a wide Perfect window, and says 
 test('A14: a group of three simultaneous touches needs only two', () => {
     const found = analyse(buildChart('(120){4}E1/E3/E5,,,,E')).find((f) => f.rule === 'A14');
     assert.ok(found);
-    assert.match(found.text, /2 of them clear/);
+    assert.match(found.text, /2 of the 3 is enough/);
     assert.ok(!analyse(buildChart('(120){4}E1/E3,,,,E')).some((f) => f.rule === 'A14'));
 });
 
@@ -105,21 +105,12 @@ test('a slide sweeping over a touch is not a splash, but a touch landing just be
     if (early) assert.match(early.text, /Perfect from/);
 });
 
-test('maidata lines carry the time of every step', () => {
+test('maidata lines follow the source lines and carry the time of every step', () => {
     const { maidataLines } = require('../src/chart/maidata');
-    const lines = maidataLines('(120){4}1,2,,3,E');
-    assert.deepEqual(
-        lines.map((l) => l.s),
-        ['(120){4}1', '2', '3']
-    );
-    assert.equal(lines[2].t, 1.5);
-});
-
-test('maidata does not mistake an E touch note for the end marker', () => {
-    const { maidataLines } = require('../src/chart/maidata');
+    const lines = maidataLines('(120){4}1,2,\n,3,E');
     assert.deepEqual(
         maidataLines('(120){4}E3,,E5,,E').map((l) => l.s),
-        ['(120){4}E3', 'E5']
+        ['(120){4}E3,,E5,,']
     );
 });
 

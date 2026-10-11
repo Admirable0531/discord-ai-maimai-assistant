@@ -28,11 +28,19 @@ function lenient(finding, what, early, late) {
     return {
         ...finding,
         severity: Math.max(1, finding.severity - 1),
-        text: `${finding.text} ${what} stays Perfect from ${Math.round(early * 1000)} ms early to ${Math.round(late * 1000)} ms late, so it can be taken earlier or later to keep the splash off the other note.`,
+        text: `${finding.text} ${what} is forgiving: it stays Perfect from ${Math.round(early * 1000)} ms early to ${Math.round(late * 1000)} ms late, so you can hit it a little earlier or later to keep your hand off the other note.`,
     };
 }
 
 const isButtonHit = (e) => e.kind === 'tap' || e.kind === 'break' || e.kind === 'hold';
+/** A note as a player says it: "the tap on button 6", "the E6 touch". */
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const phrase = (e) => {
+    if (e.sensor) return `the ${sensorName(e)} touch`;
+    if (e.kind === 'break') return `the break on button ${e.lane}`;
+    if (e.kind === 'hold') return `the hold on button ${e.lane}`;
+    return `the tap on button ${e.lane}`;
+};
 const label = (e) =>
     e.sensor
         ? sensorName(e)
@@ -48,15 +56,22 @@ function touchBesideButton(events, cfg) {
         const near = neighbouringButtons(t.sensor, t.number);
         if (!near.length) continue;
         const targets = [
-            ...buttons.map((b) => ({ b, lane: b.lane, time: b.time, what: label(b) })),
+            ...buttons.map((b) => ({
+                b,
+                lane: b.lane,
+                time: b.time,
+                what: label(b),
+                say: phrase(b),
+            })),
             ...slideHeads.map((s) => ({
                 b: s,
                 lane: s.head,
                 time: s.time,
                 what: `slide start on ${s.head}`,
+                say: `the slide start on ${s.head}`,
             })),
         ];
-        for (const { lane, time, what } of targets) {
+        for (const { lane, time, what, say } of targets) {
             const hit = near.find((n) => n.button === lane);
             if (!hit) continue;
             const gap = time - t.time; // > 0: the touch comes first
@@ -70,8 +85,8 @@ function touchBesideButton(events, cfg) {
                 bar: t.bar,
                 notes: [sensorName(t), what],
                 text: simultaneous
-                    ? `${sensorName(t)} lands together with ${what}; the hand reaching the touch can switch on the neighbouring A sensor.`
-                    : `${sensorName(t)} lands ${Math.round(gap * 1000)} ms before ${what}; brushing the A sensor on the way hits it early or blocks it.`,
+                    ? `The ${sensorName(t)} touch and ${say} happen together. Reaching for the touch can press the A${lane} sensor next to it (a splash), so that note may be hit early.`
+                    : `The ${sensorName(t)} touch comes ${Math.round(gap * 1000)} ms before ${say}. On the way to the touch your hand can brush the A${lane} sensor (a splash), which hits that note early or blocks it.`,
             };
             out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
         }
@@ -96,8 +111,8 @@ function touchBesideHold(events, cfg) {
                 bar: t.bar,
                 notes: [sensorName(t), `hold ${h.lane}`],
                 text: during
-                    ? `${sensorName(t)} is touched while button ${h.lane} is held; the touch hand sits next to the held button's sensor.`
-                    : `${sensorName(t)} lands just after hold ${h.lane} ends.`,
+                    ? `The ${sensorName(t)} touch has to be hit while button ${h.lane} is still held. Your touching hand ends up right beside the held button's sensor and can bump it (a splash), so keep it clear.`
+                    : `The ${sensorName(t)} touch comes just after the hold on button ${h.lane} lets go, while your hand is still near that spot.`,
             };
             out.push(lenient(finding, 'The touch', cfg.touchEarly, cfg.touchLate));
         }
@@ -126,7 +141,7 @@ function touchBesideTouch(events, cfg) {
                 time: a.time,
                 bar: a.bar,
                 notes: [sensorName(a), sensorName(b)],
-                text: `${sensorName(a)} then ${sensorName(b)} ${Math.round(gap * 1000)} ms later, sharing a neighbouring sensor.`,
+                text: `${sensorName(a)} and ${sensorName(b)} are touched ${Math.round(gap * 1000)} ms apart on neighbouring sensors. One finger sweeping across can catch both, so do not hurry the second.`,
             });
         }
     }
@@ -154,7 +169,7 @@ function touchGroups(events, cfg) {
                 time: touches[i].time,
                 bar: touches[i].bar,
                 notes: touches.slice(i, j).map(sensorName),
-                text: `${n} touches at once (${touches.slice(i, j).map(sensorName).join(', ')}): more than half counts, so ${need} of them clear the whole group.`,
+                text: `A group of ${n} touches at the same time (${touches.slice(i, j).map(sensorName).join(', ')}). The game only needs more than half of them pressed, so ${need} of the ${n} is enough to clear the whole group.`,
             });
         }
         i = j;
@@ -182,7 +197,7 @@ function adjacentBrush(events, cfg) {
                     time: taps[runStart].time,
                     bar: taps[runStart].bar,
                     notes: taps.slice(runStart, end + 1).map((t) => t.lane),
-                    text: `${length} taps in a row on neighbouring buttons at about ${((length - 1) / (taps[end].time - taps[runStart].time)).toFixed(0)} per second; the finger can brush the next button.`,
+                    text: `${length} taps in a row on neighbouring buttons, about ${((length - 1) / (taps[end].time - taps[runStart].time)).toFixed(0)} a second (a trill or stream). At that speed a finger tends to slide across and press the next button early.`,
                 });
             }
             runStart = null;
@@ -210,7 +225,7 @@ function jacks(events, cfg) {
                     time: run.start.time,
                     bar: run.start.bar,
                     notes: [e.lane],
-                    text: `Button ${e.lane} repeated at about ${(1 / gap).toFixed(0)} per second.`,
+                    text: `Button ${e.lane} comes again and again, about ${(1 / gap).toFixed(0)} times a second (a jack). Alternate fingers or hands instead of hammering it with one.`,
                 });
             }
         } else {
@@ -237,7 +252,7 @@ function bursts(events, cfg) {
                 time: hits[j],
                 bar: e.bar,
                 notes: [],
-                text: `${nps.toFixed(1)} notes per second over ${cfg.burstWindow} s.`,
+                text: `A dense stretch: about ${Math.round(nps)} notes a second for ${cfg.burstWindow} seconds (a burst). Keep your hands loose and steady until it ends.`,
             });
             reportedUntil = hits[i];
         }
@@ -247,16 +262,21 @@ function bursts(events, cfg) {
 
 /** B2: tempo changes. */
 function tempoChanges(chart) {
-    return chart.tempoChanges
-        .filter((t, i, all) => i > 0 && t.tempo !== all[i - 1].tempo)
-        .map((t) => ({
+    const out = [];
+    chart.tempoChanges.forEach((t, i, all) => {
+        if (i === 0 || t.tempo === all[i - 1].tempo) return;
+        const was = Math.round(all[i - 1].tempo);
+        const now = Math.round(t.tempo);
+        out.push({
             rule: 'B2',
             severity: 2,
             time: t.time,
             bar: chart.events.find((e) => e.time >= t.time)?.bar ?? null,
             notes: [],
-            text: `BPM changes to ${Math.round(t.tempo)}.`,
-        }));
+            text: `The BPM changes from ${was} to ${now}, so the notes ${now > was ? 'speed up' : 'slow down'} here. Adjust your timing to the new pulse.`,
+        });
+    });
+    return out;
 }
 
 /** Tempo (BPM) in force at `time`. */
@@ -304,8 +324,8 @@ function rhythmChanges(chart) {
                 bar: barOf(gaps[i].at),
                 notes: [],
                 text: tripAfter
-                    ? 'Straight rhythm turns into triplets.'
-                    : 'Triplets turn back into straight rhythm.',
+                    ? 'The rhythm switches from even beats to triplets (notes in groups of three). The spacing feels different, so count it carefully.'
+                    : 'Back from triplets to even beats. Settle into the normal pulse again.',
             });
             lastReported = gaps[i].at;
             continue;
@@ -323,8 +343,8 @@ function rhythmChanges(chart) {
                 notes: [],
                 text:
                     ratio > 1
-                        ? `Notes get ${ratio.toFixed(1)}x faster (about ${(1 / meanAfter).toFixed(0)} per second).`
-                        : `Notes get ${(1 / ratio).toFixed(1)}x slower after a fast part.`,
+                        ? `The notes bunch up: about ${Math.round(1 / meanBefore)} a second before, about ${Math.round(1 / meanAfter)} after. Be ready to move your hands faster.`
+                        : `The pace relaxes after a fast part: from about ${Math.round(1 / meanBefore)} notes a second down to about ${Math.round(1 / meanAfter)}. Do not rush the next note.`,
             });
             lastReported = gaps[i].at;
         }
@@ -387,8 +407,8 @@ function slideBesideNote(paths, events, cfg) {
                     bar: note.bar,
                     notes: [slideLabel(slide), label(note)],
                     text: before
-                        ? `${label(note)} lands ${Math.round(-gap * 1000)} ms before the ${slideLabel(slide)} reaches ${name}; hitting it can advance the slide early.`
-                        : `The ${slideLabel(slide)} passes ${name} ${Math.round(gap * 1000)} ms before ${label(note)}; the sliding finger can catch the note.`,
+                        ? `${cap(phrase(note))} comes ${Math.round(-gap * 1000) < 5 ? 'at the same moment as' : `${Math.round(-gap * 1000)} ms before`} the ${slideLabel(slide)} reaches ${name}. Hitting it that early can push the slide forward a step too soon.`
+                        : `The ${slideLabel(slide)} sweeps over ${name} ${Math.round(gap * 1000)} ms before ${phrase(note)}. The sliding finger can catch that note and hit it early.`,
                 };
                 out.push(
                     note.sensor
@@ -445,7 +465,7 @@ function slideBesideSlide(paths, cfg) {
                 time: worst.time,
                 bar: a.slide.bar,
                 notes: [slideLabel(a.slide), slideLabel(b.slide)],
-                text: `The ${slideLabel(a.slide)} and the ${slideLabel(b.slide)} both pass ${worst.sensor} within ${Math.round(worst.gap * 1000)} ms; one finger can clear the other.`,
+                text: `The ${slideLabel(a.slide)} and the ${slideLabel(b.slide)} both pass ${worst.sensor} within ${Math.round(worst.gap * 1000)} ms of each other. If both fingers are there together, one can knock the other's slide off its path.`,
             });
         }
     }
@@ -482,8 +502,8 @@ function slideEndBesideNote(paths, events, cfg) {
                 bar: note.bar,
                 notes: [slideLabel(slide), label(note)],
                 text: same
-                    ? `${label(note)} is on ${name}, where the ${slideLabel(slide)} ends ${Math.round(gap * 1000)} ms earlier; if that finger is still down the note cannot activate.`
-                    : `${label(note)} lands ${Math.round(gap * 1000)} ms after the ${slideLabel(slide)} ends on the next sensor.`,
+                    ? `${cap(phrase(note))} sits on ${name}, where the ${slideLabel(slide)} ends ${Math.round(gap * 1000)} ms earlier. If that slide finger is still resting there, the sensor is already pressed and the note will not register.`
+                    : `${cap(phrase(note))} comes ${Math.round(gap * 1000)} ms after the ${slideLabel(slide)} ends on the next sensor along. Lifting off the slide can brush it.`,
             };
             out.push(lenient(finding, 'The slide end', cfg.slideEndWindow, cfg.slideEndWindow));
         }

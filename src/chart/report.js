@@ -55,4 +55,44 @@ function summarise(findings, options) {
     };
 }
 
-module.exports = { summarise, pickFindings, RULE_NAMES, formatTime };
+/** Plain-language meanings of the terms the findings use (shown in the viewer). */
+const GLOSSARY = [
+    [
+        'splash',
+        'Accidentally touching a sensor you did not mean to, usually a neighbouring one. It can make a note hit early, hit wrongly, or be blocked.',
+    ],
+    ['brush', 'Touching something lightly on the way past, without meaning to.'],
+    ['trill', 'Neighbouring buttons hit in quick alternation.'],
+    ['stream', 'A long, fast run of single notes.'],
+    ['jack', 'The same button hit again and again in quick succession.'],
+    ['burst', 'A short, very dense stretch of notes.'],
+    [
+        'triplet',
+        'Notes in groups of three squeezed into the space of two, so the beat feels different from even notes.',
+    ],
+    [
+        'touch group',
+        'Touch notes at the same moment. More than half of them pressed clears the whole group.',
+    ],
+    ['BPM', 'Beats per minute: how fast the song is.'],
+    [
+        'Perfect',
+        'The best judgement. For a tap its window is only about 50 ms either side, but a touch is Perfect from 150 ms early to 200 ms late and a slide end about 200 ms either way, which is why those can be taken earlier or later.',
+    ],
+];
+const SENSORS = {
+    A: 'A sensor: one of the 8 sensors along the edge of the screen, one beside each button position. A tap can be hit by its button or by its A sensor.',
+    B: 'B sensor: one of the 8 sensors in the ring inside the A sensors.',
+    C: 'C sensor: the sensor in the very middle of the screen.',
+    D: 'D sensor: one of the 8 sensors at the outer edge, between two buttons.',
+    E: 'E sensor: one of the 8 sensors between the A and B sensors, in line with the gaps between buttons.',
+};
+
+module.exports = {
+    GLOSSARY,
+    SENSORS,
+    summarise,
+    pickFindings,
+    RULE_NAMES,
+    formatTime,
+};

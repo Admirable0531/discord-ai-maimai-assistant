@@ -1,23 +1,41 @@
-// The simai text of a chart split into the lines a player reads: one entry per
-// comma-separated step with the time (seconds) it is played at. Used by the
-// local-network viewer only, to show the chart text following the timeline.
-// Never sent to Discord: chart text is not reposted there.
+// The simai text of a chart split the way a player reads it: by source line,
+// each with the time it starts at and the time of every comma-separated step
+// inside it (so the page can mark the step being played). Used by the
+// local-network viewer only. Never sent to Discord: chart text is not
+// reposted there.
 
-/** [{t, s}] for every step that holds something. */
+/** [{t, s, steps: [{t, from, to}]}] — one entry per source line that holds anything. */
 function maidataLines(text) {
     const lines = [];
     let tempo = 120;
     let div = 4;
     let t = 0;
     let buf = '';
+    let steps = [];
+    let stepStart = 0;
+    let stepT = 0;
+    let lineT = 0;
+    const round = (n) => Math.round(n * 1000) / 1000;
     const flush = () => {
-        const s = buf.replace(/\s+/g, '');
-        if (s) lines.push({ t: Math.round(t * 1000) / 1000, s });
+        if (buf.replace(/\s+/g, '')) {
+            // a step left open at the end of the line (no comma yet) still counts
+            if (stepStart < buf.length && buf.slice(stepStart).replace(/\s+/g, '')) {
+                steps.push({ t: round(stepT), from: stepStart, to: buf.length });
+            }
+            lines.push({ t: round(lineT), s: buf, steps });
+        }
         buf = '';
+        steps = [];
+        stepStart = 0;
+        stepT = t;
+        lineT = t;
     };
     for (let i = 0; i < text.length; i++) {
         const ch = text[i];
-        if (ch === '(' || ch === '{') {
+        if (ch === '\r') continue;
+        if (ch === '\n') {
+            flush();
+        } else if (ch === '(' || ch === '{') {
             const close = ch === '(' ? ')' : '}';
             const end = text.indexOf(close, i);
             if (end === -1) break;
@@ -34,11 +52,16 @@ function maidataLines(text) {
             buf += text.slice(i, end + 1);
             i = end;
         } else if (ch === ',') {
-            flush();
+            buf += ch;
+            if (buf.slice(stepStart).replace(/[\s,]+/g, '')) {
+                steps.push({ t: round(stepT), from: stepStart, to: buf.length });
+            }
+            stepStart = buf.length;
             t += 240 / (tempo * div);
+            stepT = t;
         } else if (
             ch === 'E' &&
-            buf.replace(/\s+/g, '') === '' &&
+            buf.slice(stepStart).replace(/\s+/g, '') === '' &&
             !/[1-8]/.test(text[i + 1] || '')
         ) {
             break; // the end marker, not a touch note such as E3
