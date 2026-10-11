@@ -379,3 +379,14 @@ Consequences for the rules:
   group take the same judgement. A group of n simultaneous touches needs `floor(n/2)+1`; a
   stray sensor inside a group is harmless. Reported as information (A14). Not applied to
   ordinary holds: no such rule was found for them.
+
+### Slide drawing check against the game's own arrow layout (Oct 2026)
+
+The viewer's slide paths were measured against the arrow positions in majdata's slide
+prefabs (used for measurement only; none of its data or code is in this repo). After the
+fixes, the mean distance from the game's arrows to the viewer's path, in ring radii:
+straight, centre (V), reflect and inner loops (p/q) ≤ 0.004; ring slides 0.001; zigzag 0.001;
+outer loops (pp/qq, all eight variants) ≤ 0.007. The outer loops needed a different model:
+a tangent leg to a circle of radius cos(π/8)/2 through the centre, a turn round it (a full
+extra lap when the turn would be shorter than 90°), then a tangent line to the end button.
+Arrow spacing in the game is about 0.09 of the ring radius.

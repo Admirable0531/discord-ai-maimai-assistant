@@ -27,7 +27,7 @@ const BASE = {
     tap: 0.95,
     hold: 0.95,
     touch: 1.35,
-    slideGap: 1.3,
+    slideGap: 1, // the game's arrows sit about 0.09 of the ring radius apart
     slideOffset: -0.15,
 };
 let cfg = Object.assign({}, DEF);
@@ -79,8 +79,8 @@ const COL = {
     each: '#ffd23f',
     brk: '#ff8a2a',
     touch: '#27d3df',
-    slide: { main: '#1fd6ff', dark: '#07607d', star: '#3d7bff' },
-    slideEach: { main: '#ffd23f', dark: '#8a5a00', star: '#ffd23f' },
+    slide: { main: '#22d8ff', dark: '#04374a', star: '#3d7bff' },
+    slideEach: { main: '#f2d62b', dark: '#2c2800', star: '#ffd23f' },
     slideBrk: { main: '#ff8a2a', dark: '#7a2a00', star: '#ff8a2a' },
 };
 const WHITE = 'rgba(255,255,255,.95)';
@@ -138,99 +138,43 @@ function loopPts(sLane, eLane, dir) {
  * along the ring; the longer variants finish with a pass through the centre.
  * Built to match the sensor sequences of the judging tables.
  */
-function smoothPts(pts, rounds) {
-    let p = pts;
-    for (let k = 0; k < rounds; k++) {
-        const q = [p[0]];
-        for (let i = 0; i < p.length - 1; i++) {
-            const a = p[i];
-            const b = p[i + 1];
-            q.push(
-                [a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25],
-                [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]
-            );
-        }
-        q.push(p[p.length - 1]);
-        p = q;
-    }
-    return p;
-}
 function outerLoopPts(sLane, eLane, dir) {
-    return smoothPts(outerLoopRaw(sLane, eLane, dir), 2);
+    return outerLoopRaw(sLane, eLane, dir);
 }
 /**
- * pp/qq slide, in the game's own geometry (unit = ring radius, y up): a
- * tangent leg from the button to a circle of radius b through the centre, a
- * turn round it, a transfer arc that meets the ring tangentially, then the ring.
- * Longer variants return inside for a pass through the centre.
+ * pp/qq slide in the game's geometry (unit = ring radius, y up). The path
+ * leaves the start button along the tangent to a circle of radius b that
+ * passes through the centre, turns round it, and leaves along the tangent
+ * to the end button; if that turn would be short it takes a full extra lap.
+ * Measured against the game's arrow positions for every variant.
  */
 function outerLoopRaw(sLane, eLane, dir) {
     const ccw = dir === -1;
+    const sgn = ccw ? 1 : -1;
     const b = Math.cos(Math.PI / 8) / 2;
-    const a = 1 - b;
-    const th = Math.PI / 4;
-    const sT = (a * a + b * b - 2 * a * b * Math.cos(th)) / (2 * a - 2 * b * Math.cos(th));
-    const TR = b + sT; // transfer circle radius
-    const math = (lane) => Math.PI * (5 / 8 - lane / 4);
     const TAU = 2 * Math.PI;
     const mod = (x) => ((x % TAU) + TAU) % TAU;
+    const math = (lane) => Math.PI * (5 / 8 - lane / 4);
     const toS = (p) => [C + p[0] * R, C - p[1] * R];
-    const polar = (r, ang0) => [r * Math.cos(ang0), r * Math.sin(ang0)];
     const ts = math(sLane);
     const ppqq = ccw ? ts - (3 * Math.PI) / 8 : ts + (3 * Math.PI) / 8;
-    const cc = polar(b, ppqq);
-    const P = polar(1, ts);
-    const hv = [P[0] - cc[0], P[1] - cc[1]];
-    const tanRad =
-        Math.atan2(hv[1], hv[0]) + (ccw ? 1 : -1) * Math.acos(b / Math.hypot(hv[0], hv[1]));
-    const endRad = ppqq + (ccw ? th : -th);
-    const ct = polar(1 - TR, endRad);
-    const exitRad = Math.atan2(cc[1] - ct[1], cc[0] - ct[0]); // where the two circles touch
-    const sweep1 = ccw ? mod(exitRad - tanRad) : mod(tanRad - exitRad);
-    const sweep2 = ccw ? mod(endRad - exitRad) : mod(exitRad - endRad);
-    const pts = [P];
-    const arc = (center, rad, from, sweep, n) => {
-        for (let i = 0; i <= n; i++)
-            pts.push([
-                center[0] + rad * Math.cos(from + ((ccw ? 1 : -1) * (sweep * i)) / n),
-                center[1] + rad * Math.sin(from + ((ccw ? 1 : -1) * (sweep * i)) / n),
-            ]);
+    const cc = [b * Math.cos(ppqq), b * Math.sin(ppqq)];
+    const tangentAngle = (lane, inward) => {
+        const node = [Math.cos(math(lane)), Math.sin(math(lane))];
+        const h = [node[0] - cc[0], node[1] - cc[1]];
+        const d = Math.acos(b / Math.hypot(h[0], h[1]));
+        return Math.atan2(h[1], h[0]) + (inward ? sgn : -sgn) * d;
     };
-    arc(cc, b, tanRad, sweep1, 18);
-    const join = pts.length - 1;
-    arc(ct, TR, exitRad, sweep2, 14);
-    const transferEnd = pts.length - 1;
-    // along the ring back to the start button
-    const ringTo = (target) => {
-        const sw = ccw ? mod(target - endRad) : mod(endRad - target);
-        const n = Math.max(2, Math.ceil(sw / 0.09));
-        for (let i = 1; i <= n; i++) pts.push(polar(1, endRad + ((ccw ? 1 : -1) * (sw * i)) / n));
-    };
-    ringTo(ts);
-    const k = (((dir * (eLane - sLane)) % 8) + 8) % 8;
-    const te = math(eLane);
-    const cut = (from, to) => {
-        // first point between from..to whose polar angle has reached the end button
-        for (let i = from; i <= to; i++) {
-            const d = ((Math.atan2(pts[i][1], pts[i][0]) - te + 3 * Math.PI) % TAU) - Math.PI;
-            if (ccw ? d >= 0 : d <= 0) return i;
-        }
-        return to;
-    };
-    const inner = (lane) => polar(0.405, math(lane));
-    if (k === 6) return pts.slice(0, join + 1).map(toS);
-    if (k === 7) return pts.slice(0, cut(join, transferEnd) + 1).map(toS);
-    if (k === 0) return pts.map(toS);
-    const out = pts.slice();
-    if (k === 1) {
-        for (let i = 1; i <= 6; i++)
-            out.push(polar(1, ts + ((ccw ? 1 : -1) * ((Math.PI / 4) * i)) / 6));
-    } else if (k === 2) {
-        out.push(inner(sLane), inner(wrap8(sLane + dir)), polar(1, te));
-    } else {
-        out.push(inner(sLane), [0, 0], inner(eLane), polar(1, te));
-    }
-    return out.map(toS);
+    const entry = tangentAngle(sLane, true);
+    const exit = tangentAngle(eLane, false);
+    let sweep = ccw ? mod(exit - entry) : mod(entry - exit);
+    if (sweep < Math.PI / 2) sweep += TAU;
+    const on = (ang0) => [cc[0] + b * Math.cos(ang0), cc[1] + b * Math.sin(ang0)];
+    const pts = [[Math.cos(ts), Math.sin(ts)]];
+    const n = Math.max(24, Math.ceil(sweep / 0.08));
+    for (let i = 0; i <= n; i++) pts.push(on(entry + sgn * ((sweep * i) / n)));
+    pts.push([Math.cos(math(eLane)), Math.sin(math(eLane))]);
+    return pts.map(toS);
 }
 function segPts(shape, s, via) {
     const e = via[via.length - 1];
@@ -243,7 +187,7 @@ function segPts(shape, s, via) {
             return [dot(s), [C, C], dot(e)];
         case 'RingCw':
         case 'RingCcw':
-            return arcPts(ang(s), dir * (f === 0 ? 8 : f) * (Math.PI / 4), R * 0.97, R * 0.97);
+            return arcPts(ang(s), dir * (f === 0 ? 8 : f) * (Math.PI / 4), R, R);
         case 'CurveCw':
         case 'CurveCcw':
             return loopPts(s, e, dir);
@@ -257,9 +201,9 @@ function segPts(shape, s, via) {
             const m = shape === 'ZigZagS' ? 1 : -1;
             return [
                 dot(s),
-                pt(ang(wrap8(s - 2 * m)), R * 0.5),
+                pt(ang(wrap8(s - 2 * m)), R * 0.4142),
                 [C, C],
-                pt(ang(wrap8(s + 2 * m)), R * 0.5),
+                pt(ang(wrap8(s + 2 * m)), R * 0.4142),
                 dot(wrap8(s + 4)),
             ];
         }
@@ -415,28 +359,25 @@ function starNote(g, x, y, r0, sc, ex, rot = 0) {
     g.arc(x, y, Math.max(1.5, r * 0.16), 0, 7);
     g.fill();
 }
-function hexOutline(g, x1, y1, x2, y2, w, k, dirx, diry) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const L = Math.hypot(dx, dy);
-    const ux = L > 0.5 ? dx / L : dirx;
-    const uy = L > 0.5 ? dy / L : diry;
+/** Hexagon with a point at each end of the lane: regular when the tail is at the head, then stretched. */
+function hexOutline(g, tx, ty, hx, hy, r, ux, uy) {
     const nx = -uy;
     const ny = ux;
+    const h = 0.866 * r;
     g.beginPath();
-    g.moveTo(x1 - ux * k, y1 - uy * k);
-    g.lineTo(x1 + nx * w, y1 + ny * w);
-    g.lineTo(x2 + nx * w, y2 + ny * w);
-    g.lineTo(x2 + ux * k, y2 + uy * k);
-    g.lineTo(x2 - nx * w, y2 - ny * w);
-    g.lineTo(x1 - nx * w, y1 - ny * w);
+    g.moveTo(hx + ux * r, hy + uy * r);
+    g.lineTo(hx + ux * r * 0.5 + nx * h, hy + uy * r * 0.5 + ny * h);
+    g.lineTo(tx - ux * r * 0.5 + nx * h, ty - uy * r * 0.5 + ny * h);
+    g.lineTo(tx - ux * r, ty - uy * r);
+    g.lineTo(tx - ux * r * 0.5 - nx * h, ty - uy * r * 0.5 - ny * h);
+    g.lineTo(hx + ux * r * 0.5 - nx * h, hy + uy * r * 0.5 - ny * h);
     g.closePath();
 }
 function holdNote(g, tx, ty, hx, hy, r0, c, ex, dirx, diry) {
     const r = Math.max(r0, 4);
     g.save();
     glow(g, ex);
-    hexOutline(g, tx, ty, hx, hy, r, r * 0.75, dirx, diry);
+    hexOutline(g, tx, ty, hx, hy, r, dirx, diry);
     g.fillStyle = 'rgba(0,0,0,.35)';
     g.fill();
     g.lineJoin = 'round';
@@ -444,7 +385,7 @@ function holdNote(g, tx, ty, hx, hy, r0, c, ex, dirx, diry) {
     g.strokeStyle = WHITE;
     g.stroke();
     g.restore();
-    hexOutline(g, tx, ty, hx, hy, r, r * 0.75, dirx, diry);
+    hexOutline(g, tx, ty, hx, hy, r, dirx, diry);
     g.lineJoin = 'round';
     g.lineWidth = Math.max(4, r * 0.34);
     g.strokeStyle = c;
@@ -492,8 +433,21 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
         g.restore();
         return;
     }
-    // corner brackets marking the touch area
+    // a dark backing so the sensor lines do not run through the note
     const d = r * 1.75;
+    roundedPoly(
+        g,
+        [
+            [x - d, y - d],
+            [x + d, y - d],
+            [x + d, y + d],
+            [x - d, y + d],
+        ],
+        r * 0.5
+    );
+    g.fillStyle = 'rgba(3,7,16,.78)';
+    g.fill();
+    // corner brackets marking the touch area
     const L = r * 0.7;
     g.shadowColor = c;
     g.shadowBlur = 8;
@@ -565,10 +519,49 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
     }
     g.restore();
 }
+/**
+ * The WiFi slide is not three strips: it is a stack of V-shaped neon bars
+ * pointing toward the far side that widen as they go, until the last one spans
+ * the three end buttons. `f` is how far along (0 at the start, 1 at the end).
+ */
+function wifiBar(g, e, f, col, alpha) {
+    const S = dot(e.h);
+    const left = dot(wrap8(e.h + 3));
+    const mid = dot(wrap8(e.h + 4));
+    const right = dot(wrap8(e.h + 5));
+    const at3 = (E, t) => [S[0] + (E[0] - S[0]) * t, S[1] + (E[1] - S[1]) * t];
+    const L = at3(left, f);
+    const Rr = at3(right, f);
+    const A = at3(mid, Math.min(1, f + 0.1));
+    g.save();
+    g.globalAlpha = alpha;
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.shadowColor = col.main;
+    g.shadowBlur = 10;
+    g.strokeStyle = col.main;
+    g.lineWidth = 6;
+    g.beginPath();
+    g.moveTo(L[0], L[1]);
+    g.lineTo(A[0], A[1]);
+    g.lineTo(Rr[0], Rr[1]);
+    g.stroke();
+    g.shadowBlur = 0;
+    g.strokeStyle = WHITE;
+    g.lineWidth = 2;
+    g.stroke();
+    g.fillStyle = WHITE;
+    for (const q of [L, Rr]) {
+        g.beginPath();
+        g.arc(q[0], q[1], 3.4, 0, 7);
+        g.fill();
+    }
+    g.restore();
+}
 function chevron(g, x, y, tx, ty, size, col, alpha) {
     const px = -ty;
     const py = tx;
-    const h = size * 1.7;
+    const h = size * 1.45;
     const d = size * 0.95;
     const draw = () => {
         g.beginPath();
@@ -676,7 +669,7 @@ function drawRing() {
     g.translate(ox, 0);
     const noteR = R * 0.105 * cfg.tapScale * BASE.tap;
     const slideSz = R * 0.045 * cfg.slideScale;
-    const slideGap = R * 0.09 * cfg.slideScale * cfg.slideGap * BASE.slideGap;
+    const slideGap = R * 0.0896 * cfg.slideScale * cfg.slideGap * BASE.slideGap;
 
     if (cfg.guides) {
         drawSensors(g, litSensors());
@@ -710,6 +703,15 @@ function drawRing() {
         const moving = at >= e.a && e.z > e.a;
         const k = moving ? Math.min(1, (at - e.a) / (e.z - e.a)) : 0;
         const out = at > e.z ? Math.max(0, 1 - (at - e.z) / TRAIL) : 1;
+        if (e.w) {
+            // eleven bars along the axis; the stars have passed those behind them
+            const a = slideAlpha(e) * out;
+            for (let i = 0; i < 11; i++) {
+                const f = 0.06 + 0.076 * i;
+                if (f > k && a > 0.01) wifiBar(g, e, f, col, a);
+            }
+            continue;
+        }
         for (const tr of tracks) {
             const n = Math.max(1, Math.floor(tr.total / slideGap));
             for (let i = 0; i < n; i++) {
