@@ -48,6 +48,7 @@ module.exports = {
                 difficulty: interaction.options.getString('difficulty') || 'master',
                 chart_type: interaction.options.getString('type') || 'dx',
                 as_image: true,
+                as_page: true,
             },
             { outputs }
         );
@@ -66,6 +67,7 @@ module.exports = {
                     `${SEVERITY[f.severity] || '•'} bar ${f.bar} · ${f.time} · **${f.name}** — ${f.what}`
             ),
             '',
+            '-# The attached .html is the whole chart: open it in a browser to scrub or play it.',
             '-# Risks read from the wiki chart data, not certainties; thresholds are not calibrated yet.',
         ];
         await interaction.editReply({

@@ -63,3 +63,20 @@ test('A6: two slides on the same sensor at the same time are flagged', () => {
 test('A13: a note on the sensor a slide just ended on is flagged', () => {
     assert.ok(rules('(120){4}1-3[4:1],,3,,,E').includes('A13'));
 });
+
+test('viewer page is self-contained, escapes the title and never embeds chart text', () => {
+    const { buildViewerHtml } = require('../src/chart/viewerPage');
+    const text = '(120){4}1,2h[4:1],E6,3-5[4:1],E';
+    const chart = buildChart(text);
+    const html = buildViewerHtml({
+        title: '<b>x</b> & y',
+        difficulty: 'master',
+        events: chart.events,
+        finish: chart.finish,
+        findings: analyse(chart),
+    });
+    assert.ok(!html.includes('<b>x</b>'));
+    assert.ok(!html.includes(text));
+    assert.ok(!/https?:\/\//.test(html), 'no external requests');
+    assert.ok(html.includes('const D={'));
+});

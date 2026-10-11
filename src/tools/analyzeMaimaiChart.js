@@ -5,6 +5,8 @@ const { getChartText } = require('../chart/simaiWiki');
 const { buildChart } = require('../chart/chartModel');
 const { analyse } = require('../chart/rules');
 const { summarise, pickFindings, formatTime } = require('../chart/report');
+const { buildViewerHtml } = require('../chart/viewerPage');
+const { attachFile } = require('../utils/outputs');
 const { drawCard } = require('../render/drawCard');
 const { buildChartMomentHtml, WIDTH } = require('../render/chartMomentCard');
 
@@ -26,6 +28,11 @@ const declaration = {
                 enum: ['basic', 'advanced', 'expert', 'master', 'remaster'],
             },
             chart_type: { type: 'string', enum: ['dx', 'std'] },
+            as_page: {
+                type: 'boolean',
+                description:
+                    'Also attach a self-contained HTML page of the whole chart (density timeline, play/scrub sensor ring, all findings). Use for "the full chart" or when many moments matter.',
+            },
             as_image: {
                 type: 'boolean',
                 description:
@@ -73,6 +80,26 @@ async function execute(args, context) {
             'Bar numbers assume 4 beats per bar.',
         ],
     };
+    if (args?.as_page === true) {
+        const page = buildViewerHtml({
+            title: found.title,
+            difficulty,
+            events: chart.events,
+            finish: chart.finish,
+            findings,
+        });
+        const attached = attachFile(context, {
+            name: `${found.title.replace(/[^\w.-]+/g, '_').slice(0, 40) || 'chart'}-${difficulty}.html`,
+            data: Buffer.from(page, 'utf8'),
+        });
+        if (attached.ok) {
+            result.page_attached = true;
+            result.page_note =
+                'A chart page (open the attached .html in a browser) is attached; tell the user it has the full timeline, play and scrub, and every finding.';
+        } else {
+            result.page_error = attached.reason;
+        }
+    }
     if (args?.as_image === true) {
         // Findings within 0.3 s are one moment: one picture, all their sentences.
         const moments = [];
