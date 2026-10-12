@@ -7,7 +7,7 @@ const { buildViewerHtml } = require('../chart/viewerPage');
 const { maidataLines } = require('../chart/maidata');
 const { parseCustomChart, describeParseError } = require('../chart/customChart');
 const { config } = require('../config/env');
-const { STYLES } = require('../sim/styles');
+const { STYLES, customStyle } = require('../sim/styles');
 const { simulate } = require('../sim/service');
 const { agreement } = require('../sim/report');
 
@@ -202,6 +202,12 @@ function registerChartRoutes(app, { publicMode = false } = {}) {
             const styleIds = (Array.isArray(body.styles) ? body.styles : Object.keys(STYLES))
                 .filter((id) => STYLES[id])
                 .slice(0, Object.keys(STYLES).length);
+            // a style the visitor set up themselves, run beside the presets
+            const styles = { ...STYLES };
+            if (body.custom && typeof body.custom === 'object') {
+                styles.custom = customStyle(body.base, body.custom);
+                styleIds.push('custom');
+            }
             if (!styleIds.length)
                 return res.status(400).json({ error: 'Pick at least one play style.' });
             const runs = Math.min(Math.max(parseInt(body.runs, 10) || 16, 4), publicMode ? 24 : 48);
@@ -227,10 +233,11 @@ function registerChartRoutes(app, { publicMode = false } = {}) {
             const chart = buildChart(text);
             if (!chart.events.length)
                 return res.status(400).json({ error: 'No notes were found in that chart.' });
-            const result = await simulate(`${key}:${styleIds.join(',')}:${runs}`, chart.events, {
-                styleIds,
-                runs,
-            });
+            const result = await simulate(
+                `${key}:${styleIds.join(',')}:${runs}:${styles.custom ? JSON.stringify(styles.custom) : ''}`,
+                chart.events,
+                { styleIds, runs, styles }
+            );
             res.json({
                 ...result,
                 agreement: agreement(analyse(chart), result.spots),

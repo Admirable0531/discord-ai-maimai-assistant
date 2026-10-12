@@ -1452,13 +1452,91 @@ function simInit() {
                 '</label>'
         )
         .join('');
+    simCustomUI();
     $('simgo').onclick = simRun;
+}
+const CUSTOM_FIELDS = [
+    ['tapFoot', 'Tap contact size', 0.02, 0.4, 0.005, 0.09],
+    ['touchFoot', 'Touch contact size', 0.02, 0.4, 0.005, 0.09],
+    ['slideFoot', 'Slide contact size', 0.02, 0.4, 0.005, 0.1],
+    ['posSigma', 'Aiming error', 0, 0.15, 0.005, 0.035],
+    ['timeSigma', 'Timing error (s)', 0, 0.04, 0.001, 0.012],
+    ['onCells', 'Overlap to trigger a sensor', 1, 40, 1, 6],
+];
+function simCustomUI() {
+    const box = $('simcustomui');
+    box.innerHTML =
+        '<div class="ck"><input type="checkbox" id="cuson"> <label for="cuson">Run it too</label></div>' +
+        '<div class="sw"><label>Start from</label><select id="cubase">' +
+        D.simStyles
+            .map(
+                (s) =>
+                    '<option value="' +
+                    s.id +
+                    '"' +
+                    (s.id === 'fingerPad' ? ' selected' : '') +
+                    '>' +
+                    esc(s.label) +
+                    '</option>'
+            )
+            .join('') +
+        '</select></div>' +
+        '<div class="sw"><label>Taps with</label><select id="cumode"><option value="screen">the screen</option><option value="button">the buttons</option></select></div>' +
+        '<div class="ck"><input type="checkbox" id="cubtn"> <label for="cubtn">Touch notes on A sensors with the buttons</label></div>' +
+        '<div class="ck"><input type="checkbox" id="culift" checked> <label for="culift">Lift fingers between notes</label></div>' +
+        CUSTOM_FIELDS.map(
+            (f) =>
+                '<div class="sw"><label>' +
+                f[1] +
+                '</label><input type="range" id="cu_' +
+                f[0] +
+                '" min="' +
+                f[2] +
+                '" max="' +
+                f[3] +
+                '" step="' +
+                f[4] +
+                '" value="' +
+                f[5] +
+                '"><output id="cuo_' +
+                f[0] +
+                '">' +
+                f[5] +
+                '</output></div>'
+        ).join('');
+    CUSTOM_FIELDS.forEach((f) => {
+        $('cu_' + f[0]).oninput = (e) => ($('cuo_' + f[0]).textContent = e.target.value);
+    });
+    const presets = Object.fromEntries(D.simStyles.map((s) => [s.id, s.params || {}]));
+    $('cubase').onchange = (e) => {
+        const p = presets[e.target.value] || {};
+        CUSTOM_FIELDS.forEach((f) => {
+            if (p[f[0]] !== undefined) {
+                $('cu_' + f[0]).value = p[f[0]];
+                $('cuo_' + f[0]).textContent = p[f[0]];
+            }
+        });
+        $('cumode').value = p.tapMode || 'screen';
+        $('cubtn').checked = !!p.touchButtons;
+        $('culift').checked = p.lift !== false;
+        $('cuson').checked = true;
+    };
+}
+function customStyleBody() {
+    if (!$('cuson') || !$('cuson').checked) return {};
+    const custom = {
+        tapMode: $('cumode').value,
+        touchButtons: $('cubtn').checked,
+        lift: $('culift').checked,
+    };
+    CUSTOM_FIELDS.forEach((f) => (custom[f[0]] = +$('cu_' + f[0]).value));
+    return { custom, base: $('cubase').value };
 }
 async function simRun() {
     const styles = [...document.querySelectorAll('#simstyles input:checked')].map(
         (x) => x.dataset.s
     );
-    if (!styles.length) {
+    if (!styles.length && !($('cuson') && $('cuson').checked)) {
         $('simst').textContent = 'Pick at least one style.';
         return;
     }
@@ -1468,13 +1546,15 @@ async function simRun() {
         const res = await fetch('/chart/sim', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.assign({ styles, runs: +$('simruns').value }, D.sim)),
+            body: JSON.stringify(
+                Object.assign({ styles, runs: +$('simruns').value }, customStyleBody(), D.sim)
+            ),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'failed');
         SIM = data;
         $('simst').textContent = '';
-        simShow(styles[0]);
+        simShow(SIM.styles[0].id);
         renderSim();
         draw();
     } catch (e) {

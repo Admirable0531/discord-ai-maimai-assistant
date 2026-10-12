@@ -119,7 +119,22 @@ function buildViewerHtml({
         glossary: GLOSSARY.map(([t, d]) => ({ t, d })),
         sensors: SENSORS,
         sim: simSource,
-        simStyles: Object.values(STYLES).map((x) => ({ id: x.id, label: x.label, about: x.about })),
+        simStyles: Object.values(STYLES).map((x) => ({
+            id: x.id,
+            label: x.label,
+            about: x.about,
+            params: {
+                tapFoot: x.tapFoot,
+                touchFoot: x.touchFoot,
+                slideFoot: x.slideFoot,
+                posSigma: x.posSigma,
+                timeSigma: x.timeSigma,
+                onCells: x.onCells,
+                tapMode: x.tapMode,
+                touchButtons: x.touchButtons,
+                lift: x.lift,
+            },
+        })),
         events: pageEvents(events, tempoChanges),
         tempo: tempoChanges.map((c) => ({
             t: round(c.time),
@@ -200,7 +215,7 @@ __BACK__<h1 id="ttl"></h1><div class="sub" id="sub"></div>
 <select id="spd" title="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="custom">Custom…</option></select><input id="spdc" type="number" min="0.05" max="4" step="0.05" value="1" style="display:none;width:70px"><input id="seek" type="range" min="0" step="0.01"><span id="clock" class="sub"></span></div></div>
 <div class="panel dark"><div class="info" id="info"></div><canvas id="ring" height="380"></canvas><div class="now" id="now"></div></div>
 <div class="panel" id="mdp" style="display:none"><div class="mdh">Maidata</div><div class="md" id="md"></div></div>
-<div class="panel" id="simp" style="display:none"><div class="mdh">Play simulation</div><div class="sub">Virtual hands play the chart with a copy of the game's judging, many times with small aiming and timing errors. It shows where an input meant for one note ends up hitting or blocking another. Hand sizes and speeds are estimates.</div><div class="checks" id="simstyles"></div><div class="row" style="margin-top:8px"><label class="sub">Runs per style <select id="simruns"><option>12</option><option selected>24</option><option>48</option></select></label><button id="simgo">Run simulation</button><span id="simst" class="sub"></span></div><div id="simres"></div></div>
+<div class="panel" id="simp" style="display:none"><div class="mdh">Play simulation</div><div class="sub">Virtual hands play the chart with a copy of the game's judging, many times with small aiming and timing errors. It shows where an input meant for one note ends up hitting or blocking another. Hand sizes and speeds are estimates.</div><div class="checks" id="simstyles"></div><details id="simcustom" style="margin-top:8px"><summary>Custom style</summary><div class="sub">Set your own hands: sizes are in ring radii (0.05 is about a fingertip, 0.1 a finger pad, 0.25 the side of a hand).</div><div id="simcustomui"></div></details><div class="row" style="margin-top:8px"><label class="sub">Runs per style <select id="simruns"><option>12</option><option selected>24</option><option>48</option></select></label><button id="simgo">Run simulation</button><span id="simst" class="sub"></span></div><div id="simres"></div></div>
 <details class="panel"><summary>Glossary</summary><dl id="gloss"></dl></details>
 <details class="panel" id="cfgbox"><summary>Display settings</summary><div id="cfg"></div></details>
 <div class="panel"><div class="row chips" id="chips"></div><div id="list" style="margin-top:6px"></div></div>

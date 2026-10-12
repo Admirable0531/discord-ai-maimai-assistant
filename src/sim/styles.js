@@ -45,6 +45,16 @@ const STYLES = {
         label: 'Full screen, fingertips lifted',
         about: 'Everything on the screen with fingertips, lifted between notes. The clean reference.',
     },
+    fingerPad: {
+        ...BASE,
+        id: 'fingerPad',
+        label: 'Full screen, finger pads',
+        about: 'Everything on the screen with the pad of the finger (about 2 cm wide), lifted between notes. A typical grip.',
+        tapFoot: 0.09,
+        touchFoot: 0.09,
+        slideFoot: 0.1,
+        posSigma: 0.035,
+    },
     dragging: {
         ...BASE,
         id: 'dragging',
@@ -94,9 +104,43 @@ const STYLES = {
     },
 };
 
-/** A style with some options overridden (used for custom styles from the page). */
-function customStyle(base, overrides) {
-    return { ...(STYLES[base] || STYLES.fingertips), ...overrides, id: 'custom', label: 'Custom' };
+/** The numbers a custom style may set, with their limits. */
+const LIMITS = {
+    tapFoot: [0.02, 0.4],
+    touchFoot: [0.02, 0.4],
+    slideFoot: [0.02, 0.4],
+    posSigma: [0, 0.15],
+    timeSigma: [0, 0.04],
+    speed: [4, 30],
+    fingers: [1, 5],
+    reach: [0.3, 2.5],
+    onCells: [1, 40],
+};
+const FLAGS = ['touchButtons', 'lift'];
+
+/** A user-supplied style object reduced to known fields within their limits (never trusted as is). */
+function cleanCustom(input) {
+    const out = {};
+    if (!input || typeof input !== 'object') return out;
+    for (const [key, [lo, hi]] of Object.entries(LIMITS)) {
+        const v = Number(input[key]);
+        if (Number.isFinite(v)) out[key] = Math.min(hi, Math.max(lo, v));
+    }
+    if (out.fingers !== undefined) out.fingers = Math.round(out.fingers);
+    for (const key of FLAGS) if (typeof input[key] === 'boolean') out[key] = input[key];
+    if (input.tapMode === 'button' || input.tapMode === 'screen') out.tapMode = input.tapMode;
+    return out;
 }
 
-module.exports = { STYLES, BASE, customStyle };
+/** A style with some options overridden (used for the custom style from the page). */
+function customStyle(base, overrides) {
+    return {
+        ...(STYLES[base] || STYLES.fingerPad),
+        ...cleanCustom(overrides),
+        id: 'custom',
+        label: 'Custom',
+        about: 'The style you set yourself.',
+    };
+}
+
+module.exports = { STYLES, BASE, LIMITS, cleanCustom, customStyle };
