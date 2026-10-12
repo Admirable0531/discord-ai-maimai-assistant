@@ -44,7 +44,15 @@ function judgeNotes(events) {
         } else if (e.kind === 'slide') {
             const tracks = slideTracks(e);
             if (!tracks) return;
-            notes.push({ id, kind: 'slide', t: e.time, start: e.start, end: e.end, tracks });
+            notes.push({
+                id,
+                kind: 'slide',
+                t: e.time,
+                start: e.start,
+                end: e.end,
+                tracks,
+                head: e.head,
+            });
         }
     });
     // touches written on one tick are a group: more than half pressed clears all

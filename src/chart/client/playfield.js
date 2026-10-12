@@ -1481,6 +1481,7 @@ const CUSTOM_FIELDS = [
     ['overshoot', 'Overshoot past a slide end or touch', 0, 0.4, 0.005, 0.03],
     ['wander', 'Slide drifts off its path', 0, 0.4, 0.005, 0.04],
     ['endSigma', 'Slide lands off its end', 0, 0.3, 0.005, 0.04],
+    ['handoff', 'Other hand slides after the star tap', 0, 1, 0.05, 0.3],
     ['onCells', 'Overlap to trigger a sensor', 1, 40, 1, 6],
 ];
 function simCustomUI() {

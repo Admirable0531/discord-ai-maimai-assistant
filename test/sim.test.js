@@ -198,3 +198,26 @@ test('hand habit: by side each hand keeps its half, by role one hand takes the s
     const tapHands = role.strokes.filter((s) => s.role === 'press').map((s) => s.hand);
     assert.ok(slideHands.every((h) => !tapHands.includes(h)) || tapHands.length === 0);
 });
+
+test('hand-off: with handoff 1 the slide is set off by the other hand than the one that tapped its star', () => {
+    const chart = buildChart('(120){4}1-5[2:1],,,,E');
+    const style = {
+        ...STYLES.fingerPad,
+        tapMode: 'screen',
+        posSigma: 0,
+        timeSigma: 0,
+        handoff: 1,
+        habit: 'free',
+    };
+    const strokes = simulate(chart.events, style, 3).strokes.filter((s) => s.role !== 'transit');
+    const star = strokes.find((s) => s.role === 'press');
+    const slide = strokes.find((s) => s.role === 'slide');
+    assert.notEqual(star.hand, slide.hand);
+    const same = simulate(chart.events, { ...style, handoff: 0 }, 3).strokes.filter(
+        (s) => s.role !== 'transit'
+    );
+    assert.equal(
+        same.find((s) => s.role === 'press').hand,
+        same.find((s) => s.role === 'slide').hand
+    );
+});

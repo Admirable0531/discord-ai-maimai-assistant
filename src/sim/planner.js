@@ -156,7 +156,14 @@ function plan(notes, style, random) {
                   return x < 0.4 ? 'free' : x < 0.7 ? 'side' : 'role';
               })();
     const slideSide = random.next() < 0.5 ? 0 : 1;
+    // a player who sets a slide off with the hand that did not tap its star
+    const handsOff = random.next() < (style.handoff ?? 0.3);
+    const starHand = new Map();
     const wantedSide = (a) => {
+        if (handsOff && a.slide) {
+            const prev = starHand.get(`${a.note.head}@${Math.round(a.note.t * 1000)}`);
+            if (prev !== undefined) return 1 - prev;
+        }
         if (habit === 'role') return a.slide || a.end - a.t > 0.2 ? slideSide : 1 - slideSide;
         if (habit === 'side') return a.pos[0] < -0.15 ? 0 : a.pos[0] > 0.15 ? 1 : null;
         return null;
@@ -216,6 +223,8 @@ function plan(notes, style, random) {
                 late.push({ id: a.note.id, by: 9 });
                 t0 += 0.3;
             }
+            if (a.note.kind === 'tap')
+                starHand.set(`${a.note.lane}@${Math.round(a.note.t * 1000)}`, h.side);
             const jitter = bias + random.gauss() * style.timeSigma;
             const ex = random.gauss() * style.posSigma;
             const ey = random.gauss() * style.posSigma;

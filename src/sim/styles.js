@@ -26,6 +26,7 @@ const BASE = {
     wander: 0, // ring radii a slide's finger drifts sideways off the drawn path
     endSigma: 0, // ring radii a slide's last point lands off the end sensor
     overshoot: 0, // ring radii a finger runs past a slide's end or a touch it arrives at
+    handoff: 0.3, // chance a player sets a slide off with the other hand than the one that tapped its star
     habit: 'mixed', // how the hands share the work: mixed (varies by run), free, side, role
     crossCost: 0.9, // how much a hand dislikes taking a note on the other side or of the other role
     pressLen: 0.05,
@@ -188,6 +189,7 @@ const LIMITS = {
     overshoot: [0, 0.4],
     wander: [0, 0.4],
     endSigma: [0, 0.3],
+    handoff: [0, 1],
     speed: [4, 30],
     fingers: [1, 5],
     reach: [0.3, 2.5],
