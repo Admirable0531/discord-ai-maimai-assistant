@@ -131,6 +131,7 @@ function buildViewerHtml({
                 posSigma: x.posSigma,
                 timeSigma: x.timeSigma,
                 timeBias: x.timeBias || 0,
+                overshoot: x.overshoot || 0,
                 onCells: x.onCells,
                 tapMode: x.tapMode,
                 touchButtons: x.touchButtons,

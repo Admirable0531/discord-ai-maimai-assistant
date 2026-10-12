@@ -499,6 +499,44 @@ function tapOnSlideStart(events) {
     return out;
 }
 
+/**
+ * A17: a touch just before a tap, where the tap's sensor lies "beyond" the touch as
+ * seen from the player. A finger that comes up the screen to a touch and runs a
+ * little past it presses the sensor above it. Found by giving the simulated hands an
+ * overshoot: a touch on E3 followed 100 ms later by a tap on lane 2 was taken
+ * early 47% of the time at 0.1 of the ring radius of overshoot, 73% at 0.2.
+ */
+function touchOvershoot(events, cfg) {
+    const out = [];
+    const touches = events.filter((e) => e.kind === 'touch' || e.kind === 'touchHold');
+    const taps = events.filter(isButtonHit);
+    for (const t of touches) {
+        if (t.sensor === 'C' || t.sensor === 'A') continue;
+        const target = centre(sensorName(t));
+        const base = [Math.abs(target[0]) < 0.1 ? 0 : Math.sign(target[0]) * 0.5, 0.7];
+        const dx = target[0] - base[0];
+        const dy = target[1] - base[1];
+        const len = Math.hypot(dx, dy) || 1;
+        const probe = [target[0] + (dx / len) * 0.18, target[1] + (dy / len) * 0.18];
+        for (const tap of taps) {
+            const gap = tap.time - t.time;
+            if (gap < 0.03 || gap > cfg.splashWindow) continue;
+            const a = centre(`A${tap.lane}`);
+            if (Math.hypot(probe[0] - a[0], probe[1] - a[1]) > 0.2) continue;
+            if (Math.hypot(target[0] - a[0], target[1] - a[1]) < 0.1) continue;
+            out.push({
+                rule: 'A17',
+                severity: 2,
+                time: t.time,
+                bar: t.bar,
+                notes: [sensorName(t), label(tap)],
+                text: `The ${sensorName(t)} touch comes ${Math.round(gap * 1000)} ms before ${phrase(tap)}, and that tap's sensor lies just beyond the touch as you reach for it. A finger that runs a little past the touch presses it and takes the tap early. Stop the finger on the touch, or reach it from the side.`,
+            });
+        }
+    }
+    return out;
+}
+
 /** A6: two slides that use the same sensor at about the same time. */
 function slideBesideSlide(paths, cfg) {
     const out = [];
@@ -563,7 +601,7 @@ function slideEndBesideNote(paths, events, cfg) {
         const lastSteps = steps.filter((s) => s.last);
         for (const note of notes) {
             const gap = note.time - slide.end;
-            if (gap < -0.05 || gap > 0.1) continue;
+            if (gap < -0.05 || gap > 0.15) continue;
             const name = `A${note.lane}`;
             const same = lastSteps.some((s) => s.alternatives.includes(name));
             // Only the same sensor matters: a slide end is forgiving, so a finger that lifts off
@@ -571,11 +609,11 @@ function slideEndBesideNote(paths, events, cfg) {
             if (!same) continue;
             const finding = {
                 rule: 'A13',
-                severity: 3,
+                severity: gap > 0.1 ? 1 : 3,
                 time: slide.end,
                 bar: note.bar,
                 notes: [slideLabel(slide), label(note)],
-                text: `${cap(phrase(note))} sits on ${name}, where the ${slideLabel(slide)} ends ${Math.round(gap * 1000)} ms earlier. If that slide finger is still resting there, the sensor is already pressed and the note will not register.`,
+                text: `${cap(phrase(note))} sits on ${name}, where the ${slideLabel(slide)} ends ${Math.round(gap * 1000)} ms earlier. If that slide finger is still resting there, or ran on a little past the end, the sensor is already pressed and the note will not register.`,
             };
             out.push(lenient(finding, 'The slide end', cfg.slideEndWindow, cfg.slideEndWindow));
         }
@@ -627,6 +665,7 @@ function analyse(chart, overrides = {}) {
         ...touchBesideHold(chart.events, cfg),
         ...tapOnSlideRoute(paths.known, chart.events, cfg),
         ...tapOnSlideStart(chart.events),
+        ...touchOvershoot(chart.events, cfg),
         ...touchGroups(chart.events, cfg),
         ...adjacentBrush(chart.events, cfg),
         ...jacks(chart.events, cfg),

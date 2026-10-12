@@ -223,6 +223,15 @@ function plan(notes, style, random) {
                         });
                     }
                 }
+                // a finger arriving at speed lands a little past the note, in the direction it came from
+                let ox = 0;
+                let oy = 0;
+                if (!a.slide && style.overshoot > 0 && dist(f.pos, a.pos) > 0.01) {
+                    const d = dist(f.pos, a.pos);
+                    const mag = Math.abs(random.gauss()) * style.overshoot;
+                    ox = ((a.pos[0] - f.pos[0]) / d) * mag;
+                    oy = ((a.pos[1] - f.pos[1]) / d) * mag;
+                }
                 const pts = a.slide
                     ? a.points.map((p) => ({
                           t: p.t + jitter,
@@ -230,8 +239,8 @@ function plan(notes, style, random) {
                           y: p.y + ey + random.gauss() * style.posSigma * 0.4,
                       }))
                     : [
-                          { t: t0 + jitter, x: a.pos[0] + ex, y: a.pos[1] + ey },
-                          { t: a.end + jitter, x: a.pos[0] + ex, y: a.pos[1] + ey },
+                          { t: t0 + jitter, x: a.pos[0] + ex + ox, y: a.pos[1] + ey + oy },
+                          { t: a.end + jitter, x: a.pos[0] + ex + ox, y: a.pos[1] + ey + oy },
                       ];
                 if (a.slide) {
                     pts.unshift({ t: t0 + jitter, x: pts[0].x, y: pts[0].y });
@@ -240,6 +249,22 @@ function plan(notes, style, random) {
                         x: pts[pts.length - 1].x,
                         y: pts[pts.length - 1].y,
                     });
+                    // the finger keeps travelling a little past the last sensor before it lifts
+                    const n = a.points.length;
+                    const sx = a.points[n - 1].x - a.points[Math.max(0, n - 2)].x;
+                    const sy = a.points[n - 1].y - a.points[Math.max(0, n - 2)].y;
+                    const sl = Math.hypot(sx, sy);
+                    const over = Math.abs(random.gauss()) * (style.overshoot || 0);
+                    if (sl > 0.01 && over > 0.005) {
+                        const last = pts[pts.length - 1];
+                        const v =
+                            sl / Math.max(0.05, a.points[n - 1].t - a.points[Math.max(0, n - 2)].t);
+                        pts.push({
+                            t: last.t + Math.min(0.15, over / Math.max(v, 0.5)),
+                            x: last.x + (sx / sl) * over,
+                            y: last.y + (sy / sl) * over,
+                        });
+                    }
                 }
                 strokes.push({
                     id: a.note.id,
@@ -254,7 +279,7 @@ function plan(notes, style, random) {
                 f.pos = [pts[pts.length - 1].x, pts[pts.length - 1].y];
                 f.screen = !style.lift;
                 f.lastScreenEnd = pts[pts.length - 1].t;
-                f.freeAt = a.end + jitter;
+                f.freeAt = Math.max(a.end + jitter, pts[pts.length - 1].t);
             } else {
                 strokes.push({
                     id: a.note.id,

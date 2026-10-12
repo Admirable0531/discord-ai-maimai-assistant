@@ -187,3 +187,10 @@ test('A4 follows the simulation: a tap on the sensor a ring slide crosses is fla
     assert.ok(!flagged(0.4));
     assert.ok(!flagged(-0.3));
 });
+
+test('A17: a tap just after a touch whose sensor lies beyond it from the player is flagged, others are not', () => {
+    const rules = (text) => analyse(buildChart(text)).map((f) => f.rule);
+    assert.ok(rules('(120){16}E3,2,,,,E').includes('A17'));
+    assert.ok(!rules('(120){16}E3,5,,,,E').includes('A17'));
+    assert.ok(!rules('(120){16}E3/2,,,,E').includes('A17'));
+});
