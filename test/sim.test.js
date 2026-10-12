@@ -221,3 +221,24 @@ test('hand-off: with handoff 1 the slide is set off by the other hand than the o
         same.find((s) => s.role === 'slide').hand
     );
 });
+
+test('hand-off is only used when it is sensible: not while the other hand is busy holding', () => {
+    // a hold on lane 4 is held through the whole slide, so the slide cannot be given to that hand
+    const chart = buildChart('(120){4}4h[1:1]/1-5[2:1],,,,E');
+    const style = {
+        ...STYLES.fingerPad,
+        tapMode: 'screen',
+        posSigma: 0,
+        timeSigma: 0,
+        handoff: 1,
+        habit: 'free',
+    };
+    for (const seed of [1, 2, 3, 4]) {
+        const strokes = simulate(chart.events, style, seed).strokes.filter(
+            (s) => s.role !== 'transit'
+        );
+        const star = strokes.find((s) => s.role === 'press');
+        const slide = strokes.find((s) => s.role === 'slide');
+        assert.equal(star.hand, slide.hand);
+    }
+});

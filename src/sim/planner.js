@@ -156,14 +156,9 @@ function plan(notes, style, random) {
                   return x < 0.4 ? 'free' : x < 0.7 ? 'side' : 'role';
               })();
     const slideSide = random.next() < 0.5 ? 0 : 1;
-    // a player who sets a slide off with the hand that did not tap its star
-    const handsOff = random.next() < (style.handoff ?? 0.3);
+    // which hand tapped each star, so the slide can be given to the other hand when that is the sensible thing
     const starHand = new Map();
     const wantedSide = (a) => {
-        if (handsOff && a.slide) {
-            const prev = starHand.get(`${a.note.head}@${Math.round(a.note.t * 1000)}`);
-            if (prev !== undefined) return 1 - prev;
-        }
         if (habit === 'role') return a.slide || a.end - a.t > 0.2 ? slideSide : 1 - slideSide;
         if (habit === 'side') return a.pos[0] < -0.15 ? 0 : a.pos[0] > 0.15 ? 1 : null;
         return null;
@@ -181,6 +176,36 @@ function plan(notes, style, random) {
         return { ready: f.freeAt + move, near };
     };
     const slack = (h, f, a) => a.t - cost(h, f, a).ready - 0.012;
+    const freest = (h) => h.fingers.reduce((m, x) => (x.freeAt < m.freeAt ? x : m));
+    /**
+     * How late things would get if `side` set the slide `a` off: the sliding hand has to be at its
+     * start in time, and the other hand has to play every other note that comes while it slides.
+     * Seconds of lateness, so smaller is better.
+     */
+    const loadIfSlidesBy = (side, a, from) => {
+        const h = hands[side];
+        const f = freest(h);
+        const near = dist(h.anchor, a.pos) <= style.reach;
+        const move = near
+            ? dist(f.pos, a.pos) / (style.speed * 2.5)
+            : dist(h.anchor, a.pos) / style.speed + 0.03;
+        let late = Math.max(0, f.freeAt + move - a.t);
+        const other = hands[1 - side];
+        const g = freest(other);
+        let free = g.freeAt;
+        let p = g.pos;
+        for (let k = from; k < actions.length && actions[k].t <= a.end + 0.05; k++) {
+            const x = actions[k];
+            if (x === a) continue;
+            const m =
+                dist(p, x.pos) /
+                (style.speed * (dist(other.anchor, x.pos) <= style.reach ? 2.5 : 1));
+            late += Math.max(0, free + m - x.t);
+            free = Math.max(free + m, x.end);
+            p = x.pos;
+        }
+        return late;
+    };
     const candidates = (a) => {
         const list = [];
         for (const h of hands) for (const f of h.fingers) list.push({ h, f, s: slack(h, f, a) });
@@ -193,10 +218,27 @@ function plan(notes, style, random) {
         const group = actions.slice(i, j).sort((a, b) => a.pos[0] - b.pos[0]);
         // simultaneous notes: left ones to the left hand
         group.forEach((a, k) => {
-            const wanted = wantedSide(a);
+            // a slide whose star was tapped just before: hand it to the other hand when that
+            // leaves less lateness overall (the hand that tapped is still needed, the other is free
+            // and near enough), otherwise the same hand carries on. `handoff` is how readily a player
+            // prefers the swap when it is close.
+            let forced = null;
+            if (a.slide) {
+                const prev = starHand.get(`${a.note.head}@${Math.round(a.note.t * 1000)}`);
+                if (prev !== undefined) {
+                    const same = loadIfSlidesBy(prev, a, i);
+                    const swap = loadIfSlidesBy(1 - prev, a, i) - (style.handoff ?? 0.3) * 0.12;
+                    forced = swap < same ? 1 - prev : prev;
+                }
+            }
+            const wanted = forced !== null ? forced : wantedSide(a);
             const preferSide =
                 wanted !== null ? wanted : group.length > 1 ? (k < group.length / 2 ? 0 : 1) : null;
             let list = candidates(a).filter((c) => c.s >= 0);
+            if (forced !== null) {
+                const only = list.filter((c) => c.h.side === forced);
+                if (only.length) list = only;
+            }
             if (preferSide !== null && wanted === null) {
                 const pref = list.filter((c) => c.h.side === preferSide);
                 if (pref.length) list = pref;
