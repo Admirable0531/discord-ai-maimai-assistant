@@ -422,10 +422,12 @@ function slideBesideNote(paths, events, cfg) {
 }
 
 /**
- * A15: a tap arriving beside the sensor a slide has just passed. A sliding finger
- * is wider than one sensor and keeps travelling, so it can clip the tap next to
- * its path and hit it early (or block it). Softer than A4, which is the same
- * sensor.
+ * A15: a tap just after a slide passes a sensor that borders the tap's own sensor
+ * (a B, D or E sensor beside it). Learned from random-hand simulations: a contact
+ * only reaches the neighbour when its radius plus about 0.2 of the ring radius
+ * covers the distance, which for these sensors (0.33 to 0.36 away) means a wide
+ * finger or the side of the hand. The neighbouring A sensor (0.64 away) is never
+ * reached, so slides along the rim are not flagged here.
  */
 function tapOnSlideRoute(paths, events, cfg) {
     const out = [];
@@ -442,7 +444,12 @@ function tapOnSlideRoute(paths, events, cfg) {
                 const gap = note.time - step.time; // > 0: the slide passed before the note
                 if (gap < 0 || gap > cfg.splashWindow) continue; // only the tap that follows the pass
                 const beside = step.alternatives.find(
-                    (x) => x[0] === 'A' && ringDistance(Number(x.slice(1)), note.lane) === 1
+                    (x) =>
+                        x[0] !== 'A' &&
+                        x !== 'C' &&
+                        neighbouringButtons(x[0], Number(x.slice(1))).some(
+                            (n) => n.button === note.lane
+                        )
                 );
                 if (!beside) continue;
                 // the exact sensor is A4/A5's business
@@ -453,7 +460,7 @@ function tapOnSlideRoute(paths, events, cfg) {
                     time: step.time,
                     bar: note.bar,
                     notes: [slideLabel(slide), label(note)],
-                    text: `The ${slideLabel(slide)} passes ${beside} ${Math.round(gap * 1000)} ms before ${phrase(note)}, right beside it. With a wide finger or the side of the hand, the slide can clip that note and hit it early; fingertips usually stay clear.`,
+                    text: `The ${slideLabel(slide)} passes ${beside} ${Math.round(gap * 1000)} ms before ${phrase(note)}, whose sensor borders it. With a wide finger or the side of the hand the slide clips that note and hits it early; fingertips and finger pads stay clear.`,
                 });
                 break;
             }
