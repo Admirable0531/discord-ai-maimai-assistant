@@ -1,6 +1,6 @@
 # Playing as different kinds of players
 
-Eight "personas" played 8 charts rated 14 and up (Titania, Apollo, Latent Kingdom, raputa, TEmPTaTiON, AMABIE, Aegisfortia, Straight into the lights), 10 runs each, through the simulated judging. Reproduce with the `fullPalm`, `fewFingers` and `offRhythm` presets in the viewer's simulation panel (unchecked by default) or the custom style editor. All numbers are inside the model.
+Eight "personas" played 8 charts rated 14 and up (Titania, Apollo, Latent Kingdom, raputa, TEmPTaTiON, AMABIE, Aegisfortia, Straight into the lights), 10 runs each, through the simulated judging. Reproduce with the `offRhythm` preset in the viewer's simulation panel (unchecked by default) or the custom style editor (the palm and two-finger personas were run from the editor settings; they were removed as presets because they are not typical players). All numbers are inside the model.
 
 | Persona | Perfect | Great | Good | Miss | Splash | Notes two hands could not reach |
 |---|---|---|---|---|---|---|

@@ -88,32 +88,6 @@ const STYLES = {
         slideFoot: 0.13,
         posSigma: 0.035,
     },
-    fullPalm: {
-        ...BASE,
-        id: 'fullPalm',
-        label: 'Whole palm everywhere (persona)',
-        about: 'One big contact per hand for taps, touches and slides. Cannot play dense passages.',
-        extra: true,
-        tapFoot: 0.3,
-        touchFoot: 0.3,
-        slideFoot: 0.3,
-        fingers: 1,
-        reach: 0.7,
-        posSigma: 0.05,
-    },
-    fewFingers: {
-        ...BASE,
-        id: 'fewFingers',
-        label: 'Two fingers in all (persona)',
-        about: 'One finger per hand with finger pads. Misses what two fingers cannot reach.',
-        extra: true,
-        tapFoot: 0.09,
-        touchFoot: 0.09,
-        slideFoot: 0.1,
-        fingers: 1,
-        reach: 0.8,
-        posSigma: 0.035,
-    },
     offRhythm: {
         ...BASE,
         id: 'offRhythm',
@@ -142,6 +116,42 @@ const STYLES = {
         posSigma: 0.03,
     },
 };
+
+/**
+ * Players by skill, from a first-weeks beginner to a top player. Every number is a
+ * guess made to put them in order; they differ in timing, aiming, reach and
+ * speed, and in habits (staying on the glass or lifting).
+ */
+const SKILL = [
+    ['beginner', 'Beginner', 0.06, 0.04, 0.07, 2, 0.8, 6, 0.13, false],
+    ['casual', 'Casual player', 0.045, 0.03, 0.055, 2, 1.0, 8, 0.12, false],
+    ['intermediate', 'Intermediate player', 0.03, 0.02, 0.045, 3, 1.3, 10, 0.1, true],
+    ['advanced', 'Advanced player', 0.02, 0.012, 0.035, 3, 1.5, 12, 0.09, true],
+    ['expert', 'Expert player', 0.013, 0.006, 0.03, 4, 1.6, 14, 0.09, true],
+    ['top', 'Top player', 0.009, 0.003, 0.025, 4, 1.8, 16, 0.08, true],
+];
+for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foot, lift] of SKILL) {
+    STYLES[id] = {
+        ...BASE,
+        id,
+        label,
+        about: `Buttons for taps, the screen for touches and slides. Timing about ${Math.round(timeSigma * 1000)} ms loose, ${lift ? 'lifts fingers between notes' : 'keeps fingers on the glass'}.`,
+        extra: true,
+        skill: true,
+        tapMode: 'button',
+        touchButtons: true,
+        lift,
+        tapFoot: foot,
+        touchFoot: foot,
+        slideFoot: foot + 0.01,
+        timeSigma,
+        timeBias,
+        posSigma,
+        fingers,
+        reach,
+        speed,
+    };
+}
 
 /** The numbers a custom style may set, with their limits. */
 const LIMITS = {
