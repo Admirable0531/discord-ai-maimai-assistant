@@ -31,7 +31,7 @@ function simulate(events, style, seed = 1, { frames = false, record = false } = 
     const notes = judgeNotes(events);
     const random = rng(seed);
     // a steady lean early or late for this run, on top of each press' own jitter
-    const { strokes, late } = plan(notes, style, random);
+    const { strokes, late, habit } = plan(notes, style, random);
     const judge = new Judge(notes, { touchButtons: style.touchButtons });
     const byStart = [...strokes].sort((a, b) => a.t0 - b.t0);
     let nextStroke = 0;
@@ -167,6 +167,7 @@ function simulate(events, style, seed = 1, { frames = false, record = false } = 
                     r3(s.t1),
                     r3(s.r),
                     s.lane || 0,
+                    s.hand || 0,
                     s.pts ? s.pts.flatMap((p) => [r3(p.t), r3(p.x), r3(p.y)]) : [],
                 ]),
             outcomes: [...outcomes]
@@ -174,7 +175,7 @@ function simulate(events, style, seed = 1, { frames = false, record = false } = 
                 .map(([id, o]) => [id, o.kind, o.cause ? o.cause.id : -1]),
         };
     }
-    return { outcomes, late, strokes, trace, notes, replay };
+    return { outcomes, late, strokes, trace, notes, replay, habit };
 }
 
 /** Runs with different seeds; counts of each outcome kind per note and the commonest causes. */

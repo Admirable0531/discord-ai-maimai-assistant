@@ -63,3 +63,26 @@ Bundles: a beginner with the expert's rhythm (timing and lean) reaches 71.7 scor
 - The ladder is made up; real players of a given level are more varied (a fast but loose player, a precise but slow one).
 - Score here is a simplified weighted achievement, not the game's formula, and chart level does not enter the model except through the notes.
 - The scale for timing looseness (60 ms for a beginner to 9 ms for a top player) is a guess; the Perfect window of ±50 ms makes the Perfect share very sensitive to it.
+
+## Left and right hand habits (Oct 2026)
+The simulated hands are now a left hand (blue, "L") and a right hand (orange, "R") in the replay, and each run picks how the player shares the work (`habit` on a style, a selector in the custom editor; `mixed` draws one per run, 40% free, 30% by side, 30% by role):
+- **free**: the nearest free finger takes the note, so a hand often reaches across the screen;
+- **side**: each hand keeps its own half (notes left of centre to the left hand, right of centre to the right) and crosses only when it has to;
+- **role**: one hand slides and holds while the other taps and touches (which hand is chosen per run);
+- simultaneous notes always go left to the left hand and right to the right when the habit does not decide.
+
+Eight charts rated 13 to 14+, 8 runs each, share of presses made by a hand on the other side of the screen ("crossing"), score, notes out of reach, splash points:
+
+| Player | Habit | Score | Out of reach | Splash | Crossing |
+|---|---|---|---|---|---|
+| intermediate | free | 89.9 | 7.5% | 0.58 | 35% |
+| | side | 90.5 | 6.9% | 0.55 | 19% |
+| | role | 90.1 | 7.4% | 0.56 | 47% |
+| advanced | free | 93.8 | 5.0% | 0.34 | 34% |
+| | side | 94.8 | 4.0% | 0.33 | 15% |
+| | role | 94.1 | 5.0% | 0.32 | 47% |
+| expert | free | 98.5 | 0.9% | 0.14 | 31% |
+| | side | 98.9 | 0.5% | 0.13 | 7% |
+| | role | 98.7 | 1.0% | 0.12 | 47% |
+
+What it shows: the habit changes how much a player crosses over, not how much they splash. Keeping each hand to its own side is the most reliable (about 1 point better for an advanced player, 4.0% against 5.0% out of reach), the one-hand-slides habit crosses the screen most (47%) and is no better than the nearest-finger default. Splash differs by 0.02 points at most, so in this model the hand choice is not what causes splashing; the contact, the timing and the notes are. The planner's hand choices are a model of habits, not measured behaviour; real players switch habits within a song and by chart, and the three habits here are simplifications.

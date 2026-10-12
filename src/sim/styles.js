@@ -26,6 +26,8 @@ const BASE = {
     wander: 0, // ring radii a slide's finger drifts sideways off the drawn path
     endSigma: 0, // ring radii a slide's last point lands off the end sensor
     overshoot: 0, // ring radii a finger runs past a slide's end or a touch it arrives at
+    habit: 'mixed', // how the hands share the work: mixed (varies by run), free, side, role
+    crossCost: 0.9, // how much a hand dislikes taking a note on the other side or of the other role
     pressLen: 0.05,
     dragSpeed: 3, // ring radii per second for a finger swiping over the glass
     liftBefore: 0.12, // s: a dragging finger leaves the glass this long before its next press
@@ -204,6 +206,7 @@ function cleanCustom(input) {
     if (out.fingers !== undefined) out.fingers = Math.round(out.fingers);
     for (const key of FLAGS) if (typeof input[key] === 'boolean') out[key] = input[key];
     if (input.tapMode === 'button' || input.tapMode === 'screen') out.tapMode = input.tapMode;
+    if (['mixed', 'free', 'side', 'role'].includes(input.habit)) out.habit = input.habit;
     return out;
 }
 

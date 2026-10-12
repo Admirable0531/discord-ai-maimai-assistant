@@ -1408,27 +1408,41 @@ const simPos = (pts, t) => {
     }
     return [pts[pts.length - 2], pts[pts.length - 1]];
 };
+const HAND_RGB = [
+    [90, 165, 255],
+    [255, 160, 60],
+]; // left hand blue, right hand orange
 function drawHands(g) {
     if (!simReplay || !cfg.simHands) return;
-    for (const [mode, t0, t1, r, lane, pts] of simReplay.strokes) {
+    for (const [mode, t0, t1, r, lane, hand, pts] of simReplay.strokes) {
         if (at < t0 || at > t1) continue;
+        const [cr, cg, cb] = HAND_RGB[hand ? 1 : 0];
+        let x;
+        let y;
+        let rad;
         if (mode === 0) {
-            const [x, y] = mirror(ptRaw(ang(lane), R * 1.06));
-            g.fillStyle = 'rgba(255,170,60,.85)';
+            [x, y] = mirror(ptRaw(ang(lane), R * 1.06));
+            g.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',.9)';
             g.beginPath();
             g.arc(x, y, 9, 0, 7);
             g.fill();
-            continue;
+            rad = 9;
+        } else {
+            const [px, py] = simPos(pts, at);
+            [x, y] = mirror([C + px * R, C + py * R]);
+            rad = Math.max(3, r * R);
+            g.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',.3)';
+            g.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',.95)';
+            g.lineWidth = 1.8;
+            g.beginPath();
+            g.arc(x, y, rad, 0, 7);
+            g.fill();
+            g.stroke();
         }
-        const [px, py] = simPos(pts, at);
-        const [x, y] = mirror([C + px * R, C + py * R]);
-        g.fillStyle = 'rgba(120,200,255,.28)';
-        g.strokeStyle = 'rgba(160,220,255,.9)';
-        g.lineWidth = 1.5;
-        g.beginPath();
-        g.arc(x, y, Math.max(3, r * R), 0, 7);
-        g.fill();
-        g.stroke();
+        g.fillStyle = 'rgba(255,255,255,.95)';
+        g.font = 'bold 10px sans-serif';
+        g.textAlign = 'center';
+        g.fillText(hand ? 'R' : 'L', x, y + 3.5);
     }
 }
 // eslint-disable-next-line no-unused-vars
@@ -1488,6 +1502,7 @@ function simCustomUI() {
             .join('') +
         '</select></div>' +
         '<div class="sw"><label>Taps with</label><select id="cumode"><option value="screen">the screen</option><option value="button">the buttons</option></select></div>' +
+        '<div class="sw"><label>Hands share the work</label><select id="cuhabit"><option value="mixed">varies from run to run</option><option value="free">nearest finger (hands cross freely)</option><option value="side">each hand its own side</option><option value="role">one hand slides and holds, the other taps</option></select></div>' +
         '<div class="ck"><input type="checkbox" id="cubtn"> <label for="cubtn">Touch notes on A sensors with the buttons</label></div>' +
         '<div class="ck"><input type="checkbox" id="culift" checked> <label for="culift">Lift fingers between notes</label></div>' +
         CUSTOM_FIELDS.map(

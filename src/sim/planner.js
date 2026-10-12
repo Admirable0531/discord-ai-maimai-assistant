@@ -145,6 +145,22 @@ function plan(notes, style, random) {
     const late = [];
     // a player who is always a bit early or late: one steady offset for the whole run
     const bias = random.gauss() * (style.timeBias || 0);
+    // how this run's player shares the work between hands: free (the nearest finger),
+    // by side (each hand keeps its own half), or by role (one hand slides and holds,
+    // the other taps and touches)
+    const habit =
+        style.habit && style.habit !== 'mixed'
+            ? style.habit
+            : (() => {
+                  const x = random.next();
+                  return x < 0.4 ? 'free' : x < 0.7 ? 'side' : 'role';
+              })();
+    const slideSide = random.next() < 0.5 ? 0 : 1;
+    const wantedSide = (a) => {
+        if (habit === 'role') return a.slide || a.end - a.t > 0.2 ? slideSide : 1 - slideSide;
+        if (habit === 'side') return a.pos[0] < -0.15 ? 0 : a.pos[0] > 0.15 ? 1 : null;
+        return null;
+    };
 
     /** Time for finger f of hand h to be ready at the action's position, and whether the hand has to move. */
     const cost = (h, f, a) => {
@@ -170,16 +186,23 @@ function plan(notes, style, random) {
         const group = actions.slice(i, j).sort((a, b) => a.pos[0] - b.pos[0]);
         // simultaneous notes: left ones to the left hand
         group.forEach((a, k) => {
-            const preferSide = group.length > 1 ? (k < group.length / 2 ? 0 : 1) : null;
+            const wanted = wantedSide(a);
+            const preferSide =
+                wanted !== null ? wanted : group.length > 1 ? (k < group.length / 2 ? 0 : 1) : null;
             let list = candidates(a).filter((c) => c.s >= 0);
-            if (preferSide !== null) {
+            if (preferSide !== null && wanted === null) {
                 const pref = list.filter((c) => c.h.side === preferSide);
                 if (pref.length) list = pref;
             }
             let pick;
             if (list.length) {
                 // the nearest finger, but one that has only just let go gets a rest (a jack alternates)
-                const score = (c) => dist(c.f.pos, a.pos) + (a.t - c.f.freeAt < 0.15 ? 0.6 : 0);
+                const score = (c) =>
+                    dist(c.f.pos, a.pos) +
+                    (a.t - c.f.freeAt < 0.15 ? 0.6 : 0) +
+                    (wanted !== null && c.h.side !== wanted
+                        ? style.crossCost * (habit === 'role' ? 4 : 2)
+                        : 0);
                 pick = list.reduce((best, c) => (score(c) < score(best) ? c : best));
             } else {
                 pick = candidates(a).reduce((best, c) => (c.s > best.s ? c : best));
@@ -210,6 +233,7 @@ function plan(notes, style, random) {
                     const liftAt = Math.min(arrive, t0 - style.liftBefore);
                     if (liftAt > from + 0.02) {
                         strokes.push({
+                            hand: h.side,
                             id: a.note.id,
                             role: 'transit',
                             mode: 'screen',
@@ -302,6 +326,7 @@ function plan(notes, style, random) {
                     }
                 }
                 strokes.push({
+                    hand: h.side,
                     id: a.note.id,
                     role: a.slide ? 'slide' : dur > 0.2 ? 'hold' : 'press',
                     mode: 'screen',
@@ -317,6 +342,7 @@ function plan(notes, style, random) {
                 f.freeAt = Math.max(a.end + jitter, pts[pts.length - 1].t);
             } else {
                 strokes.push({
+                    hand: h.side,
                     id: a.note.id,
                     role: dur > 0.2 ? 'hold' : 'press',
                     mode: 'btn',
@@ -333,7 +359,7 @@ function plan(notes, style, random) {
         });
         i = j;
     }
-    return { strokes, late };
+    return { strokes, late, habit, slideSide };
 }
 
 module.exports = { plan, rng, actionsOf };

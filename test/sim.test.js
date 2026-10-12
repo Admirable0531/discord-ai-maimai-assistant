@@ -183,3 +183,18 @@ test('the simulation report names the spots and the styles that cause them', () 
     assert.ok(!sim.spots[0].perStyle.fingertips);
     assert.ok(sim.replay.bigTouch.strokes.length > 0);
 });
+
+test('hand habit: by side each hand keeps its half, by role one hand takes the slide and holds', () => {
+    const chart = buildChart('(120){4}7,3,7,3,1-5[2:1],,,,E');
+    const base = { ...STYLES.fingerPad, posSigma: 0, timeSigma: 0, habit: 'side' };
+    const side = simulate(chart.events, base, 1).strokes.filter((s) => s.role !== 'transit');
+    // lane 7 is on the left of the screen, lane 3 on the right
+    const handOf = (lane) =>
+        side.filter((s) => chart.events[s.id].lane === lane && s.pts).map((s) => s.hand);
+    assert.ok(handOf(7).every((h) => h === 0));
+    assert.ok(handOf(3).every((h) => h === 1));
+    const role = simulate(chart.events, { ...base, habit: 'role' }, 1);
+    const slideHands = role.strokes.filter((s) => s.role === 'slide').map((s) => s.hand);
+    const tapHands = role.strokes.filter((s) => s.role === 'press').map((s) => s.hand);
+    assert.ok(slideHands.every((h) => !tapHands.includes(h)) || tapHands.length === 0);
+});
