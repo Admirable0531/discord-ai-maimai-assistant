@@ -588,6 +588,88 @@ function touchNote(g, x, y, r0, c, gap, ex, held, flash) {
     }
     g.restore();
 }
+const TH_FANS = ['#ff4b4b', '#ffe94a', '#3ddc5a', '#3fd6ff']; // top, right, bottom, left, as in the game
+const TH_BREAK = '#ffb23a';
+/**
+ * A touch hold: four filled fans (red, yellow, green, blue) that close in on the
+ * middle, then, once held, a rounded diamond whose coloured edge fills clockwise
+ * from the top as the hold runs. `prog` is 0..1 through the hold, or -1 before it.
+ */
+function touchHoldNote(g, x, y, r0, gap, ex, prog, brk) {
+    const r = Math.max(r0, 3) * 1.15;
+    g.save();
+    const half = r * 1.62;
+    const diamond = [
+        [x, y - half],
+        [x + half, y],
+        [x, y + half],
+        [x - half, y],
+    ];
+    if (prog < 0) {
+        for (let i = 0; i < 4; i++) {
+            const c = brk ? TH_BREAK : TH_FANS[i];
+            g.save();
+            g.translate(x, y);
+            g.rotate((i * Math.PI) / 2);
+            const tip = r * 0.5 + gap;
+            const base = tip + r * 1.02;
+            roundedPoly(
+                g,
+                [
+                    [0, -tip],
+                    [-r * 0.95, -base],
+                    [r * 0.95, -base],
+                ],
+                r * 0.17
+            );
+            g.shadowColor = c;
+            g.shadowBlur = ex ? 16 : 11;
+            g.fillStyle = c;
+            g.fill();
+            g.shadowBlur = 0;
+            g.lineJoin = 'round';
+            g.lineWidth = Math.max(2, r * 0.17);
+            g.strokeStyle = 'rgba(255,255,255,.95)';
+            g.stroke();
+            g.restore();
+        }
+        g.fillStyle = 'rgba(255,255,255,.9)';
+        g.beginPath();
+        g.arc(x, y, Math.max(1.6, r * 0.1), 0, 7);
+        g.fill();
+        g.restore();
+        return;
+    }
+    // held: the grey diamond, and over it the coloured edge filled so far
+    roundedPoly(g, diamond, r * 0.34);
+    g.fillStyle = 'rgba(255,255,255,.06)';
+    g.fill();
+    g.lineJoin = 'round';
+    g.lineWidth = Math.max(3, r * 0.26);
+    g.strokeStyle = 'rgba(255,255,255,.38)';
+    g.stroke();
+    const perimeter = 4 * Math.hypot(half, half);
+    const grad = g.createConicGradient ? g.createConicGradient(-Math.PI / 4, x, y) : null;
+    if (grad) {
+        const cs = brk ? [TH_BREAK, '#ffd27a', TH_BREAK, '#ffd27a'] : TH_FANS;
+        cs.forEach((c, i) => grad.addColorStop(i / 4, c));
+        grad.addColorStop(1, cs[0]);
+    }
+    g.shadowColor = brk ? TH_BREAK : '#ffffff';
+    g.shadowBlur = 10;
+    g.strokeStyle = grad || WHITE;
+    g.setLineDash([Math.max(0, perimeter * Math.min(1, prog)), perimeter]);
+    // start at the top vertex and go clockwise
+    roundedPoly(g, diamond, r * 0.34);
+    g.stroke();
+    g.setLineDash([]);
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(255,255,255,.9)';
+    g.beginPath();
+    g.arc(x, y, Math.max(2, r * 0.13), 0, 7);
+    g.fill();
+    g.restore();
+}
 /**
  * One bar of the WiFi slide. i = 0..10. Its apex sits on the line from the
  * start button to the middle end button, and its arms run parallel to the
@@ -844,14 +926,12 @@ function drawRing() {
                     : e.e
                       ? TOUCH_COL.each
                       : TOUCH_COL.single;
-            if (e.k === 'th' && at >= e.t && at <= e.z) {
-                g.lineWidth = 3;
-                g.strokeStyle = c;
-                g.beginPath();
-                g.arc(x, y, r * 2.2, 0, 7);
-                g.stroke();
+            if (e.k === 'th') {
+                const prog = at >= e.t && e.z > e.t ? Math.min(1, (at - e.t) / (e.z - e.t)) : -1;
+                touchHoldNote(g, x, y, r, ts.gap, e.x && cfg.exEmph, prog, e.b);
+            } else {
+                touchNote(g, x, y, r, c, ts.gap, e.x && cfg.exEmph, false, false);
             }
-            touchNote(g, x, y, r, c, ts.gap, e.x && cfg.exEmph, e.k === 'th', false);
             if (cfg.labels) {
                 g.fillStyle = 'rgba(255,255,255,.5)';
                 g.font = '9px sans-serif';
