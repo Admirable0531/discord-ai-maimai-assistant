@@ -232,12 +232,47 @@ function plan(notes, style, random) {
                     ox = ((a.pos[0] - f.pos[0]) / d) * mag;
                     oy = ((a.pos[1] - f.pos[1]) / d) * mag;
                 }
+                // a slide that is not drawn straight: a slow sideways wander along the path, and
+                // a last point that lands a little off the end sensor
+                const wanderPhase = [random.next() * 6.283, random.next() * 6.283];
+                const wanderF = [0.8 + random.next() * 0.5, 2 + random.next()];
+                const ends = [
+                    random.gauss() * (style.endSigma || 0),
+                    random.gauss() * (style.endSigma || 0),
+                ];
+                const wander = (i, n, dx, dy) => {
+                    const amp = style.wander || 0;
+                    if (!amp) return [0, 0];
+                    const sFrac = n < 2 ? 0 : i / (n - 1);
+                    const w =
+                        amp *
+                        (0.6 * Math.sin(6.283 * wanderF[0] * sFrac + wanderPhase[0]) +
+                            0.4 * Math.sin(6.283 * wanderF[1] * sFrac + wanderPhase[1]));
+                    const l = Math.hypot(dx, dy) || 1;
+                    return [(-dy / l) * w, (dx / l) * w];
+                };
                 const pts = a.slide
-                    ? a.points.map((p) => ({
-                          t: p.t + jitter,
-                          x: p.x + ex + random.gauss() * style.posSigma * 0.4,
-                          y: p.y + ey + random.gauss() * style.posSigma * 0.4,
-                      }))
+                    ? a.points.map((p, i, all) => {
+                          const prev = all[Math.max(0, i - 1)];
+                          const next = all[Math.min(all.length - 1, i + 1)];
+                          const [wx, wy] = wander(i, all.length, next.x - prev.x, next.y - prev.y);
+                          const last = i === all.length - 1;
+                          return {
+                              t: p.t + jitter,
+                              x:
+                                  p.x +
+                                  ex +
+                                  wx +
+                                  (last ? ends[0] : 0) +
+                                  random.gauss() * style.posSigma * 0.4,
+                              y:
+                                  p.y +
+                                  ey +
+                                  wy +
+                                  (last ? ends[1] : 0) +
+                                  random.gauss() * style.posSigma * 0.4,
+                          };
+                      })
                     : [
                           { t: t0 + jitter, x: a.pos[0] + ex + ox, y: a.pos[1] + ey + oy },
                           { t: a.end + jitter, x: a.pos[0] + ex + ox, y: a.pos[1] + ey + oy },

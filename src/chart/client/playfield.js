@@ -1465,6 +1465,8 @@ const CUSTOM_FIELDS = [
     ['timeSigma', 'Timing looseness (s)', 0, 0.07, 0.001, 0.012],
     ['timeBias', 'Early or late lean (s)', 0, 0.06, 0.001, 0],
     ['overshoot', 'Overshoot past a slide end or touch', 0, 0.4, 0.005, 0.03],
+    ['wander', 'Slide drifts off its path', 0, 0.4, 0.005, 0.04],
+    ['endSigma', 'Slide lands off its end', 0, 0.3, 0.005, 0.04],
     ['onCells', 'Overlap to trigger a sensor', 1, 40, 1, 6],
 ];
 function simCustomUI() {

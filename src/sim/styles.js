@@ -23,6 +23,8 @@ const BASE = {
     posSigma: 0.03,
     timeSigma: 0.012,
     onCells: 6, // a contact turns a sensor ON when it covers this many cells of it (a cell is 0.025 ring radii square)
+    wander: 0, // ring radii a slide's finger drifts sideways off the drawn path
+    endSigma: 0, // ring radii a slide's last point lands off the end sensor
     overshoot: 0, // ring radii a finger runs past a slide's end or a touch it arrives at
     pressLen: 0.05,
     dragSpeed: 3, // ring radii per second for a finger swiping over the glass
@@ -123,6 +125,14 @@ const STYLES = {
  * guess made to put them in order; they differ in timing, aiming, reach and
  * speed, and in habits (staying on the glass or lifting).
  */
+const WANDER = {
+    beginner: 0.12,
+    casual: 0.09,
+    intermediate: 0.06,
+    advanced: 0.04,
+    expert: 0.025,
+    top: 0.015,
+};
 const OVERSHOOT = {
     beginner: 0.15,
     casual: 0.1,
@@ -160,6 +170,8 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         reach,
         speed,
         overshoot: OVERSHOOT[id],
+        wander: WANDER[id],
+        endSigma: WANDER[id],
     };
 }
 
@@ -172,6 +184,8 @@ const LIMITS = {
     timeSigma: [0, 0.07],
     timeBias: [0, 0.06],
     overshoot: [0, 0.4],
+    wander: [0, 0.4],
+    endSigma: [0, 0.3],
     speed: [4, 30],
     fingers: [1, 5],
     reach: [0.3, 2.5],
