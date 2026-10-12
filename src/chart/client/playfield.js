@@ -1447,7 +1447,9 @@ function simInit() {
                 esc(s.about) +
                 '"><input type="checkbox" data-s="' +
                 s.id +
-                '" checked> ' +
+                '"' +
+                (s.extra ? '' : ' checked') +
+                '> ' +
                 esc(s.label) +
                 '</label>'
         )
@@ -1460,7 +1462,8 @@ const CUSTOM_FIELDS = [
     ['touchFoot', 'Touch contact size', 0.02, 0.4, 0.005, 0.09],
     ['slideFoot', 'Slide contact size', 0.02, 0.4, 0.005, 0.1],
     ['posSigma', 'Aiming error', 0, 0.15, 0.005, 0.035],
-    ['timeSigma', 'Timing error (s)', 0, 0.04, 0.001, 0.012],
+    ['timeSigma', 'Timing looseness (s)', 0, 0.07, 0.001, 0.012],
+    ['timeBias', 'Early or late lean (s)', 0, 0.06, 0.001, 0],
     ['onCells', 'Overlap to trigger a sensor', 1, 40, 1, 6],
 ];
 function simCustomUI() {

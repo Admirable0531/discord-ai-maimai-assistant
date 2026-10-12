@@ -7,7 +7,7 @@ const { buildViewerHtml } = require('../chart/viewerPage');
 const { maidataLines } = require('../chart/maidata');
 const { parseCustomChart, describeParseError } = require('../chart/customChart');
 const { config } = require('../config/env');
-const { STYLES, customStyle } = require('../sim/styles');
+const { STYLES, DEFAULT_STYLE_IDS, customStyle } = require('../sim/styles');
 const { simulate } = require('../sim/service');
 const { agreement } = require('../sim/report');
 
@@ -199,7 +199,7 @@ function registerChartRoutes(app, { publicMode = false } = {}) {
     app.post('/chart/sim', limit(6), express.json({ limit: '400kb' }), async (req, res) => {
         try {
             const body = req.body || {};
-            const styleIds = (Array.isArray(body.styles) ? body.styles : Object.keys(STYLES))
+            const styleIds = (Array.isArray(body.styles) ? body.styles : DEFAULT_STYLE_IDS)
                 .filter((id) => STYLES[id])
                 .slice(0, Object.keys(STYLES).length);
             // a style the visitor set up themselves, run beside the presets

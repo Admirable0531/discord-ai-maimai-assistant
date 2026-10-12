@@ -186,12 +186,13 @@ function monteCarlo(events, style, runs = 30, seed = 1) {
         for (const [id, o] of r.outcomes) {
             let s = stats.get(id);
             if (!s) {
-                s = { id, n: 0, kinds: {}, causes: new Map(), worst: 0 };
+                s = { id, n: 0, kinds: {}, causes: new Map(), worst: 0, grades: [0, 0, 0, 0] };
                 stats.set(id, s);
             }
             s.n++;
             s.kinds[o.kind] = (s.kinds[o.kind] || 0) + 1;
             s.worst = Math.max(s.worst, o.grade);
+            s.grades[o.grade]++;
             if (o.cause) s.causes.set(o.cause.id, (s.causes.get(o.cause.id) || 0) + 1);
         }
         for (const l of r.late) late.set(l.id, (late.get(l.id) || 0) + 1);

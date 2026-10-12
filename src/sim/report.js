@@ -1,6 +1,6 @@
 // Runs the simulation for several styles and turns the per-note outcomes into
 // "spots": a moment, how likely a splash is in each style, and what causes it.
-const { STYLES } = require('./styles');
+const { STYLES, DEFAULT_STYLE_IDS } = require('./styles');
 const { monteCarlo, simulate } = require('./run');
 
 const SPLASH = ['foreign', 'blocked', 'early'];
@@ -32,7 +32,7 @@ const WHY = {
  */
 function simulateSpots(
     events,
-    { styleIds = Object.keys(STYLES), runs = 24, seed = 1, minP = 0.2, styles = STYLES } = {}
+    { styleIds = DEFAULT_STYLE_IDS, runs = 24, seed = 1, minP = 0.2, styles = STYLES } = {}
 ) {
     const bySpot = new Map();
     const info = [];

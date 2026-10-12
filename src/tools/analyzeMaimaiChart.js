@@ -8,7 +8,7 @@ const { summarise, pickFindings, formatTime } = require('../chart/report');
 const { buildViewerHtml } = require('../chart/viewerPage');
 const { simulate } = require('../sim/service');
 const { agreement } = require('../sim/report');
-const { STYLES } = require('../sim/styles');
+const { DEFAULT_STYLE_IDS } = require('../sim/styles');
 const { attachFile } = require('../utils/outputs');
 const { drawCard } = require('../render/drawCard');
 const { buildChartMomentHtml, WIDTH } = require('../render/chartMomentCard');
@@ -91,7 +91,7 @@ async function execute(args, context) {
     if (args?.simulate === true) {
         try {
             const sim = await simulate(`tool:${found.id}:${difficulty}`, chart.events, {
-                styleIds: Object.keys(STYLES),
+                styleIds: DEFAULT_STYLE_IDS,
                 runs: 12,
             });
             result.simulation = {

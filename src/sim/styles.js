@@ -88,6 +88,45 @@ const STYLES = {
         slideFoot: 0.13,
         posSigma: 0.035,
     },
+    fullPalm: {
+        ...BASE,
+        id: 'fullPalm',
+        label: 'Whole palm everywhere (persona)',
+        about: 'One big contact per hand for taps, touches and slides. Cannot play dense passages.',
+        extra: true,
+        tapFoot: 0.3,
+        touchFoot: 0.3,
+        slideFoot: 0.3,
+        fingers: 1,
+        reach: 0.7,
+        posSigma: 0.05,
+    },
+    fewFingers: {
+        ...BASE,
+        id: 'fewFingers',
+        label: 'Two fingers in all (persona)',
+        about: 'One finger per hand with finger pads. Misses what two fingers cannot reach.',
+        extra: true,
+        tapFoot: 0.09,
+        touchFoot: 0.09,
+        slideFoot: 0.1,
+        fingers: 1,
+        reach: 0.8,
+        posSigma: 0.035,
+    },
+    offRhythm: {
+        ...BASE,
+        id: 'offRhythm',
+        label: 'Off the rhythm (persona)',
+        about: 'Finger pads, but presses are 45 ms loose and lean 30 ms early or late.',
+        extra: true,
+        tapFoot: 0.09,
+        touchFoot: 0.09,
+        slideFoot: 0.1,
+        posSigma: 0.035,
+        timeSigma: 0.045,
+        timeBias: 0.03,
+    },
     mixed: {
         ...BASE,
         id: 'mixed',
@@ -110,7 +149,8 @@ const LIMITS = {
     touchFoot: [0.02, 0.4],
     slideFoot: [0.02, 0.4],
     posSigma: [0, 0.15],
-    timeSigma: [0, 0.04],
+    timeSigma: [0, 0.07],
+    timeBias: [0, 0.06],
     speed: [4, 30],
     fingers: [1, 5],
     reach: [0.3, 2.5],
@@ -143,4 +183,9 @@ function customStyle(base, overrides) {
     };
 }
 
-module.exports = { STYLES, BASE, LIMITS, cleanCustom, customStyle };
+/** The ids of the everyday styles (the personas are only run when asked for). */
+const DEFAULT_STYLE_IDS = Object.values(STYLES)
+    .filter((x) => !x.extra)
+    .map((x) => x.id);
+
+module.exports = { STYLES, BASE, LIMITS, DEFAULT_STYLE_IDS, cleanCustom, customStyle };

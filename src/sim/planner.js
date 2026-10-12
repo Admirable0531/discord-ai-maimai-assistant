@@ -143,6 +143,8 @@ function plan(notes, style, random) {
     const hands = [makeHand(-0.6, 0), makeHand(0.6, 1)];
     const strokes = [];
     const late = [];
+    // a player who is always a bit early or late: one steady offset for the whole run
+    const bias = random.gauss() * (style.timeBias || 0);
 
     /** Time for finger f of hand h to be ready at the action's position, and whether the hand has to move. */
     const cost = (h, f, a) => {
@@ -191,7 +193,7 @@ function plan(notes, style, random) {
                 late.push({ id: a.note.id, by: 9 });
                 t0 += 0.3;
             }
-            const jitter = random.gauss() * style.timeSigma;
+            const jitter = bias + random.gauss() * style.timeSigma;
             const ex = random.gauss() * style.posSigma;
             const ey = random.gauss() * style.posSigma;
             const dur = a.end - a.t;
