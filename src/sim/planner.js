@@ -182,6 +182,7 @@ function plan(notes, style, random, events = null) {
     const dominant = random.next() < (style.rightHanded ?? 0.85) ? 1 : 0;
     // which hand tapped each star, so the slide can be given to the other hand when that is the sensible thing
     const starHand = new Map();
+    let lastTouch = null; // the touch before: a quick, near one next is the same sweep, so the same hand
     const wantedSide = (a) => {
         if (!a.slide && a.end - a.t > 0.2 && habit !== 'role') {
             if (habit === 'side' && Math.abs(a.pos[0]) > 0.4) return a.pos[0] < 0 ? 0 : 1;
@@ -302,6 +303,13 @@ function plan(notes, style, random, events = null) {
             if (!a.slide && pairSides && !isTouch(a)) groupSide = pairSides[btns.indexOf(a)];
             else if (isTouch(a) && touchSide !== null && dist(touchPos, a.pos) <= style.reach * 1.5)
                 groupSide = touchSide;
+            else if (
+                isTouch(a) &&
+                lastTouch &&
+                a.t - lastTouch.t < 0.13 &&
+                dist(lastTouch.pos, a.pos) < 0.9
+            )
+                groupSide = lastTouch.side;
             if (groupSide !== null) {
                 forced = groupSide;
                 if (learnedSide !== null) learnedSide = groupSide;
@@ -337,6 +345,7 @@ function plan(notes, style, random, events = null) {
             }
             const { h, f } = pick;
             if (learned && evt) apply(hs, evt, h.side);
+            if (isTouch(a)) lastTouch = { side: h.side, t: a.t, pos: a.pos };
             if (isTouch(a) && touchSide === null) {
                 touchSide = h.side;
                 touchPos = a.pos;

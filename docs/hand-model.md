@@ -74,3 +74,9 @@ left hand unless that is clearly worse; skipped when a hand has no free finger),
 follow the hand that took the first one while they are within reach. In simulation: button pairs split 99.7%
 (was 94.6%), touch pairs on one hand 88% (was 43%); hand agreement with the humans 81.0% overall (unchanged).
 Not modelled yet: one single wide palm contact covering several touch sensors (each touch still gets its own finger/stroke of the same hand).
+
+## Fast sweeps are one hand
+
+Touches less than 0.13 s apart and within 0.9 ring radii of each other (a fast swipe or spin) were played by the
+same hand 304 of 311 times (98%) in the videos; the simulated player did it 82%. A touch that follows such a
+touch now keeps its hand (97% in simulation). Slower or farther touches are still decided by the model.
