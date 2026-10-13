@@ -492,7 +492,7 @@ function tapOnSlideStart(events) {
                 time: slide.start,
                 bar: note.bar,
                 notes: [slideLabel(slide), label(note)],
-                text: `${cap(phrase(note))} comes ${gap >= 0.02 ? `${Math.round(gap * 1000)} ms after` : 'right as'} the ${slideLabel(slide)} starts moving, on the same button. The finger that sets the slide off is still on that sensor and takes the tap early (an early Good). Lift off the sensor quickly, or set the slide off from a different spot.`,
+                text: `${cap(phrase(note))} comes ${gap >= 0.02 ? `${Math.round(gap * 1000)} ms after` : 'right as'} the ${slideLabel(slide)} starts moving, on the same button. The finger that sets the slide off is still on that sensor and takes the tap early (an early Good). Lift off the sensor quickly, or set the slide off from a different spot. Strong players avoid it by holding the slide back until the tap is done (the slide timing is generous).`,
             });
         }
     }
