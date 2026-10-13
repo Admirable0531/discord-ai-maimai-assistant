@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { capture } = require('./capture');
 const { align } = require('./align');
-const { searchSongs, fold } = require('../../src/chart/simaiWiki');
+const { searchSongs, fold, getChartText } = require('../../src/chart/simaiWiki');
 
 const OUT = process.env.LR_OUT || path.join(__dirname, '..', '..', 'data', 'lr');
 const DIFFS = { MASTER: 'master', 'Re:MASTER': 'remaster', EXPERT: 'expert' };
@@ -69,6 +69,15 @@ async function main() {
         const what = await identify(v.title);
         if (!what) {
             console.log(`skip ${v.id} ${v.title}: song not found`);
+            continue;
+        }
+        // the chart first: a video is only worth playing when its chart can be read
+        const chartOk = await getChartText(what.song, what.difficulty, what.type).catch((e) => ({
+            success: false,
+            error: e.message,
+        }));
+        if (!chartOk.success) {
+            console.log(`skip ${v.id} ${v.title}: ${chartOk.error}`);
             continue;
         }
         const tmp = path.join(OUT, `${v.id}.capture.json`);

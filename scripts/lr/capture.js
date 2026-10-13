@@ -1,3 +1,4 @@
+// eslint-env browser
 // Plays one "L. R. Breakdown" video (MajdataView playfield, notes coloured by the hand
 // that plays them) in a headless browser and records, for every video frame, how much
 // of each hand colour sits on the 8 button positions of the judgement ring and on the 33
@@ -13,10 +14,16 @@ const { NAMES, centre, buttonPosition } = require('../../src/sim/sensors');
 const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium';
 const RADII = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
-async function capture(videoId, out, rate = 2, maxSeconds = Infinity) {
+/** One stretch of a video, from `from` to `to` seconds, in a fresh page (the player resets itself after about 40 s). */
+async function captureSegment(videoId, rate, from, to) {
     const browser = await chromium.launch({
         executablePath: CHROME,
-        args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--mute-audio'],
+        args: [
+            '--no-sandbox',
+            '--autoplay-policy=no-user-gesture-required',
+            '--mute-audio',
+            '--disable-dev-shm-usage',
+        ],
     });
     const ctx = await browser.newContext({
         viewport: { width: 1280, height: 720 },
@@ -24,10 +31,18 @@ async function capture(videoId, out, rate = 2, maxSeconds = Infinity) {
     });
     const page = await ctx.newPage();
     if (process.env.LR_DEBUG) page.on('console', (m) => console.log('[page]', m.text()));
-    await page.goto(`https://www.youtube.com/watch?v=${videoId}`, {
-        waitUntil: 'domcontentloaded',
-    });
-    await page.waitForTimeout(4000);
+    // starting a page at an offset (&t=) is the only way to play later parts: a seek past what is
+    // buffered never loads, and playback resets itself after about 45 s
+    await page.goto(
+        `https://www.youtube.com/watch?v=${videoId}${from > 0 ? `&t=${Math.floor(from)}s` : ''}`,
+        {
+            waitUntil: 'domcontentloaded',
+        }
+    );
+    // hold the video still while the page settles, so the first seconds are not played unseen
+    await page.waitForSelector('video', { timeout: 20000 });
+    await page.evaluate(() => document.querySelector('video').pause());
+    await page.waitForTimeout(3000);
     for (const sel of ['button:has-text("Accept all")', 'button:has-text("Reject all")']) {
         try {
             await page.click(sel, { timeout: 1000 });
@@ -55,11 +70,11 @@ async function capture(videoId, out, rate = 2, maxSeconds = Infinity) {
         ...NAMES.map((n) => ({ k: n, p: centre(n) })),
     ];
     const result = await page.evaluate(
-        async ({ positions, rate, maxSeconds }) => {
+        async ({ positions, rate, from, to }) => {
             const v = document.querySelector('video');
             v.muted = true;
             v.playbackRate = rate;
-            v.currentTime = 0;
+            if (from === 0) v.currentTime = 0;
             await new Promise((r) => setTimeout(r, 1500));
             const W = 960;
             const H = Math.round((W * v.videoHeight) / v.videoWidth);
@@ -104,7 +119,16 @@ async function capture(videoId, out, rate = 2, maxSeconds = Infinity) {
                 return -1;
             };
             await new Promise((resolve) => {
+                let lastFrame = Date.now();
+                // the player sometimes resets itself and the frames stop: give up on this stretch
+                const watchdog = setInterval(() => {
+                    if (Date.now() - lastFrame > 7000) {
+                        clearInterval(watchdog);
+                        resolve();
+                    }
+                }, 1000);
                 const step = (now, meta) => {
+                    lastFrame = Date.now();
                     g.drawImage(v, 0, 0, W, H);
                     const row = [];
                     for (const { p } of positions) {
@@ -125,8 +149,10 @@ async function capture(videoId, out, rate = 2, maxSeconds = Infinity) {
                     frames.push([Math.round(meta.mediaTime * 1000) / 1000, row]);
                     if (frames.length % 300 === 0)
                         console.log('frames', frames.length, 'at', meta.mediaTime);
-                    if (v.ended || meta.mediaTime > maxSeconds) resolve();
-                    else v.requestVideoFrameCallback(step);
+                    if (v.ended || meta.mediaTime > to) {
+                        clearInterval(watchdog);
+                        resolve();
+                    } else v.requestVideoFrameCallback(step);
                 };
                 v.addEventListener('ended', () => resolve(), { once: true });
                 v.requestVideoFrameCallback(step);
@@ -134,18 +160,50 @@ async function capture(videoId, out, rate = 2, maxSeconds = Infinity) {
             });
             return { R, W, H, frames, duration: v.duration };
         },
-        { positions, rate, maxSeconds: Number.isFinite(maxSeconds) ? maxSeconds : 1e9 }
+        { positions, rate, from, to }
     );
     await browser.close();
-    fs.writeFileSync(out, JSON.stringify({ videoId, keys: positions.map((p) => p.k), ...result }));
-    return result;
+    return { keys: positions.map((p) => p.k), ...result };
+}
+
+const SEGMENT = 38; // seconds of video per page
+
+async function capture(videoId, out, rate = 1, maxSeconds = Infinity) {
+    let all = null;
+    let from = 0;
+    let stalls = 0;
+    for (;;) {
+        const to = Math.min(from + SEGMENT + 1, maxSeconds);
+        let seg = null;
+        for (let attempt = 0; attempt < 3 && !seg; attempt++) {
+            try {
+                seg = await captureSegment(videoId, rate, from, to);
+            } catch (e) {
+                console.log(`  segment ${from}s failed (${e.message.split('\n')[0]}), retrying`);
+            }
+        }
+        if (!seg) throw new Error(`could not read ${videoId} at ${from}s`);
+        if (!all) all = { ...seg, frames: [] };
+        const last = all.frames.length ? all.frames[all.frames.length - 1][0] : -1;
+        const fresh = seg.frames.filter((f) => f[0] > last);
+        all.frames.push(...fresh);
+        all.duration = seg.duration;
+        const reached = all.frames.length ? all.frames[all.frames.length - 1][0] : from;
+        if (reached >= Math.min(seg.duration, maxSeconds) - 0.5) break;
+        // carry on from where the frames stopped (a stalled stretch restarts there)
+        stalls = fresh.length ? 0 : stalls + 1;
+        if (stalls >= 3) throw new Error(`stuck at ${reached.toFixed(0)}s of ${videoId}`);
+        from = fresh.length ? Math.max(0, reached - 9) : from;
+    }
+    fs.writeFileSync(out, JSON.stringify({ videoId, ...all }));
+    return all;
 }
 
 module.exports = { capture };
 
 if (require.main === module) {
     const [id, out, rate, max] = process.argv.slice(2);
-    capture(id, out, Number(rate) || 2, max ? Number(max) : Infinity)
+    capture(id, out, Number(rate) || 1, max ? Number(max) : Infinity)
         .then((r) =>
             console.log(`${id}: ${r.frames.length} frames, ring radius ${r.R}px of ${r.W}x${r.H}`)
         )

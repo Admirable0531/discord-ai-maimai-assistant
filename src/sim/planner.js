@@ -153,12 +153,18 @@ function plan(notes, style, random) {
             ? style.habit
             : (() => {
                   const x = random.next();
-                  return x < 0.4 ? 'free' : x < 0.7 ? 'side' : 'role';
+                  return x < 0.2 ? 'free' : x < 0.95 ? 'side' : 'role';
               })();
     const slideSide = random.next() < 0.5 ? 0 : 1;
+    // most players hold with the same (usually right) hand
+    const dominant = random.next() < (style.rightHanded ?? 0.85) ? 1 : 0;
     // which hand tapped each star, so the slide can be given to the other hand when that is the sensible thing
     const starHand = new Map();
     const wantedSide = (a) => {
+        if (!a.slide && a.end - a.t > 0.2 && habit !== 'role') {
+            if (habit === 'side' && Math.abs(a.pos[0]) > 0.4) return a.pos[0] < 0 ? 0 : 1;
+            return dominant;
+        }
         if (habit === 'role') return a.slide || a.end - a.t > 0.2 ? slideSide : 1 - slideSide;
         if (habit === 'side') return a.pos[0] < -0.15 ? 0 : a.pos[0] > 0.15 ? 1 : null;
         return null;
@@ -223,12 +229,14 @@ function plan(notes, style, random) {
             // and near enough), otherwise the same hand carries on. `handoff` is how readily a player
             // prefers the swap when it is close.
             let forced = null;
-            if (a.slide) {
+            if (a.slide && habit !== 'role') {
                 const prev = starHand.get(`${a.note.head}@${Math.round(a.note.t * 1000)}`);
                 if (prev !== undefined) {
                     const same = loadIfSlidesBy(prev, a, i);
-                    const swap = loadIfSlidesBy(1 - prev, a, i) - (style.handoff ?? 0.3) * 0.12;
-                    forced = swap < same ? 1 - prev : prev;
+                    const swap = loadIfSlidesBy(1 - prev, a, i);
+                    // clearly better one way or the other decides; when it is close the player's habit does
+                    if (Math.abs(swap - same) > 0.03) forced = swap < same ? 1 - prev : prev;
+                    else forced = random.next() < (style.handoff ?? 0.15) ? 1 - prev : prev;
                 }
             }
             const wanted = forced !== null ? forced : wantedSide(a);
@@ -391,6 +399,8 @@ function plan(notes, style, random) {
                 f.screen = !style.lift;
                 f.lastScreenEnd = pts[pts.length - 1].t;
                 f.freeAt = Math.max(a.end + jitter, pts[pts.length - 1].t);
+                // a hand that is sliding has no finger left for anything else
+                if (a.slide) for (const g of h.fingers) g.freeAt = Math.max(g.freeAt, f.freeAt);
             } else {
                 strokes.push({
                     hand: h.side,
