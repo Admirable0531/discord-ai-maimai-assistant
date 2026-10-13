@@ -186,7 +186,7 @@ test('the simulation report names the spots and the styles that cause them', () 
 
 test('hand habit: by side each hand keeps its half, by role one hand takes the slide and holds', () => {
     const chart = buildChart('(120){4}7,3,7,3,1-5[2:1],,,,E');
-    const base = { ...STYLES.fingerPad, posSigma: 0, timeSigma: 0, habit: 'side' };
+    const base = { ...STYLES.fingerPad, posSigma: 0, timeSigma: 0, habit: 'side', policy: 'rules' };
     const side = simulate(chart.events, base, 1).strokes.filter((s) => s.role !== 'transit');
     // lane 7 is on the left of the screen, lane 3 on the right
     const handOf = (lane) =>
@@ -208,6 +208,7 @@ test('hand-off: with handoff 1 the slide is set off by the other hand than the o
         timeSigma: 0,
         handoff: 1,
         habit: 'free',
+        policy: 'rules',
     };
     const strokes = simulate(chart.events, style, 3).strokes.filter((s) => s.role !== 'transit');
     const star = strokes.find((s) => s.role === 'press');
@@ -232,6 +233,7 @@ test('hand-off is only used when it is sensible: not while the other hand is bus
         timeSigma: 0,
         handoff: 1,
         habit: 'free',
+        policy: 'rules',
     };
     for (const seed of [1, 2, 3, 4]) {
         const strokes = simulate(chart.events, style, seed).strokes.filter(
@@ -241,4 +243,18 @@ test('hand-off is only used when it is sensible: not while the other hand is bus
         const slide = strokes.find((s) => s.role === 'slide');
         assert.equal(star.hand, slide.hand);
     }
+});
+
+test('the learned hand choice puts left-side notes on the left hand and right-side notes on the right', () => {
+    const chart = buildChart('(120){4}7,3,7,3,6,2,6,2,E');
+    const strokes = simulate(
+        chart.events,
+        { ...STYLES.expert, posSigma: 0, timeSigma: 0 },
+        1
+    ).strokes.filter((s) => s.role !== 'transit');
+    const left = [6, 7];
+    const ok = strokes.filter((s) =>
+        left.includes(chart.events[s.id].lane) ? s.hand === 0 : s.hand === 1
+    ).length;
+    assert.ok(ok >= strokes.length - 1, `${ok} of ${strokes.length} on the expected side`);
 });

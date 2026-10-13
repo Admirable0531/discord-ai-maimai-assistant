@@ -31,7 +31,7 @@ function simulate(events, style, seed = 1, { frames = false, record = false } = 
     const notes = judgeNotes(events);
     const random = rng(seed);
     // a steady lean early or late for this run, on top of each press' own jitter
-    const { strokes, late, habit } = plan(notes, style, random);
+    const { strokes, late, habit } = plan(notes, style, random, events);
     const judge = new Judge(notes, { touchButtons: style.touchButtons });
     const byStart = [...strokes].sort((a, b) => a.t0 - b.t0);
     let nextStroke = 0;

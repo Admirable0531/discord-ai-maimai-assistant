@@ -2,6 +2,16 @@
 // Two hands. Each note is given to the hand that can get there in time, and
 // what the hand does in between depends on the style (lifted, or dragging).
 const { INDEX, centre, buttonPosition } = require('./sensors');
+const { featurize, newState, apply } = require('./handFeatures');
+const { predictForest } = require('./ml');
+
+// Which hand takes a note, learned from the L. R. breakdown videos (scripts/lr/train.js).
+let MODEL = null;
+try {
+    MODEL = require('./handModel.json');
+} catch {
+    MODEL = null; // no model trained yet: the rule-based habits are used
+}
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -126,7 +136,9 @@ function actionsOf(notes, style) {
  * `notes` are judge notes; returns {strokes, late} where `late` lists notes the
  * hands could not reach in time (a chart that wants more hands than two).
  */
-function plan(notes, style, random) {
+function plan(notes, style, random, events = null) {
+    const learned = !!(MODEL && events && style.policy !== 'rules');
+    const hs = newState(); // what a human would see: each hand's last notes, as the learned model expects
     const actions = actionsOf(notes, style);
     // two hands, each with a few fingers. A finger can reach anything close to where
     // its hand rests with a quick twitch; reaching further means moving the whole hand.
@@ -239,6 +251,20 @@ function plan(notes, style, random) {
                     else forced = random.next() < (style.handoff ?? 0.15) ? 1 - prev : prev;
                 }
             }
+            // the learned way: ask the model which hand a person would use here
+            let learnedSide = null;
+            let evt = null;
+            if (learned) {
+                evt = events[a.note.id];
+                const groupEvents = group.map((g) => events[g.note.id]);
+                const p = predictForest(
+                    MODEL.forest,
+                    featurize(evt, hs, groupEvents),
+                    MODEL.features
+                );
+                learnedSide = p > 0.5 ? 1 : 0;
+                forced = learnedSide;
+            }
             const wanted = forced !== null ? forced : wantedSide(a);
             const preferSide =
                 wanted !== null ? wanted : group.length > 1 ? (k < group.length / 2 ? 0 : 1) : null;
@@ -252,7 +278,11 @@ function plan(notes, style, random) {
                 if (pref.length) list = pref;
             }
             let pick;
-            if (list.length) {
+            if (learnedSide !== null && style.followModel) {
+                // trust the learned choice of hand even when the hand looks late: a person manages
+                const own = candidates(a).filter((c) => c.h.side === learnedSide);
+                pick = own.reduce((best, c) => (c.s > best.s ? c : best));
+            } else if (list.length) {
                 // the nearest finger, but one that has only just let go gets a rest (a jack alternates)
                 const score = (c) =>
                     dist(c.f.pos, a.pos) +
@@ -265,6 +295,7 @@ function plan(notes, style, random) {
                 pick = candidates(a).reduce((best, c) => (c.s > best.s ? c : best));
             }
             const { h, f } = pick;
+            if (learned && evt) apply(hs, evt, h.side);
             let t0 = a.t;
             if (pick.s < 0 && Number.isFinite(pick.s)) {
                 if (-pick.s > 0.06) late.push({ id: a.note.id, by: -pick.s });
@@ -400,7 +431,15 @@ function plan(notes, style, random) {
                 f.lastScreenEnd = pts[pts.length - 1].t;
                 f.freeAt = Math.max(a.end + jitter, pts[pts.length - 1].t);
                 // a hand that is sliding has no finger left for anything else
-                if (a.slide) for (const g of h.fingers) g.freeAt = Math.max(g.freeAt, f.freeAt);
+                if (a.slide) {
+                    // (`slideFree` fingers of the sliding hand can still tap: videos show 15% of taps
+                    // during a slide come from the slide's own hand)
+                    const others = h.fingers
+                        .filter((g) => g !== f)
+                        .sort((x, y) => x.freeAt - y.freeAt);
+                    for (const g of others.slice(Math.min(style.slideFree ?? 0, others.length)))
+                        g.freeAt = Math.max(g.freeAt, f.freeAt);
+                }
             } else {
                 strokes.push({
                     hand: h.side,

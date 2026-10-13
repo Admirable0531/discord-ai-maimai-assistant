@@ -1481,7 +1481,8 @@ const CUSTOM_FIELDS = [
     ['overshoot', 'Overshoot past a slide end or touch', 0, 0.4, 0.005, 0.03],
     ['wander', 'Slide drifts off its path', 0, 0.4, 0.005, 0.04],
     ['endSigma', 'Slide lands off its end', 0, 0.3, 0.005, 0.04],
-    ['handoff', 'Other hand slides after the star tap', 0, 1, 0.05, 0.3],
+    ['handoff', 'Hand-off tie-break (rule habits only)', 0, 1, 0.05, 0.15],
+    ['slideFree', 'Fingers free while a hand slides', 0, 4, 1, 1],
     ['onCells', 'Overlap to trigger a sensor', 1, 40, 1, 6],
 ];
 function simCustomUI() {
@@ -1503,6 +1504,7 @@ function simCustomUI() {
             .join('') +
         '</select></div>' +
         '<div class="sw"><label>Taps with</label><select id="cumode"><option value="screen">the screen</option><option value="button">the buttons</option></select></div>' +
+        '<div class="sw"><label>Which hand takes a note</label><select id="cupolicy"><option value="learned">learned from real players</option><option value="rules">rule-based habit (below)</option></select></div>' +
         '<div class="sw"><label>Hands share the work</label><select id="cuhabit"><option value="mixed">varies from run to run</option><option value="free">nearest finger (hands cross freely)</option><option value="side">each hand its own side</option><option value="role">one hand slides and holds, the other taps</option></select></div>' +
         '<div class="ck"><input type="checkbox" id="cubtn"> <label for="cubtn">Touch notes on A sensors with the buttons</label></div>' +
         '<div class="ck"><input type="checkbox" id="culift" checked> <label for="culift">Lift fingers between notes</label></div>' +

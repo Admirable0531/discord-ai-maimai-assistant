@@ -150,4 +150,18 @@ function ridge(X, y, names, lambda = 1) {
     };
 }
 
-module.exports = { random, fitTree, treeRules, predict, ridge };
+/** A bag of trees on bootstrap samples: the mean of their probabilities is smoother than one tree's. */
+function fitForest(rows, { trees = 15, seed = 7, ...options }) {
+    const r = random(seed);
+    const out = [];
+    for (let i = 0; i < trees; i++) {
+        const sample = [];
+        for (let k = 0; k < rows.length; k++) sample.push(rows[Math.floor(r.next() * rows.length)]);
+        out.push(fitTree(sample, options).tree);
+    }
+    return out;
+}
+const predictForest = (forest, x, features) =>
+    forest.reduce((a, t) => a + predict(t, x, features), 0) / forest.length;
+
+module.exports = { random, fitTree, treeRules, predict, ridge, fitForest, predictForest };

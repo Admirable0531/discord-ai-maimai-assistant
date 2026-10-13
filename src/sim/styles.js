@@ -26,6 +26,8 @@ const BASE = {
     wander: 0, // ring radii a slide's finger drifts sideways off the drawn path
     endSigma: 0, // ring radii a slide's last point lands off the end sensor
     overshoot: 0, // ring radii a finger runs past a slide's end or a touch it arrives at
+    slideFree: 1, // fingers of a sliding hand that can still tap meanwhile
+    policy: 'learned', // which hand takes a note: 'learned' from real players' L. R. breakdowns, or 'rules' (the habits below)
     rightHanded: 0.85, // chance a player holds notes with the right hand
     handoff: 0.15, // when it makes no difference, how often a player sets a slide off with the other hand than the one that tapped its star
     habit: 'mixed', // how the hands share the work: mixed (varies by run), free, side, role
@@ -137,6 +139,8 @@ const WANDER = {
     expert: 0.025,
     top: 0.015,
 };
+// fingers of a sliding hand free to tap: fitted so the hand choices in the L. R. breakdown videos are reachable
+const SLIDE_FREE = { beginner: 0, casual: 0, intermediate: 1, advanced: 1, expert: 1, top: 2 };
 const OVERSHOOT = {
     beginner: 0.15,
     casual: 0.1,
@@ -149,9 +153,9 @@ const SKILL = [
     ['beginner', 'Beginner', 0.06, 0.04, 0.07, 2, 0.8, 6, 0.13, false],
     ['casual', 'Casual player', 0.045, 0.03, 0.055, 2, 1.0, 8, 0.12, false],
     ['intermediate', 'Intermediate player', 0.03, 0.02, 0.045, 3, 1.3, 10, 0.1, true],
-    ['advanced', 'Advanced player', 0.02, 0.012, 0.035, 3, 1.5, 12, 0.09, true],
-    ['expert', 'Expert player', 0.013, 0.006, 0.03, 4, 1.6, 14, 0.09, true],
-    ['top', 'Top player', 0.009, 0.003, 0.025, 4, 1.8, 16, 0.08, true],
+    ['advanced', 'Advanced player', 0.02, 0.012, 0.035, 4, 1.7, 16, 0.09, true],
+    ['expert', 'Expert player', 0.013, 0.006, 0.03, 5, 2.0, 20, 0.09, true],
+    ['top', 'Top player', 0.009, 0.003, 0.025, 5, 2.2, 25, 0.08, true],
 ];
 for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foot, lift] of SKILL) {
     STYLES[id] = {
@@ -175,6 +179,7 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         speed,
         overshoot: OVERSHOOT[id],
         wander: WANDER[id],
+        slideFree: SLIDE_FREE[id],
         endSigma: WANDER[id],
     };
 }
@@ -191,6 +196,7 @@ const LIMITS = {
     wander: [0, 0.4],
     endSigma: [0, 0.3],
     handoff: [0, 1],
+    slideFree: [0, 4],
     speed: [4, 30],
     fingers: [1, 5],
     reach: [0.3, 2.5],
@@ -210,6 +216,7 @@ function cleanCustom(input) {
     for (const key of FLAGS) if (typeof input[key] === 'boolean') out[key] = input[key];
     if (input.tapMode === 'button' || input.tapMode === 'screen') out.tapMode = input.tapMode;
     if (['mixed', 'free', 'side', 'role'].includes(input.habit)) out.habit = input.habit;
+    if (['learned', 'rules'].includes(input.policy)) out.policy = input.policy;
     return out;
 }
 
