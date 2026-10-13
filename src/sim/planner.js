@@ -1,7 +1,7 @@
 // Turns a chart into hand movements: who touches what, where and when.
 // Two hands. Each note is given to the hand that can get there in time, and
 // what the hand does in between depends on the style (lifted, or dragging).
-const { INDEX, centre, buttonPosition } = require('./sensors');
+const { INDEX, centre, buttonPosition, cover, sensorAt } = require('./sensors');
 const { featurize, newState, apply } = require('./handFeatures');
 const { predictForest } = require('./ml');
 
@@ -235,6 +235,51 @@ function plan(notes, style, random, events = null) {
         }
         return late;
     };
+
+    // Which contact a screen hand uses, reasoned like a player would. A touch (or a chain of
+    // them close together) can take the whole palm, which covers the neighbours at once and
+    // forgives aim, as long as the palm would not also press a button's sensor that some tap,
+    // hold or slide end is about to need, and the hand is free. Otherwise it is fingertips.
+    // A slide goes with a bundle of two or three fingers (forgiving) when nothing else is
+    // played near its path meanwhile, and a single precise fingertip when there is.
+    const counts = new Int32Array(34);
+    const contactFor = (a, h, from, to) => {
+        const near = actions.slice(Math.max(0, from - 40), Math.min(actions.length, to + 40));
+        const presses = []; // [time, sensor] a stray contact must not switch on
+        const touches = [];
+        for (const x of near) {
+            if (x === a) continue;
+            const n = x.note;
+            if (n.kind === 'touch' || n.kind === 'touchHold') touches.push(x);
+            else if (x.slide) {
+                const last = x.points[x.points.length - 1];
+                presses.push([x.end, sensorAt(last.x, last.y)]);
+            } else presses.push([x.t, INDEX[`A${n.lane}`]]);
+        }
+        // a careful player keeps clear of any sensor that is about to be needed, even by a hair
+        const clash = (r, pts, t0, t1) =>
+            pts.some((p) => {
+                counts.fill(0);
+                cover(p[0], p[1], r, counts);
+                return presses.some(([t, idx]) => t >= t0 && t <= t1 && counts[idx] > 0);
+            });
+        if (a.slide) {
+            if (a.note.tracks.length === 3) return a.foot;
+            const path = a.points.map((q) => [q.x, q.y]);
+            const t0 = a.t + 0.05; // the star's own tap comes before
+            const wide = Math.max(a.foot, style.slideWide ?? a.foot);
+            return clash(wide, path, t0, a.end + 0.1) ? a.foot : wide;
+        }
+        const palm = style.palmFoot ?? a.foot;
+        const chained = touches.some(
+            (x) =>
+                Math.abs(x.t - a.t) < 0.3 &&
+                Math.hypot(x.pos[0] - a.pos[0], x.pos[1] - a.pos[1]) < 2 * palm + 0.1
+        );
+        const free = h.fingers.every((f) => f.freeAt <= a.t + 0.01);
+        if (!chained || !free || clash(palm, [a.pos], a.t - 0.2, a.end + 0.3)) return a.foot;
+        return palm;
+    };
     const candidates = (a) => {
         const list = [];
         for (const h of hands) for (const f of h.fingers) list.push({ h, f, s: slack(h, f, a) });
@@ -344,6 +389,7 @@ function plan(notes, style, random, events = null) {
                 pick = candidates(a).reduce((best, c) => (c.s > best.s ? c : best));
             }
             const { h, f } = pick;
+            if (style.contact === 'smart' && a.mode === 'screen') a.foot = contactFor(a, h, i, j);
             if (learned && evt) apply(hs, evt, h.side);
             if (isTouch(a)) lastTouch = { side: h.side, t: a.t, pos: a.pos };
             if (isTouch(a) && touchSide === null) {
@@ -478,6 +524,13 @@ function plan(notes, style, random, events = null) {
                     t1: pts[pts.length - 1].t,
                     pts,
                     r: a.foot,
+                    contact: a.slide
+                        ? a.foot > style.slideFoot + 0.005
+                            ? 'bundle'
+                            : 'fingers'
+                        : a.foot >= (style.palmFoot ?? 9)
+                          ? 'palm'
+                          : 'fingers',
                     target: a.sIdx,
                 });
                 f.pos = [pts[pts.length - 1].x, pts[pts.length - 1].y];

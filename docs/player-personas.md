@@ -39,3 +39,20 @@ The share of two same-lane taps that are not both Perfect, at gaps from 60 to 25
 - Slide-start-lane taps (A16): tell the player to release the star's sensor quickly or to set the slide off from the button side; looser players get it wrong more often, so the tip should not assume precision.
 - Tell palm and two-finger players that dense passages are about reach first: the simulation says they cannot reach them rather than splash them.
 - Rhythm accuracy, not splash, decides most of the score for a loose player; the finding text about splash should not be mistaken for that.
+
+## Choosing the contact like a player (style option `contact: 'smart'`)
+
+Intermediate players and up (not beginners or casual players, who keep fingers) pick the contact per note by reasoning,
+not by a fixed size:
+
+- **Palm on touches** when other touches are within 0.3 s and close enough for one palm (about 2 palm radii) to cover them, the
+  hand is completely free (no hold or slide running), and the palm would not also switch on any button sensor that a tap, hold
+  or slide end needs from 0.2 s before to 0.3 s after (checked with the real sensor shapes; a careful player avoids even a
+  slight overlap). Otherwise fingertips.
+- **Bundle of two or three fingers on slides** (radius 0.13) when nothing else is played on a button sensor near the path while the slide runs;
+  a single precise fingertip when something is.
+- A lone touch with nothing near it is just a fingertip.
+
+In the simulation (10 runs each, two charts, expert and intermediate) this changes grades by at most 0.2 points and adds no
+splashes except 2 extra in one intermediate run, and the stroke data carries `contact: palm | bundle | fingers`.
+Remaining guesses: palm radius 0.2, bundle 0.13, the 0.3 s chain window.

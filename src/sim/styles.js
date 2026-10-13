@@ -34,6 +34,9 @@ const BASE = {
     crossCost: 0.9, // how much a hand dislikes taking a note on the other side or of the other role
     pressLen: 0.05,
     dragSpeed: 3, // ring radii per second for a finger swiping over the glass
+    contact: 'fixed', // 'smart': palm on touches that are close together when safe, a bundle of fingers on slides with room, fingertips when precision matters
+    palmFoot: 0.2, // contact radius of a palm
+    slideWide: 0.13, // contact radius of two or three fingers together
     liftBefore: 0.12, // s: a dragging finger leaves the glass this long before its next press
 };
 
@@ -180,6 +183,7 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         overshoot: OVERSHOOT[id],
         wander: WANDER[id],
         slideFree: SLIDE_FREE[id],
+        contact: id === 'beginner' || id === 'casual' ? 'fixed' : 'smart',
         endSigma: WANDER[id],
     };
 }
@@ -201,6 +205,8 @@ const LIMITS = {
     fingers: [1, 5],
     reach: [0.3, 2.5],
     onCells: [1, 40],
+    palmFoot: [0.1, 0.4],
+    slideWide: [0.05, 0.3],
 };
 const FLAGS = ['touchButtons', 'lift'];
 
@@ -216,6 +222,7 @@ function cleanCustom(input) {
     for (const key of FLAGS) if (typeof input[key] === 'boolean') out[key] = input[key];
     if (input.tapMode === 'button' || input.tapMode === 'screen') out.tapMode = input.tapMode;
     if (['mixed', 'free', 'side', 'role'].includes(input.habit)) out.habit = input.habit;
+    if (input.contact === 'smart' || input.contact === 'fixed') out.contact = input.contact;
     if (['logic', 'learned', 'rules'].includes(input.policy)) out.policy = input.policy;
     return out;
 }

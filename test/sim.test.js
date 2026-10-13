@@ -258,3 +258,16 @@ test('the learned hand choice puts left-side notes on the left hand and right-si
     ).length;
     assert.ok(ok >= strokes.length - 1, `${ok} of ${strokes.length} on the expected side`);
 });
+
+test('smart contact: a touch chain in open space takes the palm, but fingertips when a tap is about to need a nearby button sensor', () => {
+    const contacts = (text) => {
+        const chart = buildChart(text);
+        const style = { ...STYLES.expert, posSigma: 0, timeSigma: 0, contact: 'smart' };
+        return simulate(chart.events, style, 1)
+            .strokes.filter((s) => s.role !== 'transit' && s.contact)
+            .map((s) => s.contact);
+    };
+    assert.equal(contacts('(120){16}B1,B2,,,,,,,,E')[0], 'palm');
+    // E1 is beside the button 1 sensor, and a tap on 1 follows
+    assert.equal(contacts('(120){16}E1,B1,1,,,,,,,E')[0], 'fingers');
+});
