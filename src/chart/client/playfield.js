@@ -1484,6 +1484,10 @@ const CUSTOM_FIELDS = [
     ['handoff', 'Hand-off tie-break (rule habits only)', 0, 1, 0.05, 0.15],
     ['slideFree', 'Fingers free while a hand slides', 0, 4, 1, 1],
     ['onCells', 'Overlap to trigger a sensor', 1, 40, 1, 6],
+    ['palmFoot', 'Palm contact size (smart contact)', 0.1, 0.4, 0.01, 0.2],
+    ['slideWide', 'Finger bundle size on slides (smart contact)', 0.05, 0.3, 0.01, 0.13],
+    ['lapse', 'Chance of a plain 55-105 ms slip, per note', 0, 0.05, 0.001, 0],
+    ['stressNoise', 'Extra timing noise in crowded music', 0, 4, 0.1, 0],
 ];
 function simCustomUI() {
     const box = $('simcustomui');
@@ -1508,6 +1512,8 @@ function simCustomUI() {
         '<div class="sw"><label>Hands share the work</label><select id="cuhabit"><option value="mixed">varies from run to run</option><option value="free">nearest finger (hands cross freely)</option><option value="side">each hand its own side</option><option value="role">one hand slides and holds, the other taps</option></select></div>' +
         '<div class="ck"><input type="checkbox" id="cubtn"> <label for="cubtn">Touch notes on A sensors with the buttons</label></div>' +
         '<div class="ck"><input type="checkbox" id="culift" checked> <label for="culift">Lift fingers between notes</label></div>' +
+        '<div class="ck"><input type="checkbox" id="cuaware"> <label for="cuaware">Waits to set a slide off until a tap on its start lane is done</label></div>' +
+        '<div class="ck"><input type="checkbox" id="cusmart"> <label for="cusmart">Smart contact: palm on close touches, finger bundle on slides, fingertip where it matters</label></div>' +
         CUSTOM_FIELDS.map(
             (f) =>
                 '<div class="sw"><label>' +
@@ -1543,6 +1549,8 @@ function simCustomUI() {
         $('cumode').value = p.tapMode || 'screen';
         $('cubtn').checked = !!p.touchButtons;
         $('culift').checked = p.lift !== false;
+        $('cuaware').checked = !!p.slideAware;
+        $('cusmart').checked = p.contact === 'smart';
         $('cuson').checked = true;
     };
 }
@@ -1552,6 +1560,8 @@ function customStyleBody() {
         tapMode: $('cumode').value,
         touchButtons: $('cubtn').checked,
         lift: $('culift').checked,
+        slideAware: $('cuaware').checked,
+        contact: $('cusmart').checked ? 'smart' : 'fixed',
     };
     CUSTOM_FIELDS.forEach((f) => (custom[f[0]] = +$('cu_' + f[0]).value));
     return { custom, base: $('cubase').value };
