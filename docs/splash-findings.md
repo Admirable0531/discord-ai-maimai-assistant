@@ -14,6 +14,8 @@ Experiments run with `src/sim` (virtual hands, the game's judging copied from fa
 9. **Neighbouring-button streams do not splash** (stairs, trills at 6 to 20 notes a second, every style). They stop being playable at about 20 a second because of finger speed, not splash. A9 is now informational.
 10. **Jacks at about 10 a second** (the same button 100 ms apart): a press that is a little late gets taken by the earlier note and the next note then has no press. 25% in the model. B5's threshold moved from 12 to 9 a second.
 11. **A hold is not broken by a touch beside it**, for any contact size tried (0 to 0.2). A2 is informational.
+13. **Skilled players do not suffer finding 7.** In 21 SSS external-output runs, taps on a slide's start lane shortly after the slide set off got a Great 1 time in 373 (0.27%), like any other tap. Players hold the slide back until that tap is done (the slide's timing is generous). The simulation does the same for intermediate players and up (`slideAware`); beginners and casual players still get the 100% of finding 7 (see docs/external-output-notes.md).
+14. **Slide judging was off.** The game judges a slide `length x c` before its end, with `c` per shape, and a Perfect window that grows by a quarter of that, not a quarter of the whole length (docs/judge-facts.md). The simulator now does the same; a wifi slide is played with three fingers.
 12. **Real charts:** across 12 charts rated 14+ the simulation's splash spots were dominated by (a) a tap on the same lane exactly as a slide starts, (b) jacks around 100 ms, (c) a few slide-route clips with palms. Touch-related splashes were rare.
 
 ## Other things found along the way
