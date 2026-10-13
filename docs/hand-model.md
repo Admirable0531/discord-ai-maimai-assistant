@@ -62,3 +62,15 @@ Searches (English, Japanese, Chinese) found only **one** other hand-coloured L. 
 So the logic holds up: the same level as on the held-out KT videos (84 to 88%, and 81.5% / 84.4% when playing itself), and clearly above the simple rule. The shares of crossing (24% against 21%), hand-off (26% against 22%), simultaneous splits (94% against 90%) and alternation (58.5% against 54%) are close to the training videos too.
 
 One habit did not carry over: this player holds with the **left** hand 48% of the time, against 20% in KT's videos. The "holds go to the right hand" tendency in the model is KT's habit, not a rule of the game, which is why the hold rule is the weakest part.
+
+## Two things the model got wrong (user feedback), now rules on top of it
+
+Counted in the 21 videos (sure colours only): two buttons at the same moment ("yellow doubles") are
+played by different hands 2,643 of 2,722 times (97%); touches at the same moment are one hand's 63 of 70 times
+for pairs and 17 of 19 for triples (fingers or a palm); only big groups (6+) are split.
+
+The planner now splits a button pair by whichever assignment fits the learned preference best (left note to the
+left hand unless that is clearly worse; skipped when a hand has no free finger), and the touches of a group
+follow the hand that took the first one while they are within reach. In simulation: button pairs split 99.7%
+(was 94.6%), touch pairs on one hand 88% (was 43%); hand agreement with the humans 81.0% overall (unchanged).
+Not modelled yet: one single wide palm contact covering several touch sensors (each touch still gets its own finger/stroke of the same hand).

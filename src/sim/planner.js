@@ -244,7 +244,32 @@ function plan(notes, style, random, events = null) {
         let j = i + 1;
         while (j < actions.length && Math.abs(actions[j].t - actions[i].t) < 0.002) j++;
         const group = actions.slice(i, j).sort((a, b) => a.pos[0] - b.pos[0]);
-        // simultaneous notes: left ones to the left hand
+        // Simultaneous notes. Two buttons (a yellow double) nearly always take one hand each: the
+        // pair is split by the choice that fits the learned preference best, left note to the
+        // left hand unless that is clearly worse. Touches that are close together are one hand's
+        // (fingers or a palm), so after the first the rest follow it while they are in reach.
+        const isTouch = (x) => x.note.kind === 'touch' || x.note.kind === 'touchHold';
+        const btns = group.filter((x) => !x.slide && !isTouch(x));
+        let pairSides = null;
+        if (
+            btns.length === 2 &&
+            hands.every((h) => h.fingers.some((f) => f.freeAt <= group[0].t + 0.001))
+        ) {
+            pairSides = [0, 1];
+            if (learned) {
+                const gEv = group.map((g) => events[g.note.id]);
+                const p = btns.map((b) =>
+                    predictForest(
+                        MODEL.forest,
+                        featurize(events[b.note.id], hs, gEv),
+                        MODEL.features
+                    )
+                );
+                if (p[0] + (1 - p[1]) > 1 - p[0] + p[1]) pairSides = [1, 0];
+            }
+        }
+        let touchSide = null;
+        let touchPos = null;
         group.forEach((a, k) => {
             // a slide whose star was tapped just before: hand it to the other hand when that
             // leaves less lateness overall (the hand that tapped is still needed, the other is free
@@ -272,6 +297,14 @@ function plan(notes, style, random, events = null) {
                 const p = predictForest(MODEL.forest, feat, MODEL.features);
                 learnedSide = p > 0.5 ? 1 : 0;
                 forced = learnedSide;
+            }
+            let groupSide = null;
+            if (!a.slide && pairSides && !isTouch(a)) groupSide = pairSides[btns.indexOf(a)];
+            else if (isTouch(a) && touchSide !== null && dist(touchPos, a.pos) <= style.reach * 1.5)
+                groupSide = touchSide;
+            if (groupSide !== null) {
+                forced = groupSide;
+                if (learnedSide !== null) learnedSide = groupSide;
             }
             const wanted = forced !== null ? forced : wantedSide(a);
             const preferSide =
@@ -304,6 +337,10 @@ function plan(notes, style, random, events = null) {
             }
             const { h, f } = pick;
             if (learned && evt) apply(hs, evt, h.side);
+            if (isTouch(a) && touchSide === null) {
+                touchSide = h.side;
+                touchPos = a.pos;
+            }
             let t0 = a.t;
             if (pick.s < 0 && Number.isFinite(pick.s)) {
                 if (-pick.s > 0.06) late.push({ id: a.note.id, by: -pick.s });
