@@ -45,7 +45,7 @@ async function main() {
             if (got.has(`L${e.lane}@${Math.round(e.time * 1000) / 1000}`)) real[bin][0]++;
         }
         for (let k = 0; k < 8; k++) {
-            const r = simulate(chart.events, STYLES.expert, 3 + k * 977);
+            const r = simulate(chart.events, STYLES[process.argv[2] || 'top'], 3 + k * 977);
             for (const n of r.notes) {
                 if (n.kind !== 'tap') continue;
                 const o = r.outcomes.get(n.id);

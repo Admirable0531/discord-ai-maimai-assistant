@@ -45,7 +45,8 @@ function rng(seed) {
 function slidePoints(note) {
     const track = note.tracks.length === 3 ? note.tracks[1] : note.tracks[0];
     const pts = track.map((alts) => centre(alts[0]));
-    const span = note.end - note.start;
+    // a player follows the star: the last sensor is reached when the slide is judged, a little before its end
+    const span = (note.judgeAt ?? note.end) - note.start;
     return pts.map((p, i) => ({
         t: note.start + (pts.length === 1 ? 0 : (i / (pts.length - 1)) * span),
         x: p[0],
@@ -145,7 +146,7 @@ function actionsOf(notes, style) {
             out.push({
                 note: n,
                 t: wait !== null ? wait - 0.01 : n.start - 0.04,
-                end: n.end + 0.05,
+                end: (n.judgeAt ?? n.end) + 0.05,
                 mode: 'screen',
                 slide: true,
                 points,

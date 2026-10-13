@@ -61,3 +61,9 @@ by crowd 0.18 / 0.30 / 0.48 / 1.09% (real 0.22 / 0.23 / 0.43 / 1.11%). Other lev
 Either the real touch window is narrower than assumed, or touch groups are graded differently. The judging code of MajdataPlay would settle it.
 
 Eight to 52 events is still a small sample; the fit only constrains one number per crowd bin.
+
+## What the other maimai repositories added (read as public code, October 2026)
+- **MajdataPlay** (the source of the judging facts): slides are judged `length x c` before their end with a Perfect extension of a quarter of that, not a quarter of the whole length. Fixed in the simulator (see `docs/judge-facts.md`). Touch windows and the group rule matched what the simulator already had, so the missing touch Greats are not a window problem; a likely reason is a finger resting on the sensor (no new edge), which the simulation does not do.
+- **MaiSense**: its sensor polygons are a rough 1000 x 1000 approximation (A as big corner-to-ring quadrilaterals, B and an octagon for C), no D/E. Not usable to check my shapes. Majdata's phone emulation uses an A half-width of 14.5 degrees and D of 8, close to what the simulator has (15 and 7.5).
+- **Sentakki** (osu! recreation): its own judging, no sensor model; nothing to use.
+After the slide fix the top simulated player's slides: Great 0.06% (real 0.16%), Good/Miss 1.0% (a real SSS run has almost none, so the simulated slide failures, from drift off the path, are too common).

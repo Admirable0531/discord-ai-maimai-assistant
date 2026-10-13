@@ -4,6 +4,7 @@
 // Grades: 0 perfect, 1 great, 2 good, 3 miss.
 const { INDEX, COUNT } = require('./sensors');
 const { slideTracks } = require('../chart/slidePaths');
+const { slideConst } = require('./slideConst');
 
 const FRAME = 1 / 60;
 const TAP_GOOD = 9 * FRAME; // 150 ms: the window of a tap, either side
@@ -17,8 +18,9 @@ const touchGrade = (d) => {
     if (d <= 12 * FRAME + 1e-9) return 0; // 9 frames early .. 12 late
     return d <= 15 * FRAME + 1e-9 ? 1 : 2;
 };
-function slideGrade(d, duration) {
-    const perfect = 14 * FRAME + Math.min((duration * 1000) / 4, 22 * FRAME * 1000) / 1000;
+// `stay` is the part of the slide's length after its last sensor step (length times the shape's constant)
+function slideGrade(d, stay) {
+    const perfect = 14 * FRAME + Math.min((stay * 1000) / 4, 22 * FRAME * 1000) / 1000;
     const a = Math.abs(d);
     return a <= perfect ? 0 : a <= 29 * FRAME ? 1 : 2;
 }
@@ -50,6 +52,9 @@ function judgeNotes(events) {
                 t: e.time,
                 start: e.start,
                 end: e.end,
+                // the slide is judged when its last sensor is reached, a share of its length before its end
+                stay: (e.end - e.start) * slideConst(e),
+                judgeAt: e.end - (e.end - e.start) * slideConst(e),
                 tracks,
                 head: e.head,
             });
@@ -226,11 +231,11 @@ class Judge {
             if (t >= s.n.start - 0.05) this.slideStep(s, sens);
             const finished = s.queues.every((q) => q.length === 0);
             if (finished) {
-                const d = t - s.n.end;
-                const grade = slideGrade(d, s.n.end - s.n.start);
+                const d = t - s.n.judgeAt;
+                const grade = slideGrade(d, s.n.stay);
                 this.record(s.n, grade, { diff: d, by: 'sens', owners: [] });
                 s.done = true;
-            } else if (t - s.n.end > 36 * FRAME) {
+            } else if (t - s.n.judgeAt > 36 * FRAME) {
                 this.record(s.n, 3, { diff: 36 * FRAME, by: null, owners: [] });
                 s.done = true;
             }
