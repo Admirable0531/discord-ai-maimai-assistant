@@ -28,3 +28,15 @@ the advanced style has 5% mean risk and the Greats are at the 39th percentile. S
 What it says: the Greats in these SSS runs are mostly LATE hits inside fast tap streams (a timing slip), not splash. The simulation's timing error is the same
 independent noise on every note, so it never produces them. Real timing errors cluster in dense or direction-changing streams and are
 biased late. That is the correlated timing model (errors depend on density and note pattern) to build next. Eight events is a very small sample.
+
+## Correlated timing: tried, not supported by the data
+
+Added optional timing structure to the planner (`timeDrift`: slow drift carried to the next notes; `stressNoise` / `stressLate`:
+more noise and a late shift in fast streams that change direction), all off by default.
+- With stress on, an expert style gets 25 to 45 Greats per chart instead of about 5, because stress covers a large share of notes in dense charts.
+  At the same time the real Greats' position in the simulation's risk ranking only moved from the 11th to about the 38th percentile.
+- None of the pattern features tried separates the 8 real Greats from the other 1,518 notes: gap before/after, distance from the previous note, change of
+  direction, local density, needed hand speed (their percentiles among taps are scattered around 0.5; two of them follow a long pause, which could be a cold start).
+- The count is fine already: the expert style gets about 5 Greats per run on these two charts; real SSS runs had 6 and 2.
+- The one pattern in the data is lateness: 5 of the 6 LiftOff Greats are tagged LATE.
+So the independent noise stays; more videos are needed (about 4 Greats per SSS run) before a pattern can be fitted.

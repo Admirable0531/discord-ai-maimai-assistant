@@ -167,6 +167,13 @@ function plan(notes, style, random, events = null) {
     const late = [];
     // a player who is always a bit early or late: one steady offset for the whole run
     const bias = random.gauss() * (style.timeBias || 0);
+    // Timing slips are not independent: a player who is a little late stays late for a moment (drift), and
+    // slips cluster in fast streams and where the direction of travel changes (stress). In two SSS external-output runs,
+    // most GREAT labels were late taps inside such streams.
+    let prevAction = null;
+    let prevAngle = null;
+    let drift = 0;
+    let stress = 0;
     // how this run's player shares the work between hands: free (the nearest finger),
     // by side (each hand keeps its own half), or by role (one hand slides and holds,
     // the other taps and touches)
@@ -316,6 +323,31 @@ function plan(notes, style, random, events = null) {
         }
         let touchSide = null;
         let touchPos = null;
+        if (prevAction) {
+            const gap = group[0].t - prevAction.t;
+            const dens = Math.min(1, Math.max(0, (0.3 - gap) / 0.2));
+            const dx = group[0].pos[0] - prevAction.pos[0];
+            const dy = group[0].pos[1] - prevAction.pos[1];
+            let turn = 0;
+            if (Math.hypot(dx, dy) > 0.05) {
+                const ang = Math.atan2(dy, dx);
+                if (prevAngle !== null) {
+                    const d = Math.abs(
+                        Math.atan2(Math.sin(ang - prevAngle), Math.cos(ang - prevAngle))
+                    );
+                    if (d > 1.0) turn = 1;
+                }
+                prevAngle = ang;
+            }
+            stress = dens * (1 + turn);
+            const rho = Math.exp(-Math.max(0, gap) / 0.8);
+            drift =
+                rho * drift +
+                Math.sqrt(1 - rho * rho) *
+                    random.gauss() *
+                    (style.timeDrift ?? 0) *
+                    style.timeSigma;
+        }
         group.forEach((a, k) => {
             // a slide whose star was tapped just before: hand it to the other hand when that
             // leaves less lateness overall (the hand that tapped is still needed, the other is free
@@ -406,7 +438,11 @@ function plan(notes, style, random, events = null) {
             }
             if (a.note.kind === 'tap')
                 starHand.set(`${a.note.lane}@${Math.round(a.note.t * 1000)}`, h.side);
-            const jitter = bias + random.gauss() * style.timeSigma;
+            const jitter =
+                bias +
+                drift +
+                (style.stressLate ?? 0) * style.timeSigma * stress +
+                random.gauss() * style.timeSigma * (1 + (style.stressNoise ?? 0) * stress);
             const ex = random.gauss() * style.posSigma;
             const ey = random.gauss() * style.posSigma;
             const dur = a.end - a.t;
@@ -564,6 +600,7 @@ function plan(notes, style, random, events = null) {
                 f.freeAt = a.end + jitter;
             }
         });
+        prevAction = group[group.length - 1];
         i = j;
     }
     return { strokes, late, habit, slideSide };

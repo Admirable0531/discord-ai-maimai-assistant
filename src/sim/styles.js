@@ -22,6 +22,9 @@ const BASE = {
     reach: 1.2, // a finger reaches this far from where its hand rests without moving the hand
     posSigma: 0.03,
     timeSigma: 0.012,
+    timeDrift: 0, // slow drift of the timing error, as a multiple of timeSigma (errors carry over to the next notes)
+    stressNoise: 0, // timing noise grows by this multiple of timeSigma in fast streams that change direction
+    stressLate: 0, // and runs this many timeSigma late there
     onCells: 6, // a contact turns a sensor ON when it covers this many cells of it (a cell is 0.025 ring radii square)
     wander: 0, // ring radii a slide's finger drifts sideways off the drawn path
     endSigma: 0, // ring radii a slide's last point lands off the end sensor
@@ -152,6 +155,10 @@ const OVERSHOOT = {
     expert: 0.015,
     top: 0.01,
 };
+// correlated timing options: off by default, the eight real Greats do not support any setting (docs/external-output-notes.md)
+const DRIFT = 0;
+const STRESS_NOISE = 0;
+const STRESS_LATE = 0;
 const SKILL = [
     ['beginner', 'Beginner', 0.06, 0.04, 0.07, 2, 0.8, 6, 0.13, false],
     ['casual', 'Casual player', 0.045, 0.03, 0.055, 2, 1.0, 8, 0.12, false],
@@ -176,6 +183,9 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         slideFoot: foot + 0.01,
         timeSigma,
         timeBias,
+        timeDrift: DRIFT,
+        stressNoise: STRESS_NOISE,
+        stressLate: STRESS_LATE,
         posSigma,
         fingers,
         reach,
@@ -196,6 +206,9 @@ const LIMITS = {
     posSigma: [0, 0.15],
     timeSigma: [0, 0.07],
     timeBias: [0, 0.06],
+    timeDrift: [0, 2],
+    stressNoise: [0, 4],
+    stressLate: [0, 3],
     overshoot: [0, 0.4],
     wander: [0, 0.4],
     endSigma: [0, 0.3],
