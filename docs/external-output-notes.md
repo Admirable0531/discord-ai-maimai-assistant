@@ -107,3 +107,9 @@ Taps on the same lane within 140 ms (jacks): 17 Greats in 2,654 (0.64%), while o
 The earlier simulation gave jacks 5.9%. Cause: crowd noise made consecutive jack presses overlap, and a button that is still held makes no new press. Fixes in `planner.js`: (1) 80% of the timing error is slow drift shared by neighbouring notes (a stream keeps its spacing), (2) crowd stress counts only 0.4 for a note on the same spot as the one before (`jackSteady`), (3) a short press lets go of its button or sensor before the next press of it.
 Result for the rank players (`calibrate2.js`, every real video simulated with its rank's player): overall Greats 1.23% (real 1.25%); by crowd 0.30 / 0.48 / 1.04 / 2.28% (real 0.32 / 0.43 / 1.17 / 2.14%); by distance 0.74 / 1.47 / 1.02 / 1.24% (real 0.77 / 1.54 / 1.16 / 1.09%); jack taps 1.8% (real 0.64%); by kind tap 1.43 (1.42), hold 0.81 (1.17), slide 0.31 (0.35), touch 0.32 (0.79).
 Unexplained: Greats on holds and touches are rarer in the simulation than in the runs, and triples (three or more at once) are rare in both.
+
+## Does the simulation find the places? (`validate2.js`)
+
+Each real video is simulated with its rank's player; every note gets the share of runs in which it was not Perfect, and the real Great notes are ranked among all notes of that chart by it (0.5 = chance, 1 = always at the top).
+With 24 runs per chart the estimate is too coarse (most notes tie at 0) and gives 0.51 to 0.53; with 200 runs on 12 videos it is 0.586 overall and 0.618 for taps. For comparison, crowding alone ranks the real Greats at an AUC of 0.67 (pooled over videos).
+So the simulated risk is about as good as a plain crowding count at saying where a real player slips, and most real Greats are close to random slips: a note that is hard in the simulation is only a little more likely to have been a real Great. Use the simulation's spots to see what can happen (which input hits which note), not to predict one player's mistakes.
