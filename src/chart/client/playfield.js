@@ -1433,15 +1433,13 @@ function handRest(hand, t) {
     const from = prev ? strokeXY(prev, prev[2]) : home;
     const to = next ? strokeXY(next, next[1]) : from;
     if (!next) return from;
-    // the hand sets off late enough to arrive on time: about 5 ring radii a second, never longer than the gap
+    // an idle hand moves towards its next note as soon as it is free, at about 2.5 ring radii a second (never longer than
+    // the gap), and waits over the note: nothing flies in at the last moment
     const dx = to[0] - from[0];
     const dy = to[1] - from[1];
-    const travel = Math.min(
-        next[1] - (prev ? prev[2] : next[1] - 1),
-        Math.max(0.06, Math.hypot(dx, dy) / R / 5)
-    );
-    const start = next[1] - travel;
-    const u = Math.min(1, Math.max(0, (t - start) / travel));
+    const free = prev ? prev[2] : next[1] - 1;
+    const travel = Math.min(next[1] - free, Math.max(0.25, Math.hypot(dx, dy) / R / 2.5));
+    const u = Math.min(1, Math.max(0, (t - free) / travel));
     const k = u * u * (3 - 2 * u);
     return [from[0] + dx * k, from[1] + dy * k];
 }

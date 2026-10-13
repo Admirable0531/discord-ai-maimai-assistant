@@ -187,6 +187,8 @@ function plan(notes, style, random, events = null) {
         anchor: [x, 0.7],
         side,
         longUntil: -9, // until when a hold, touch hold or slide keeps this hand busy
+        last: [x, 0.7], // where this hand last played
+        lastEnd: -9, // when it let go there
         fingers: Array.from({ length: style.fingers }, () => ({
             pos: [x, 0.7],
             freeAt: -10,
@@ -522,6 +524,24 @@ function plan(notes, style, random, events = null) {
                 forced = groupSide;
                 if (learnedSide !== null) learnedSide = groupSide;
             }
+            // a hand that would have to fly across the screen while the other hand is idle and much closer lets the other
+            // hand take a lone note (the learned choice and the habits do not see how far each hand is from it)
+            if (groupSide === null && forced !== null && !a.slide && !isLongAction(a)) {
+                const mine = hands[forced];
+                const other = hands[1 - forced];
+                const dm = dist(mine.last, a.pos);
+                const dn = dist(other.last, a.pos);
+                if (
+                    dm > 1.2 &&
+                    dn < 0.5 * dm &&
+                    other.longUntil <= a.t &&
+                    a.t - other.lastEnd > 0.1 &&
+                    candidates(a).some((c) => c.h === other && c.s >= 0)
+                ) {
+                    forced = 1 - forced;
+                    if (learnedSide !== null) learnedSide = forced;
+                }
+            }
             const wanted = forced !== null ? forced : wantedSide(a);
             const preferSide =
                 wanted !== null ? wanted : group.length > 1 ? (k < group.length / 2 ? 0 : 1) : null;
@@ -564,6 +584,10 @@ function plan(notes, style, random, events = null) {
             }
             const { h, f } = pick;
             if (isLongAction(a)) h.longUntil = Math.max(h.longUntil, a.end);
+            h.last = a.slide
+                ? [a.points[a.points.length - 1].x, a.points[a.points.length - 1].y]
+                : a.pos;
+            h.lastEnd = a.end;
             if (a.note.kind === 'tap' || a.note.kind === 'break') lastTapAct = a;
             if (style.contact === 'smart' && a.mode === 'screen') a.foot = contactFor(a, h, i, j);
             if (learned && evt) apply(hs, evt, h.side);
