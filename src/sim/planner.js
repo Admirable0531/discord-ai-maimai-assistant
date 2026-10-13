@@ -137,7 +137,7 @@ function actionsOf(notes, style) {
  * hands could not reach in time (a chart that wants more hands than two).
  */
 function plan(notes, style, random, events = null) {
-    const learned = !!(MODEL && events && style.policy !== 'rules');
+    const learned = !!((style.model || MODEL) && events && style.policy !== 'rules');
     const hs = newState(); // what a human would see: each hand's last notes, as the learned model expects
     const actions = actionsOf(notes, style);
     // two hands, each with a few fingers. A finger can reach anything close to where
@@ -257,11 +257,9 @@ function plan(notes, style, random, events = null) {
             if (learned) {
                 evt = events[a.note.id];
                 const groupEvents = group.map((g) => events[g.note.id]);
-                const p = predictForest(
-                    MODEL.forest,
-                    featurize(evt, hs, groupEvents),
-                    MODEL.features
-                );
+                const feat = featurize(evt, hs, groupEvents);
+                if (style.record) style.record.push({ id: a.note.id, x: feat });
+                const p = predictForest((style.model || MODEL).forest, feat, MODEL.features);
                 learnedSide = p > 0.5 ? 1 : 0;
                 forced = learnedSide;
             }
