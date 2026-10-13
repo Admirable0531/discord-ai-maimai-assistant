@@ -11,8 +11,11 @@ const { centre } = require('../../src/sim/sensors');
 
 const DIR = path.join(__dirname, '..', '..', 'data', 'ext');
 
-/** Label events of one class (index into a cell row: 1 yellow, 2 orange, 3 salmon pink): [{t, x, y, n}] in ring radii. */
-function labelEvents(cap, cls, minCount = 20) {
+/**
+ * GREAT label events in a label capture: salmon pink text (cell column 3) with a LATE (4) or FAST (5) tag
+ * next to it. Returns [{first, last, x, y, n, tag: 'late' | 'fast'}] with x, y in ring radii from the middle.
+ */
+function labelEvents(cap, minCount = 120, minTag = 10) {
     const events = [];
     let cur = null;
     for (const [t, row] of cap.frames) {
@@ -20,21 +23,39 @@ function labelEvents(cap, cls, minCount = 20) {
         let sx = 0;
         let sy = 0;
         for (const r of row) {
-            const c = r[cls];
+            const c = r[3];
             if (!c) continue;
             n += c;
             sx += c * ((r[0] % 100) * cap.CELL + cap.CELL / 2);
             sy += c * (Math.floor(r[0] / 100) * cap.CELL + cap.CELL / 2);
         }
-        if (n >= minCount) {
-            const p = { t, x: (sx / n - cap.cx) / cap.R, y: (sy / n - cap.cy) / cap.R, n };
-            if (cur && t - cur.last < 0.2) {
-                cur.last = t;
-                if (n > cur.n) Object.assign(cur, { x: p.x, y: p.y, n });
-            } else {
-                if (cur) events.push(cur);
-                cur = { ...p, first: t, last: t };
+        if (n < minCount) continue;
+        const px = sx / n;
+        const py = sy / n;
+        let late = 0;
+        let fast = 0;
+        for (const r of row) {
+            const x = (r[0] % 100) * cap.CELL + cap.CELL / 2;
+            const y = Math.floor(r[0] / 100) * cap.CELL + cap.CELL / 2;
+            if (Math.abs(x - px) <= 4 * cap.CELL && Math.abs(y - py) <= 4 * cap.CELL) {
+                late += r[4];
+                fast += r[5];
             }
+        }
+        if (late < minTag && fast < minTag) continue;
+        const p = {
+            t,
+            x: (px - cap.cx) / cap.R,
+            y: (py - cap.cy) / cap.R,
+            n,
+            tag: late >= fast ? 'late' : 'fast',
+        };
+        if (cur && t - cur.last < 0.2) {
+            cur.last = t;
+            if (n > cur.n) Object.assign(cur, { x: p.x, y: p.y, n, tag: p.tag });
+        } else {
+            if (cur) events.push(cur);
+            cur = { ...p, first: t, last: t };
         }
     }
     if (cur) events.push(cur);
@@ -49,7 +70,7 @@ async function events(id, song, difficulty, type, shift) {
     const list = judged(chart);
     const where = (n) => (n.key.startsWith('L') ? laneSpot(Number(n.key[1])) : centre(n.key));
     const out = [];
-    for (const e of labelEvents(cap, 3)) {
+    for (const e of labelEvents(cap)) {
         const T = e.first - shift;
         // the note judged around then whose label spot is nearest
         let best = null;
@@ -63,6 +84,7 @@ async function events(id, song, difficulty, type, shift) {
             .map((n) => `${n.kind}@${n.key}${(n.when - best.n.when).toFixed(2)}`);
         out.push({
             videoTime: Math.round(e.first * 100) / 100,
+            tag: e.tag,
             x: Math.round(e.x * 100) / 100,
             y: Math.round(e.y * 100) / 100,
             matched: best

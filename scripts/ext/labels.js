@@ -94,6 +94,8 @@ async function captureSegment(videoId, rate, from, to) {
                 if (r > 220 && gg > 190 && b < 100) return 0;
                 if (r > 220 && gg > 105 && gg <= 190 && b < 90) return 1;
                 if (r >= 224 && gg >= 96 && gg <= 124 && b >= 144 && b <= 176) return 2;
+                if (r >= 176 && r <= 235 && gg < 44 && b < 44) return 3; // LATE tag
+                if (b >= 220 && r < 90 && gg >= 90 && gg < 200) return 4; // FAST tag (also star outlines)
                 return -1;
             };
             const CELL = 24;
@@ -119,12 +121,12 @@ async function captureSegment(videoId, rate, from, to) {
                             if (k < 0) continue;
                             const key = ((y / CELL) | 0) * 100 + ((x / CELL) | 0);
                             let c = cells.get(key);
-                            if (!c) cells.set(key, (c = [0, 0, 0]));
+                            if (!c) cells.set(key, (c = [0, 0, 0, 0, 0]));
                             c[k]++;
                         }
                     }
                     for (const [key, c] of cells)
-                        if (c[0] + c[1] + c[2] >= 3) row.push([key, ...c]);
+                        if (c[0] + c[1] + c[2] + c[3] + c[4] >= 3) row.push([key, ...c]);
                     frames.push([Math.round(meta.mediaTime * 1000) / 1000, row]);
                     if (frames.length % 300 === 0)
                         console.log('frames', frames.length, 'at', meta.mediaTime);
