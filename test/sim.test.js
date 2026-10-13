@@ -275,3 +275,11 @@ test('smart contact: a touch chain in open space takes the palm, but fingertips 
     // E1 is beside the button 1 sensor, and a tap on 1 follows
     assert.equal(contacts('(120){16}E1,B1,1,,,,,,,E')[0], 'fingers');
 });
+
+test('a wifi slide is played with three fingers, one per track, and is cleared by a skilled player', () => {
+    const chart = buildChart('(150){4}1w5[2:1],,,,E');
+    const style = { ...STYLES.top, posSigma: 0, timeSigma: 0, lapse: 0, wander: 0, endSigma: 0 };
+    const r = simulate(chart.events, style, 1);
+    assert.equal(r.strokes.filter((s) => s.role === 'slide').length, 3);
+    assert.equal([...r.outcomes.values()].find((o) => o.note === 'slide').grade, 0);
+});

@@ -42,8 +42,8 @@ function rng(seed) {
 }
 
 /** Where a slide's finger goes: the centre of each sensor on the way, spread evenly over its time. */
-function slidePoints(note) {
-    const track = note.tracks.length === 3 ? note.tracks[1] : note.tracks[0];
+function slidePoints(note, which = 1) {
+    const track = note.tracks.length === 3 ? note.tracks[which] : note.tracks[0];
     const pts = track.map((alts) => centre(alts[0]));
     // a player follows the star: the last sensor is reached when the slide is judged, a little before its end
     const span = (note.judgeAt ?? note.end) - note.start;
@@ -151,7 +151,7 @@ function actionsOf(notes, style) {
                 slide: true,
                 points,
                 pos: [points[0].x, points[0].y],
-                foot: n.tracks.length === 3 ? Math.max(style.slideFoot, 0.25) : style.slideFoot,
+                foot: style.slideFoot,
             });
         }
     }
@@ -462,9 +462,13 @@ function plan(notes, style, random, events = null) {
             if (a.note.kind === 'tap')
                 starHand.set(`${a.note.lane}@${Math.round(a.note.t * 1000)}`, h.side);
             // a lapse: now and then a note is simply played 55 to 105 ms off (mostly late), whatever the music
+            // (a touch's Perfect window is 200 ms late, so a touch lapse is a late one of 210 to 250 ms: real SSS runs
+            // had Greats on about 1% of touches, three times the share of other notes)
             const lapse = style.lapse
-                ? random.next() < style.lapse
-                    ? (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.05)
+                ? random.next() < style.lapse * (isTouch(a) ? 3 : 1)
+                    ? isTouch(a)
+                        ? 0.21 + random.next() * 0.04
+                        : (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.05)
                     : 0
                 : 0;
             const jitter =
@@ -599,6 +603,34 @@ function plan(notes, style, random, events = null) {
                           : 'fingers',
                     target: a.sIdx,
                 });
+                // a wifi slide is played with three fingers side by side, one on each of its tracks
+                if (a.slide && a.note.tracks.length === 3) {
+                    for (const which of [0, 2]) {
+                        const side = slidePoints(a.note, which).map((p) => ({
+                            t: p.t + jitter,
+                            x: p.x + ex + random.gauss() * style.posSigma * 0.4,
+                            y: p.y + ey + random.gauss() * style.posSigma * 0.4,
+                        }));
+                        side.unshift({ t: t0 + jitter, x: side[0].x, y: side[0].y });
+                        side.push({
+                            t: a.end + jitter,
+                            x: side[side.length - 1].x,
+                            y: side[side.length - 1].y,
+                        });
+                        strokes.push({
+                            hand: h.side,
+                            id: a.note.id,
+                            role: 'slide',
+                            mode: 'screen',
+                            t0: side[0].t,
+                            t1: side[side.length - 1].t,
+                            pts: side,
+                            r: a.foot,
+                            contact: 'fingers',
+                            target: a.sIdx,
+                        });
+                    }
+                }
                 f.pos = [pts[pts.length - 1].x, pts[pts.length - 1].y];
                 f.screen = !style.lift;
                 f.lastScreenEnd = pts[pts.length - 1].t;
