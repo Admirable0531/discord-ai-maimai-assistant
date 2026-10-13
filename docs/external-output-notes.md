@@ -87,5 +87,23 @@ Great labels per note, by rank (`rank.js`):
 
 The ladder is clean, so rank mostly means "how often a note is off by more than 50 ms". The simulated skill ladder was far worse than any of these ranks (the old "advanced" gets 15% Greats on the same charts, "intermediate" 22% with 20% Good/Miss): real players in videos are strong. Players below S were not observed.
 
-**Rank players** (`rankS`, `rankSp`, `rankSS`, `rankSSp`, `rankSSS`, `rankSSSp`, hidden among the extra styles): the top player with timing noise and lapse rate scaled by 1.45, 1.3, 1.25, 1.1, 0.78 and 0.45 (`fitrank.js`). On the same charts they get Greats 3.16 / 2.17 / 1.91 / 1.25 / 0.48 / 0.17% against 3.11 / 2.13 / 1.88 / 1.30 / 0.51 / 0.22% real. About 0.4% of Greats in the simulation come from splash and slips whatever the timing, so SSS+ lands a little under the floor.
-Check against the rank itself (`achievement.js`, Great 0.75, Good 0.5, weights tap 1, hold 2, slide 3, touch 1): the simulated achievement median is 98.2 (S, real 97 to 98), 99.2 (S+, 98 to 99), 99.1 (SS, 99 to 99.5), 99.2 (SS+, 99.5 to 100), 99.9 (SSS, 100 to 100.5; no break bonus counted). Within about 1%, so the Good and Miss counts are about right too.
+**Rank players** (`rankS`, `rankSp`, `rankSS`, `rankSSp`, `rankSSS`, `rankSSSp`, hidden among the extra styles): the top player with timing noise and lapse rate scaled by 1.46, 1.31, 1.28, 1.15, 0.91 and 0.67 (`fitrank.js`; the factors changed after the timing model below). On the same charts they get Greats 3.09 / 2.10 / 1.91 / 1.23 / 0.47 / 0.25% against 3.11 / 2.13 / 1.88 / 1.30 / 0.51 / 0.22% real.
+Check against the rank itself (`achievement.js`, Great 0.75, Good 0.5, weights tap 1, hold 2, slide 3, touch 1): the simulated achievement median is 98.6 (S, real 97 to 98), 99.1 (S+, 98 to 99), 99.3 (SS, 99 to 99.5), 99.5 (SS+, 99.5 to 100), 99.9 (SSS, 100 to 100.5; no break bonus counted). Within about 1%, a bit generous at S, so Goods and Misses are slightly too rare there.
+
+## What 722 Greats say about the timing model (58,000 notes, 61 runs)
+
+Real Great rate by situation (`analyse.js`), pooled over all ranks:
+
+| Situation | Great rate |
+|---|---|
+| 4 or fewer moments within +-0.5 s / 4 to 6 / 6 to 8 / 8 or more | 0.32% / 0.43% / 1.17% / 2.14% |
+| taps / breaks / holds / slides / touches | 1.42% / 0.91% / 1.17% / 0.35% / 0.79% |
+| single notes / yellow doubles / three or more at once | 1.42% / 1.06% / 0.15% |
+| less than 0.1 s after the previous note / 0.1 to 0.2 / 0.2 to 0.4 | 1.87% / 1.28% / 0.58% |
+| less than 0.3 ring radii from the previous note (a jack) / 0.3 to 0.8 / farther | 0.77% / 1.54% / about 1.1% |
+| change of direction, slide or touch nearby | weak or none |
+
+Taps on the same lane within 140 ms (jacks): 17 Greats in 2,654 (0.64%), while other taps got 1.46%. Jacks are not harder in real play, even at 7 to 14 notes a second (players alternate fingers or hands and keep a steady rhythm).
+The earlier simulation gave jacks 5.9%. Cause: crowd noise made consecutive jack presses overlap, and a button that is still held makes no new press. Fixes in `planner.js`: (1) 80% of the timing error is slow drift shared by neighbouring notes (a stream keeps its spacing), (2) crowd stress counts only 0.4 for a note on the same spot as the one before (`jackSteady`), (3) a short press lets go of its button or sensor before the next press of it.
+Result for the rank players (`calibrate2.js`, every real video simulated with its rank's player): overall Greats 1.23% (real 1.25%); by crowd 0.30 / 0.48 / 1.04 / 2.28% (real 0.32 / 0.43 / 1.17 / 2.14%); by distance 0.74 / 1.47 / 1.02 / 1.24% (real 0.77 / 1.54 / 1.16 / 1.09%); jack taps 1.8% (real 0.64%); by kind tap 1.43 (1.42), hold 0.81 (1.17), slide 0.31 (0.35), touch 0.32 (0.79).
+Unexplained: Greats on holds and touches are rarer in the simulation than in the runs, and triples (three or more at once) are rare in both.

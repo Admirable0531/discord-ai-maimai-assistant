@@ -8,7 +8,7 @@ const { judged } = require('./align');
 const { noteXY } = require('../../src/sim/handFeatures');
 
 const DIR = path.join(__dirname, '..', '..', 'data', 'ext');
-const MIN_YELLOW = 80; // alignment score below this is not trusted
+const MIN_YELLOW = 120; // alignment score below this is not trusted
 const MAX_OFF = 0.45; // ring radii between the label and the note's label spot
 
 async function main() {
@@ -16,7 +16,7 @@ async function main() {
         .readdirSync(DIR)
         .filter((f) => f.endsWith('.meta.json'))
         .map((f) => JSON.parse(fs.readFileSync(path.join(DIR, f))))
-        .filter((m) => m.score >= MIN_YELLOW);
+        .filter((m) => m.score >= MIN_YELLOW && (m.contrast ?? 2) >= 1.4);
     // the first two videos have no meta: add them
     for (const [id, song, shift] of [
         ['tfSN2a3WlpM', 'LiftOff', 14.19],

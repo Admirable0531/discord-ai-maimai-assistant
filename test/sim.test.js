@@ -134,7 +134,16 @@ test('with no aiming or timing error every style clears a small chart cleanly', 
     for (const style of Object.values(STYLES)) {
         const { outcomes } = simulate(
             chart.events,
-            { ...style, posSigma: 0, timeSigma: 0, lapse: 0 },
+            {
+                ...style,
+                posSigma: 0,
+                timeSigma: 0,
+                lapse: 0,
+                overshoot: 0,
+                wander: 0,
+                endSigma: 0,
+                timeBias: 0,
+            },
             1
         );
         assert.ok(

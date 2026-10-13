@@ -183,6 +183,24 @@ function plan(notes, style, random, events = null) {
     });
     const hands = [makeHand(-0.6, 0), makeHand(0.6, 1)];
     const strokes = [];
+    // A button or sensor that is still pressed makes no new press, so a player lets go of it before the next press of it
+    // (a jack is played with fingers or hands that alternate, with a gap of about a frame in between).
+    const lastPress = new Map();
+    const addPress = (stroke, key) => {
+        strokes.push(stroke);
+        if (key === null) return;
+        const prev = lastPress.get(key);
+        if (
+            prev &&
+            prev.role === 'press' &&
+            prev.t1 > stroke.t0 - 0.02 &&
+            prev.t0 < stroke.t0 - 0.03
+        ) {
+            prev.t1 = Math.max(prev.t0 + 0.01, stroke.t0 - 0.02);
+            if (prev.pts && prev.pts.length) prev.pts[prev.pts.length - 1].t = prev.t1;
+        }
+        lastPress.set(key, stroke);
+    };
     const late = [];
     // a player who is always a bit early or late: one steady offset for the whole run
     const bias = random.gauss() * (style.timeBias || 0);
@@ -190,7 +208,7 @@ function plan(notes, style, random, events = null) {
     // slips cluster in fast streams and where the direction of travel changes (stress). In two SSS external-output runs,
     // most GREAT labels were late taps inside such streams.
     let prevAction = null;
-    let drift = 0;
+    let drift = 0; // slow timing error, unit variance, carried from note to note
     let stress = 0;
     // how this run's player shares the work between hands: free (the nearest finger),
     // by side (each hand keeps its own half), or by role (one hand slides and holds,
@@ -364,12 +382,18 @@ function plan(notes, style, random, events = null) {
             // window as with 4 or fewer.
             const crowd = momentsNear(group[0].t);
             stress = Math.min(1, Math.max(0, (crowd - 4) / 4));
+            // repeating the same spot (a jack) is steadier than moving between spots: in the real runs a note less than
+            // 0.3 ring radii from the previous one got about half the Greats at the same crowding
+            if (
+                Math.hypot(
+                    group[0].pos[0] - prevAction.pos[0],
+                    group[0].pos[1] - prevAction.pos[1]
+                ) < 0.3
+            )
+                stress *= style.jackSteady ?? 1;
             const gap = group[0].t - prevAction.t;
-            const rho = Math.exp(-Math.max(0, gap) / 0.8);
-            if (style.timeDrift)
-                drift =
-                    rho * drift +
-                    Math.sqrt(1 - rho * rho) * random.gauss() * style.timeDrift * style.timeSigma;
+            const rho = Math.exp(-Math.max(0, gap) / 0.4);
+            if (style.timeDrift) drift = rho * drift + Math.sqrt(1 - rho * rho) * random.gauss();
         }
         group.forEach((a, k) => {
             // a slide whose star was tapped just before: hand it to the other hand when that
@@ -471,12 +495,16 @@ function plan(notes, style, random, events = null) {
                         : (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.05)
                     : 0
                 : 0;
+            // timing error: a share `timeDrift` of its variance is slow (neighbouring notes err together, so a
+            // jack or a stream keeps its spacing), the rest is independent per note
+            const sigmaNow = style.timeSigma * (1 + (style.stressNoise ?? 0) * stress);
+            const share = style.timeDrift || 0;
             const jitter =
                 lapse +
                 bias +
-                drift +
+                Math.sqrt(share) * sigmaNow * drift +
                 (style.stressLate ?? 0) * style.timeSigma * stress +
-                random.gauss() * style.timeSigma * (1 + (style.stressNoise ?? 0) * stress);
+                random.gauss() * sigmaNow * Math.sqrt(1 - share);
             const ex = random.gauss() * style.posSigma;
             const ey = random.gauss() * style.posSigma;
             const dur = a.end - a.t;
@@ -585,24 +613,27 @@ function plan(notes, style, random, events = null) {
                         });
                     }
                 }
-                strokes.push({
-                    hand: h.side,
-                    id: a.note.id,
-                    role: a.slide ? 'slide' : dur > 0.2 ? 'hold' : 'press',
-                    mode: 'screen',
-                    t0: pts[0].t,
-                    t1: pts[pts.length - 1].t,
-                    pts,
-                    r: a.foot,
-                    contact: a.slide
-                        ? a.foot > style.slideFoot + 0.005
-                            ? 'bundle'
-                            : 'fingers'
-                        : a.foot >= (style.palmFoot ?? 9)
-                          ? 'palm'
-                          : 'fingers',
-                    target: a.sIdx,
-                });
+                addPress(
+                    {
+                        hand: h.side,
+                        id: a.note.id,
+                        role: a.slide ? 'slide' : dur > 0.2 ? 'hold' : 'press',
+                        mode: 'screen',
+                        t0: pts[0].t,
+                        t1: pts[pts.length - 1].t,
+                        pts,
+                        r: a.foot,
+                        contact: a.slide
+                            ? a.foot > style.slideFoot + 0.005
+                                ? 'bundle'
+                                : 'fingers'
+                            : a.foot >= (style.palmFoot ?? 9)
+                              ? 'palm'
+                              : 'fingers',
+                        target: a.sIdx,
+                    },
+                    a.slide || a.sIdx === undefined ? null : `S${a.sIdx}`
+                );
                 // a wifi slide is played with three fingers side by side, one on each of its tracks
                 if (a.slide && a.note.tracks.length === 3) {
                     for (const which of [0, 2]) {
@@ -646,17 +677,20 @@ function plan(notes, style, random, events = null) {
                         g.freeAt = Math.max(g.freeAt, f.freeAt);
                 }
             } else {
-                strokes.push({
-                    hand: h.side,
-                    id: a.note.id,
-                    role: dur > 0.2 ? 'hold' : 'press',
-                    mode: 'btn',
-                    lane: a.lane,
-                    t0: t0 + jitter,
-                    t1: a.end + jitter,
-                    pts: null,
-                    r: 0,
-                });
+                addPress(
+                    {
+                        hand: h.side,
+                        id: a.note.id,
+                        role: dur > 0.2 ? 'hold' : 'press',
+                        mode: 'btn',
+                        lane: a.lane,
+                        t0: t0 + jitter,
+                        t1: a.end + jitter,
+                        pts: null,
+                        r: 0,
+                    },
+                    `B${a.lane}`
+                );
                 f.pos = a.pos;
                 f.screen = false;
                 f.freeAt = a.end + jitter;

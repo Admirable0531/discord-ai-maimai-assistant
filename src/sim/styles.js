@@ -23,7 +23,8 @@ const BASE = {
     posSigma: 0.03,
     timeSigma: 0.012,
     lapse: 0, // chance per note of a plain slip 55 to 105 ms off
-    timeDrift: 0, // slow drift of the timing error, as a multiple of timeSigma (errors carry over to the next notes)
+    timeDrift: 0, // share (0 to 1) of the timing error that is slow drift, shared by neighbouring notes
+    jackSteady: 1, // crowd stress is multiplied by this for a note on the same spot as the one before
     stressNoise: 0, // timing noise grows by this multiple of timeSigma in fast streams that change direction
     stressLate: 0, // and runs this many timeSigma late there
     onCells: 6, // a contact turns a sensor ON when it covers this many cells of it (a cell is 0.025 ring radii square)
@@ -158,7 +159,7 @@ const OVERSHOOT = {
     top: 0.01,
 };
 // timing structure (docs/external-output-notes.md): noise grows with how crowded the music is; a few plain lapses
-const DRIFT = 0;
+const DRIFT = 0.8; // share of the timing error that is slow drift shared by neighbouring notes
 const STRESS_NOISE = 0.8; // fitted: the top player then matches the Great rates of 21 real SSS runs
 const LAPSE = {
     beginner: 0.02,
@@ -195,6 +196,7 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         timeBias,
         timeDrift: DRIFT,
         stressNoise: STRESS_NOISE,
+        jackSteady: 0.4,
         lapse: LAPSE[id],
         stressLate: STRESS_LATE,
         posSigma,
@@ -212,15 +214,14 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
 
 // Players by rank, fitted to real runs: the Great rate of 62 external-output videos at each rank (S 3.1%, S+ 2.1%, SS 1.9%, SS+ 1.3%,
 // SSS 0.51%, SSS+ 0.22%, on 12 to 14+ charts) is matched by scaling the top player's timing noise and lapse rate
-// (scripts/ext/fitrank.js). Aiming, speed and reach stay as the top player's. The lowest simulated Great rate comes from
-// splash and slips, so SSS+ cannot go lower than about 0.4%.
+// (scripts/ext/fitrank.js). Aiming, speed and reach stay as the top player's.
 const RANKS = [
-    ['S', 'S rank (97%)', 1.45],
-    ['S+', 'S+ rank (98%)', 1.3],
-    ['SS', 'SS rank (99%)', 1.25],
-    ['SS+', 'SS+ rank (99.5%)', 1.1],
-    ['SSS', 'SSS rank (100%)', 0.78],
-    ['SSS+', 'SSS+ rank (100.5%)', 0.45],
+    ['S', 'S rank (97%)', 1.46],
+    ['S+', 'S+ rank (98%)', 1.31],
+    ['SS', 'SS rank (99%)', 1.28],
+    ['SS+', 'SS+ rank (99.5%)', 1.15],
+    ['SSS', 'SSS rank (100%)', 0.91],
+    ['SSS+', 'SSS+ rank (100.5%)', 0.67],
 ];
 for (const [rank, label, f] of RANKS) {
     const id = `rank${rank.replace('+', 'p')}`;
@@ -245,8 +246,9 @@ const LIMITS = {
     timeSigma: [0, 0.07],
     timeBias: [0, 0.06],
     lapse: [0, 0.05],
-    timeDrift: [0, 2],
+    timeDrift: [0, 1],
     stressNoise: [0, 4],
+    jackSteady: [0, 1],
     stressLate: [0, 3],
     overshoot: [0, 0.4],
     wander: [0, 0.4],
