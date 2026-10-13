@@ -87,7 +87,7 @@ Great labels per note, by rank (`rank.js`):
 
 The ladder is clean, so rank mostly means "how often a note is off by more than 50 ms". The simulated skill ladder was far worse than any of these ranks (the old "advanced" gets 15% Greats on the same charts, "intermediate" 22% with 20% Good/Miss): real players in videos are strong. Players below S were not observed.
 
-**Rank players** (`rankS`, `rankSp`, `rankSS`, `rankSSp`, `rankSSS`, `rankSSSp`, hidden among the extra styles): the top player with timing noise and lapse rate scaled by 1.46, 1.31, 1.28, 1.15, 0.91 and 0.67 (`fitrank.js`; the factors changed after the timing model below). On the same charts they get Greats 3.09 / 2.10 / 1.91 / 1.23 / 0.47 / 0.25% against 3.11 / 2.13 / 1.88 / 1.30 / 0.51 / 0.22% real.
+**Rank players** (`rankS`, `rankSp`, `rankSS`, `rankSSp`, `rankSSS`, `rankSSSp`, hidden among the extra styles): the top player with timing noise scaled and a slip rate set per rank; see "Goods and Misses" below for the final numbers (the first fit scaled noise and lapse together: 1.46, 1.31, 1.28, 1.15, 0.91, 0.67). On the same charts they get Greats 3.09 / 2.10 / 1.91 / 1.23 / 0.47 / 0.25% against 3.11 / 2.13 / 1.88 / 1.30 / 0.51 / 0.22% real.
 Check against the rank itself (`achievement.js`, Great 0.75, Good 0.5, weights tap 1, hold 2, slide 3, touch 1): the simulated achievement median is 98.6 (S, real 97 to 98), 99.1 (S+, 98 to 99), 99.3 (SS, 99 to 99.5), 99.5 (SS+, 99.5 to 100), 99.9 (SSS, 100 to 100.5; no break bonus counted). Within about 1%, a bit generous at S, so Goods and Misses are slightly too rare there.
 
 ## What 722 Greats say about the timing model (58,000 notes, 61 runs)
@@ -113,3 +113,25 @@ Unexplained: Greats on holds and touches are rarer in the simulation than in the
 Each real video is simulated with its rank's player; every note gets the share of runs in which it was not Perfect, and the real Great notes are ranked among all notes of that chart by it (0.5 = chance, 1 = always at the top).
 With 24 runs per chart the estimate is too coarse (most notes tie at 0) and gives 0.51 to 0.53; with 200 runs on 12 videos it is 0.586 overall and 0.618 for taps. For comparison, crowding alone ranks the real Greats at an AUC of 0.67 (pooled over videos).
 So the simulated risk is about as good as a plain crowding count at saying where a real player slips, and most real Greats are close to random slips: a note that is hard in the simulation is only a little more likely to have been a real Great. Use the simulation's spots to see what can happen (which input hits which note), not to predict one player's mistakes.
+
+## Goods and Misses (second capture of the S to SS+ runs, `goodmiss.js`)
+
+GOOD labels are green (about RGB 48, 208, 80) with a FAST or LATE tag; MISS is grey text, which the colour test cannot tell from the white ring and hexagon edges reliably (2 to 3 candidates in 30 runs, so Misses are about 0.05% or fewer).
+Good rate: S 1.05%, S+ 0.84%, SS 0.66%, SS+ 0.46% (30 videos, about 31,800 notes), about a third of the Great rate at every rank. The simulation gave Goods less than a third of that, because its slips were at most 105 ms. Slips are now 55 to 150 ms (a Great or a Good), and each rank's slip rate comes from its Good rate, with the noise scale fitted to the Great rate (`fitrank2.js`):
+
+| Rank | Noise scale (x top) | Slips on this share of notes | Great (real) | Good (real) |
+|---|---|---|---|---|
+| S | 1.42 | 2.4% | 3.2% (3.1) | 1.1% (1.05) |
+| S+ | 1.27 | 1.8% | 2.2% (2.1) | 0.8% (0.84) |
+| SS | 1.27 | 1.3% | 1.9% (1.9) | 0.6% (0.66) |
+| SS+ | 1.17 | 0.8% | 1.3% (1.3) | 0.4% (0.46) |
+| SSS | 0.99 | 0.3% | 0.5% (0.51) | 0.2% (Good rate assumed 0.35 x Great) |
+| SSS+ | 0.87 | 0.1% | 0.2% (0.22) | 0.1% (assumed) |
+
+Achievement check with Goods counted (`achievement.js`): median 97.9 (S, real 97 to 98), 98.3 (S+, 98 to 99), 98.8 (SS, 99 to 99.5), 99.2 (SS+, 99.5 to 100), 99.9 (SSS). The upper ranks come out 0.2 to 0.4 low, which is about the break bonus that is not counted.
+
+## Hand and first-person videos: what was tried
+
+- Blanc's videos have a hand camera beside the game screen, but it looks into the cabinet from above and the hands are mostly dark shapes at its edge: no use for telling what a finger did.
+- あぬ's "外部出力+手元" videos (game screen right, hand camera left) read for two of three videos (RondeauX 4 Greats, ANiMA 8; VeRForTe failed to load). The hand camera is small and blurred, so no per-Great reading was done.
+- けいた's first-person videos (chest camera, cream gloves on both hands): a glove colour mask catches only parts of the gloves, the ring moves about 10% in the frame, and by-eye labelling of holds failed (the notes are tiny, the hands blurred, the alignment only good to about 0.1 to 0.2 s). Not used. The L. R. Breakdown videos stay the only hand data.

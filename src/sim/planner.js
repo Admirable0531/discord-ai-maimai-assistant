@@ -485,14 +485,14 @@ function plan(notes, style, random, events = null) {
             }
             if (a.note.kind === 'tap')
                 starHand.set(`${a.note.lane}@${Math.round(a.note.t * 1000)}`, h.side);
-            // a lapse: now and then a note is simply played 55 to 105 ms off (mostly late), whatever the music
+            // a lapse: now and then a note is simply played 55 to 150 ms off (mostly late), whatever the music: a Great or a Good
             // (a touch's Perfect window is 200 ms late, so a touch lapse is a late one of 210 to 250 ms: real SSS runs
             // had Greats on about 1% of touches, three times the share of other notes)
             const lapse = style.lapse
                 ? random.next() < style.lapse * (isTouch(a) ? 3 : 1)
                     ? isTouch(a)
                         ? 0.21 + random.next() * 0.04
-                        : (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.05)
+                        : (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.095)
                     : 0
                 : 0;
             // timing error: a share `timeDrift` of its variance is slow (neighbouring notes err together, so a

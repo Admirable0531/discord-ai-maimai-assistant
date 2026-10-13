@@ -22,7 +22,7 @@ const BASE = {
     reach: 1.2, // a finger reaches this far from where its hand rests without moving the hand
     posSigma: 0.03,
     timeSigma: 0.012,
-    lapse: 0, // chance per note of a plain slip 55 to 105 ms off
+    lapse: 0, // chance per note of a plain slip 55 to 150 ms off (a Great or a Good)
     timeDrift: 0, // share (0 to 1) of the timing error that is slow drift, shared by neighbouring notes
     jackSteady: 1, // crowd stress is multiplied by this for a note on the same spot as the one before
     stressNoise: 0, // timing noise grows by this multiple of timeSigma in fast streams that change direction
@@ -212,26 +212,26 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
     };
 }
 
-// Players by rank, fitted to real runs: the Great rate of 62 external-output videos at each rank (S 3.1%, S+ 2.1%, SS 1.9%, SS+ 1.3%,
-// SSS 0.51%, SSS+ 0.22%, on 12 to 14+ charts) is matched by scaling the top player's timing noise and lapse rate
-// (scripts/ext/fitrank.js). Aiming, speed and reach stay as the top player's.
+// Players by rank, fitted to real runs (scripts/ext/fitrank2.js): the Great and Good rates of 61 external-output videos at each rank
+// (Great S 3.1%, S+ 2.1%, SS 1.9%, SS+ 1.3%, SSS 0.51%, SSS+ 0.22%; Good about a third of that) are matched by the timing noise scale
+// (relative to the top player) and the lapse rate. Aiming, speed and reach stay as the top player's.
 const RANKS = [
-    ['S', 'S rank (97%)', 1.46],
-    ['S+', 'S+ rank (98%)', 1.31],
-    ['SS', 'SS rank (99%)', 1.28],
-    ['SS+', 'SS+ rank (99.5%)', 1.15],
-    ['SSS', 'SSS rank (100%)', 0.91],
-    ['SSS+', 'SSS+ rank (100.5%)', 0.67],
+    ['S', 'S rank (97%)', 1.42, 0.0242],
+    ['S+', 'S+ rank (98%)', 1.27, 0.0176],
+    ['SS', 'SS rank (99%)', 1.27, 0.0128],
+    ['SS+', 'SS+ rank (99.5%)', 1.17, 0.0083],
+    ['SSS', 'SSS rank (100%)', 0.99, 0.003],
+    ['SSS+', 'SSS+ rank (100.5%)', 0.87, 0.001],
 ];
-for (const [rank, label, f] of RANKS) {
+for (const [rank, label, f, lapse] of RANKS) {
     const id = `rank${rank.replace('+', 'p')}`;
     STYLES[id] = {
         ...STYLES.top,
         id,
         label: `${label} player`,
-        about: `Timing fitted to real ${rank} runs: top player's timing noise and slips scaled by ${f}.`,
+        about: `Timing fitted to real ${rank} runs: top player's timing noise scaled by ${f}, a slip on ${(lapse * 100).toFixed(1)}% of notes.`,
         timeSigma: STYLES.top.timeSigma * f,
-        lapse: STYLES.top.lapse * f,
+        lapse,
         extra: true,
         skill: true,
     };

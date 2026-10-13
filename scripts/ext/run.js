@@ -15,7 +15,24 @@ const DIR = path.join(__dirname, '..', '..', 'data', 'ext');
 // Blanc's videos: the game screen on the left, a hand camera on the right ("[Maimai] Song SS+ [Master 14]")
 const BLANC_RING = '301.5,269.5,240.5';
 
+// あぬ's "外部出力+手元" videos: the game screen on the right, a hand camera at the bottom left
+const ANU_RING = '653.7,268.4,222';
+
 function parse(title) {
+    const a =
+        /外部出力\+手元】\s*(.+?)\s+(?:\[(Re:MASTER|でらっくす|スタンダード)[^\]]*\]\s*)?(初)?(SSS\+|SSS|SS\+|SS|S\+|S|AP\+?)/.exec(
+            title
+        );
+    if (a) {
+        return {
+            song: a[1].trim(),
+            difficulty: a[2] === 'Re:MASTER' ? 'remaster' : 'master',
+            types: a[2] === 'スタンダード' ? ['std'] : ['dx', 'std'],
+            rank: a[4],
+            ring: ANU_RING,
+        };
+    }
+
     const b =
         /^\[Maimai[^\]]*\]\s*(.+?)\s+(?:初\s*)?(SSS\+|SSS|SS\+|SS|S\+|S|AP\+?)(?:\s+FC\+?)?\s+\[\s*(Master|Re:\s?Master|Expert)\s*([\d+]*)\s*\]/i.exec(
             title

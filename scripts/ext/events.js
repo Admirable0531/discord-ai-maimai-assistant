@@ -15,7 +15,7 @@ const DIR = path.join(__dirname, '..', '..', 'data', 'ext');
  * GREAT label events in a label capture: salmon pink text (cell column 3) with a LATE (4) or FAST (5) tag
  * next to it. Returns [{first, last, x, y, n, tag: 'late' | 'fast'}] with x, y in ring radii from the middle.
  */
-function labelEvents(cap, minCount = 120, minTag = 10) {
+function labelEvents(cap, minCount = 120, minTag = 10, col = 3, needTag = true) {
     const events = [];
     let cur = null;
     for (const [t, row] of cap.frames) {
@@ -23,7 +23,7 @@ function labelEvents(cap, minCount = 120, minTag = 10) {
         let sx = 0;
         let sy = 0;
         for (const r of row) {
-            const c = r[3];
+            const c = r[col];
             if (!c) continue;
             n += c;
             sx += c * ((r[0] % 100) * cap.CELL + cap.CELL / 2);
@@ -42,7 +42,7 @@ function labelEvents(cap, minCount = 120, minTag = 10) {
                 fast += r[5];
             }
         }
-        if (late < minTag && fast < minTag) continue;
+        if (needTag && late < minTag && fast < minTag) continue;
         const p = {
             t,
             x: (px - cap.cx) / cap.R,
