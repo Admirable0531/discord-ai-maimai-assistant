@@ -1504,7 +1504,7 @@ function simCustomUI() {
             .join('') +
         '</select></div>' +
         '<div class="sw"><label>Taps with</label><select id="cumode"><option value="screen">the screen</option><option value="button">the buttons</option></select></div>' +
-        '<div class="sw"><label>Which hand takes a note</label><select id="cupolicy"><option value="learned">learned from real players</option><option value="rules">rule-based habit (below)</option></select></div>' +
+        '<div class="sw"><label>Which hand takes a note</label><select id="cupolicy"><option value="logic">written rules from real players (readable)</option><option value="learned">forest of trees (more accurate)</option><option value="rules">rule-based habit (below)</option></select></div>' +
         '<div class="sw"><label>Hands share the work</label><select id="cuhabit"><option value="mixed">varies from run to run</option><option value="free">nearest finger (hands cross freely)</option><option value="side">each hand its own side</option><option value="role">one hand slides and holds, the other taps</option></select></div>' +
         '<div class="ck"><input type="checkbox" id="cubtn"> <label for="cubtn">Touch notes on A sensors with the buttons</label></div>' +
         '<div class="ck"><input type="checkbox" id="culift" checked> <label for="culift">Lift fingers between notes</label></div>' +

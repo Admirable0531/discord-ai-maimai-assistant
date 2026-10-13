@@ -27,7 +27,7 @@ const BASE = {
     endSigma: 0, // ring radii a slide's last point lands off the end sensor
     overshoot: 0, // ring radii a finger runs past a slide's end or a touch it arrives at
     slideFree: 1, // fingers of a sliding hand that can still tap meanwhile
-    policy: 'learned', // which hand takes a note: 'learned' from real players' L. R. breakdowns, or 'rules' (the habits below)
+    policy: 'logic', // which hand takes a note: 'logic' (readable rules distilled from real players' L. R. breakdowns), 'learned' (the more accurate forest of trees) or 'rules' (the habits below)
     rightHanded: 0.85, // chance a player holds notes with the right hand
     handoff: 0.15, // when it makes no difference, how often a player sets a slide off with the other hand than the one that tapped its star
     habit: 'mixed', // how the hands share the work: mixed (varies by run), free, side, role
@@ -216,7 +216,7 @@ function cleanCustom(input) {
     for (const key of FLAGS) if (typeof input[key] === 'boolean') out[key] = input[key];
     if (input.tapMode === 'button' || input.tapMode === 'screen') out.tapMode = input.tapMode;
     if (['mixed', 'free', 'side', 'role'].includes(input.habit)) out.habit = input.habit;
-    if (['learned', 'rules'].includes(input.policy)) out.policy = input.policy;
+    if (['logic', 'learned', 'rules'].includes(input.policy)) out.policy = input.policy;
     return out;
 }
 

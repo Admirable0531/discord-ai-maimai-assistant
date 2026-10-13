@@ -155,6 +155,11 @@ function fitForest(rows, { trees = 15, seed = 7, ...options }) {
     const r = random(seed);
     const out = [];
     for (let i = 0; i < trees; i++) {
+        // one tree is fitted on all the data, so it can be read as a list of rules
+        if (trees === 1) {
+            out.push(fitTree(rows, options).tree);
+            break;
+        }
         const sample = [];
         for (let k = 0; k < rows.length; k++) sample.push(rows[Math.floor(r.next() * rows.length)]);
         out.push(fitTree(sample, options).tree);

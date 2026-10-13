@@ -6,12 +6,21 @@ const { featurize, newState, apply } = require('./handFeatures');
 const { predictForest } = require('./ml');
 
 // Which hand takes a note, learned from the L. R. breakdown videos (scripts/lr/train.js).
-let MODEL = null;
+let FOREST = null;
+let RULES = null;
 try {
-    MODEL = require('./handModel.json');
+    FOREST = require('./handModel.json');
 } catch {
-    MODEL = null; // no model trained yet: the rule-based habits are used
+    FOREST = null;
 }
+try {
+    RULES = require('./handRules.json'); // one readable tree distilled from the same videos
+} catch {
+    RULES = null;
+}
+const modelFor = (style) =>
+    style.model ||
+    (style.policy === 'learned' ? FOREST : style.policy === 'rules' ? null : RULES || FOREST);
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -137,7 +146,8 @@ function actionsOf(notes, style) {
  * hands could not reach in time (a chart that wants more hands than two).
  */
 function plan(notes, style, random, events = null) {
-    const learned = !!((style.model || MODEL) && events && style.policy !== 'rules');
+    const MODEL = modelFor(style);
+    const learned = !!(MODEL && events);
     const hs = newState(); // what a human would see: each hand's last notes, as the learned model expects
     const actions = actionsOf(notes, style);
     // two hands, each with a few fingers. A finger can reach anything close to where
@@ -259,7 +269,7 @@ function plan(notes, style, random, events = null) {
                 const groupEvents = group.map((g) => events[g.note.id]);
                 const feat = featurize(evt, hs, groupEvents);
                 if (style.record) style.record.push({ id: a.note.id, x: feat });
-                const p = predictForest((style.model || MODEL).forest, feat, MODEL.features);
+                const p = predictForest(MODEL.forest, feat, MODEL.features);
                 learnedSide = p > 0.5 ? 1 : 0;
                 forced = learnedSide;
             }

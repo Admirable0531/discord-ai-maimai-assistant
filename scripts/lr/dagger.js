@@ -18,7 +18,12 @@ const { withHands } = require('./summary');
 const { rowsOf, classOf } = require('./train');
 
 const DIR = path.join(__dirname, '..', '..', 'data', 'lr');
-const OPTS = { features: FEATURES, depth: 8, minLeaf: 25, trees: 12 };
+// FOREST=1: the 12-tree forest (more accurate); otherwise ONE readable tree of TREE_DEPTH levels
+const FOREST = process.env.FOREST === '1';
+const OPTS = FOREST
+    ? { features: FEATURES, depth: 8, minLeaf: 25, trees: 12 }
+    : { features: FEATURES, depth: Number(process.env.TREE_DEPTH) || 5, minLeaf: 40, trees: 1 };
+const OUT = FOREST ? 'handModel.json' : 'handRules.json';
 
 async function load() {
     const files = fs
@@ -146,7 +151,7 @@ async function main() {
         full = fitForest(all, OPTS);
     }
     fs.writeFileSync(
-        path.join(__dirname, '..', '..', 'src', 'sim', 'handModel.json'),
+        path.join(__dirname, '..', '..', 'src', 'sim', OUT),
         JSON.stringify({
             features: FEATURES,
             forest: full,
