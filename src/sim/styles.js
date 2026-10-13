@@ -212,16 +212,16 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
     };
 }
 
-// Players by rank, fitted to real runs (scripts/ext/fitrank2.js): the Great and Good rates of 61 external-output videos at each rank
+// Players by rank, fitted to real runs (scripts/ext/fitrank2.js, each rank on the charts of its own videos): the Great and Good rates of 61 external-output videos at each rank
 // (Great S 3.1%, S+ 2.1%, SS 1.9%, SS+ 1.3%, SSS 0.51%, SSS+ 0.22%; Good about a third of that) are matched by the timing noise scale
 // (relative to the top player) and the lapse rate. Aiming, speed and reach stay as the top player's.
 const RANKS = [
-    ['S', 'S rank (97%)', 1.42, 0.0242],
-    ['S+', 'S+ rank (98%)', 1.27, 0.0176],
-    ['SS', 'SS rank (99%)', 1.27, 0.0128],
-    ['SS+', 'SS+ rank (99.5%)', 1.17, 0.0083],
-    ['SSS', 'SSS rank (100%)', 0.99, 0.003],
-    ['SSS+', 'SSS+ rank (100.5%)', 0.87, 0.001],
+    ['S', 'S rank (97%)', 1.42, 0.0262],
+    ['S+', 'S+ rank (98%)', 1.2, 0.015],
+    ['SS', 'SS rank (99%)', 1.11, 0.0108],
+    ['SS+', 'SS+ rank (99.5%)', 1.14, 0.0089],
+    ['SSS', 'SSS rank (100%)', 1.1, 0.0037],
+    ['SSS+', 'SSS+ rank (100.5%)', 0.76, 0.0007],
 ];
 for (const [rank, label, f, lapse] of RANKS) {
     const id = `rank${rank.replace('+', 'p')}`;

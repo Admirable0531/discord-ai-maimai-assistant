@@ -80,3 +80,15 @@ Not modelled yet: one single wide palm contact covering several touch sensors (e
 Touches less than 0.13 s apart and within 0.9 ring radii of each other (a fast swipe or spin) were played by the
 same hand 304 of 311 times (98%) in the videos; the simulated player did it 82%. A touch that follows such a
 touch now keeps its hand (97% in simulation). Slower or farther touches are still decided by the model.
+
+## Rules added after a player's review of the replay
+
+Each of these was something the replay did that a player would not do; they sit on top of the learned choice (agreement with the videos went from 81.0% to 81.9%):
+- **Touches that are far apart are not one hand's.** Touches at the same moment share a hand only within 0.9 ring radii (was: anywhere within the hand's reach, which is most of the screen); in the videos far pairs were split about 94% of the time.
+- **A hand that is holding or sliding does not start another hold or slide** while the other hand is free (`longUntil` per hand: holds, touch holds, slides). Applies to a hold next to a held hold, and to a touch hold plus a slide.
+- **Two slides at once go to different hands** (unless their stars were already tapped by two different hands, which are kept).
+- **A touch on the path of a slide being played is that slide hand's**, tapped with one of its free fingers, not a second hand's job.
+- **A run of single taps across the vertical axis changes hand exactly there** when both hands are free: lanes 1 to 4 are the right hand's, 5 to 8 the left's. So a spin 1 to 8 is right hand for 1 to 4 and left for 5 to 8, and 4 5 4 5 alternates hands (it was all right hand because of momentum).
+- **Slide fingers move at the star's pace.** The sensors on a slide's path were timed evenly up to the moment the slide is judged, which made the replay hand run ahead of the star on long slides. They are now timed by distance along the path, the last sensor is reached the slide's stay time before its end, the finger trails the star by 0.07 s (at most a fifth of a short slide) and stays until the star is nearly at the end.
+- **The replay shows each hand all the time**: a faint dashed circle where it last played, travelling to the next note as late as it can and still arrive on time, so hand placement and reversals can be judged by eye.
+Not fixed: the planner still decides a hand's resting spot only by where it last played; it does not plan ahead for a reversal.

@@ -23,6 +23,7 @@ const modelFor = (style) =>
     (style.policy === 'learned' ? FOREST : style.policy === 'rules' ? null : RULES || FOREST);
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const TOUCH_SPAN = 0.9; // touches farther apart than this are not one hand's (in the videos: 6% of far pairs)
 
 /** The small random numbers a run needs, repeatable from a seed. */
 function rng(seed) {
@@ -41,14 +42,25 @@ function rng(seed) {
     return { next, gauss };
 }
 
-/** Where a slide's finger goes: the centre of each sensor on the way, spread evenly over its time. */
+/**
+ * Where a slide's finger goes: the centre of each sensor on the way, timed by how far along the path it is, so the
+ * finger moves at the star's pace. The last sensor is reached the slide's stay time (its length times the shape's constant)
+ * before the end: the game judges the slide when its last area is reached.
+ */
+const FOLLOW = 1;
+// the finger trails the star by a moment (a person follows what they see); a touch that lies on the slide's path is then
+// reached about when it is due
+const LAG = 0.07;
 function slidePoints(note, which = 1) {
     const track = note.tracks.length === 3 ? note.tracks[which] : note.tracks[0];
     const pts = track.map((alts) => centre(alts[0]));
-    // a player follows the star: the last sensor is reached when the slide is judged, a little before its end
-    const span = (note.judgeAt ?? note.end) - note.start;
+    const along = [0];
+    for (let i = 1; i < pts.length; i++) along.push(along[i - 1] + dist(pts[i - 1], pts[i]));
+    const total = along[along.length - 1] || 1;
+    const span = note.end - (note.stay ?? 0) * FOLLOW - note.start;
+    const lag = Math.min(LAG, 0.2 * (note.end - note.start));
     return pts.map((p, i) => ({
-        t: note.start + (pts.length === 1 ? 0 : (i / (pts.length - 1)) * span),
+        t: note.start + lag + (pts.length === 1 ? 0 : (along[i] / total) * (span - lag)),
         x: p[0],
         y: p[1],
     }));
@@ -146,7 +158,7 @@ function actionsOf(notes, style) {
             out.push({
                 note: n,
                 t: wait !== null ? wait - 0.01 : n.start - 0.04,
-                end: (n.judgeAt ?? n.end) + 0.05,
+                end: Math.max((n.judgeAt ?? n.end) + 0.05, n.end - 0.03),
                 mode: 'screen',
                 slide: true,
                 points,
@@ -174,6 +186,7 @@ function plan(notes, style, random, events = null) {
     const makeHand = (x, side) => ({
         anchor: [x, 0.7],
         side,
+        longUntil: -9, // until when a hold, touch hold or slide keeps this hand busy
         fingers: Array.from({ length: style.fingers }, () => ({
             pos: [x, 0.7],
             freeAt: -10,
@@ -182,6 +195,39 @@ function plan(notes, style, random, events = null) {
         })),
     });
     const hands = [makeHand(-0.6, 0), makeHand(0.6, 1)];
+    const isLongAction = (x) => x.slide || x.end - x.t > 0.15;
+    // slides being played: the finger's path, so a touch on that path is taken by the slide's own finger
+    const activeSlides = [];
+    const slideCover = (a) => {
+        for (const sl of activeSlides) {
+            if (a.t < sl.t0 - 0.1 || a.t > sl.t1 + 0.1) continue;
+            const pts = sl.pts;
+            let x = pts[pts.length - 1].x;
+            let y = pts[pts.length - 1].y;
+            if (a.t <= pts[0].t) {
+                x = pts[0].x;
+                y = pts[0].y;
+            } else {
+                for (let k = 1; k < pts.length; k++) {
+                    if (a.t <= pts[k].t) {
+                        const u = (a.t - pts[k - 1].t) / Math.max(1e-6, pts[k].t - pts[k - 1].t);
+                        x = pts[k - 1].x + u * (pts[k].x - pts[k - 1].x);
+                        y = pts[k - 1].y + u * (pts[k].y - pts[k - 1].y);
+                        break;
+                    }
+                }
+            }
+            if (dist([x, y], a.pos) < 0.25) return sl;
+        }
+        return null;
+    };
+    // lanes on either side of the vertical axis: a run across it changes hand there
+    const crossAdj = (l1, l2) =>
+        (l1 === 4 && l2 === 5) ||
+        (l1 === 5 && l2 === 4) ||
+        (l1 === 8 && l2 === 1) ||
+        (l1 === 1 && l2 === 8);
+    let lastTapAct = null;
     const strokes = [];
     // A button or sensor that is still pressed makes no new press, so a player lets go of it before the next press of it
     // (a jack is played with fingers or hands that alternate, with a gap of about a frame in between).
@@ -210,6 +256,7 @@ function plan(notes, style, random, events = null) {
     let prevAction = null;
     let drift = 0; // slow timing error, unit variance, carried from note to note
     let stress = 0;
+    let sameSpot = false; // this moment is on the same spot as the one before (a jack)
     // how this run's player shares the work between hands: free (the nearest finger),
     // by side (each hand keeps its own half), or by role (one hand slides and holds,
     // the other taps and touches)
@@ -355,7 +402,7 @@ function plan(notes, style, random, events = null) {
         // left hand unless that is clearly worse. Touches that are close together are one hand's
         // (fingers or a palm), so after the first the rest follow it while they are in reach.
         const isTouch = (x) => x.note.kind === 'touch' || x.note.kind === 'touchHold';
-        const btns = group.filter((x) => !x.slide && !isTouch(x));
+        const btns = group.filter((x) => !isTouch(x));
         let pairSides = null;
         if (
             btns.length === 2 &&
@@ -389,13 +436,22 @@ function plan(notes, style, random, events = null) {
                     group[0].pos[0] - prevAction.pos[0],
                     group[0].pos[1] - prevAction.pos[1]
                 ) < 0.3
-            )
+            ) {
                 stress *= style.jackSteady ?? 1;
+                sameSpot = true;
+            } else sameSpot = false;
             const gap = group[0].t - prevAction.t;
             const rho = Math.exp(-Math.max(0, gap) / 0.4);
             if (style.timeDrift) drift = rho * drift + Math.sqrt(1 - rho * rho) * random.gauss();
         }
         group.forEach((a, k) => {
+            // a touch that lies on the path of a slide being played is the sliding hand's: one of its free fingers
+            // taps it (a slide's own finger would turn the sensor on too early to count as the touch's press)
+            let coverSide = null;
+            if (isTouch(a) && a.end - a.t < 0.2) {
+                const cover = slideCover(a);
+                if (cover) coverSide = cover.side;
+            }
             // a slide whose star was tapped just before: hand it to the other hand when that
             // leaves less lateness overall (the hand that tapped is still needed, the other is free
             // and near enough), otherwise the same hand carries on. `handoff` is how readily a player
@@ -424,8 +480,20 @@ function plan(notes, style, random, events = null) {
                 forced = learnedSide;
             }
             let groupSide = null;
-            if (!a.slide && pairSides && !isTouch(a)) groupSide = pairSides[btns.indexOf(a)];
-            else if (isTouch(a) && touchSide !== null && dist(touchPos, a.pos) <= style.reach * 1.5)
+            if (pairSides && !isTouch(a)) {
+                // two slides whose stars were tapped by different hands keep those hands
+                const stars = btns.map((b) =>
+                    b.slide
+                        ? starHand.get(`${b.note.head}@${Math.round(b.note.t * 1000)}`)
+                        : undefined
+                );
+                const keep =
+                    btns.every((b) => b.slide) &&
+                    stars[0] !== undefined &&
+                    stars[1] !== undefined &&
+                    stars[0] !== stars[1];
+                if (!keep) groupSide = pairSides[btns.indexOf(a)];
+            } else if (isTouch(a) && touchSide !== null && dist(touchPos, a.pos) <= TOUCH_SPAN)
                 groupSide = touchSide;
             else if (
                 isTouch(a) &&
@@ -434,6 +502,22 @@ function plan(notes, style, random, events = null) {
                 dist(lastTouch.pos, a.pos) < 0.9
             )
                 groupSide = lastTouch.side;
+            if (coverSide !== null) groupSide = coverSide;
+            // a run of single taps across the vertical axis (4 5 4 5, a spin through 4 5 or 8 1) changes hand exactly there
+            // when both hands are free: lanes 1 to 4 are the right hand's, 5 to 8 the left's
+            if (
+                groupSide === null &&
+                group.length === 1 &&
+                (a.note.kind === 'tap' || a.note.kind === 'break') &&
+                hands.every((hh) => hh.longUntil <= a.t)
+            ) {
+                const across = (o) =>
+                    o &&
+                    (o.note.kind === 'tap' || o.note.kind === 'break') &&
+                    Math.abs(o.t - a.t) < 0.3 &&
+                    crossAdj(a.note.lane, o.note.lane);
+                if (across(lastTapAct) || across(actions[j])) groupSide = a.note.lane <= 4 ? 1 : 0;
+            }
             if (groupSide !== null) {
                 forced = groupSide;
                 if (learnedSide !== null) learnedSide = groupSide;
@@ -467,7 +551,20 @@ function plan(notes, style, random, events = null) {
             } else {
                 pick = candidates(a).reduce((best, c) => (c.s > best.s ? c : best));
             }
+            // a hand that is holding or sliding does not take another hold or slide while the other hand is free
+            if (isLongAction(a) && !(learnedSide !== null && style.followModel)) {
+                const other = hands[1 - pick.h.side];
+                if (pick.h.longUntil > a.t + 0.02 && other.longUntil <= a.t + 0.02) {
+                    const alt = candidates(a).filter((c) => c.h === other && c.s >= 0);
+                    if (alt.length)
+                        pick = alt.reduce((best, c) =>
+                            dist(c.f.pos, a.pos) < dist(best.f.pos, a.pos) ? c : best
+                        );
+                }
+            }
             const { h, f } = pick;
+            if (isLongAction(a)) h.longUntil = Math.max(h.longUntil, a.end);
+            if (a.note.kind === 'tap' || a.note.kind === 'break') lastTapAct = a;
             if (style.contact === 'smart' && a.mode === 'screen') a.foot = contactFor(a, h, i, j);
             if (learned && evt) apply(hs, evt, h.side);
             if (isTouch(a)) lastTouch = { side: h.side, t: a.t, pos: a.pos };
@@ -489,7 +586,8 @@ function plan(notes, style, random, events = null) {
             // (a touch's Perfect window is 200 ms late, so a touch lapse is a late one of 210 to 250 ms: real SSS runs
             // had Greats on about 1% of touches, three times the share of other notes)
             const lapse = style.lapse
-                ? random.next() < style.lapse * (isTouch(a) ? 3 : 1)
+                ? random.next() <
+                  style.lapse * (isTouch(a) ? 3 : 1) * (sameSpot ? (style.jackSteady ?? 1) : 1)
                     ? isTouch(a)
                         ? 0.21 + random.next() * 0.04
                         : (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.095)
@@ -662,6 +760,13 @@ function plan(notes, style, random, events = null) {
                         });
                     }
                 }
+                if (a.slide)
+                    activeSlides.push({
+                        pts,
+                        t0: pts[0].t,
+                        t1: pts[pts.length - 1].t,
+                        side: h.side,
+                    });
                 f.pos = [pts[pts.length - 1].x, pts[pts.length - 1].y];
                 f.screen = !style.lift;
                 f.lastScreenEnd = pts[pts.length - 1].t;

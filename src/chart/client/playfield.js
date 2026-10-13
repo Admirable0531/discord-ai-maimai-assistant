@@ -1412,10 +1412,45 @@ const HAND_RGB = [
     [90, 165, 255],
     [255, 160, 60],
 ]; // left hand blue, right hand orange
+// Where a stroke is on the canvas at time t (a button press sits just outside the ring, a screen stroke follows its path).
+function strokeXY(st, t) {
+    const [mode, , , , lane, , pts] = st;
+    if (mode === 0) return mirror(ptRaw(ang(lane), R * 1.06));
+    const [px, py] = simPos(pts, t);
+    return mirror([C + px * R, C + py * R]);
+}
+// A hand does not vanish between notes: it rests where it last played and travels to the next note, so the replay shows
+// where each hand is and how far it has to go.
+function handRest(hand, t) {
+    const list = simReplay.strokes.filter((st) => (st[5] ? 1 : 0) === hand);
+    let prev = null;
+    let next = null;
+    for (const st of list) {
+        if (st[2] <= t && (!prev || st[2] > prev[2])) prev = st;
+        if (st[1] > t && (!next || st[1] < next[1])) next = st;
+    }
+    const home = mirror([C + (hand ? 0.6 : -0.6) * R, C + 0.75 * R]);
+    const from = prev ? strokeXY(prev, prev[2]) : home;
+    const to = next ? strokeXY(next, next[1]) : from;
+    if (!next) return from;
+    // the hand sets off late enough to arrive on time: about 5 ring radii a second, never longer than the gap
+    const dx = to[0] - from[0];
+    const dy = to[1] - from[1];
+    const travel = Math.min(
+        next[1] - (prev ? prev[2] : next[1] - 1),
+        Math.max(0.06, Math.hypot(dx, dy) / R / 5)
+    );
+    const start = next[1] - travel;
+    const u = Math.min(1, Math.max(0, (t - start) / travel));
+    const k = u * u * (3 - 2 * u);
+    return [from[0] + dx * k, from[1] + dy * k];
+}
 function drawHands(g) {
     if (!simReplay || !cfg.simHands) return;
+    const active = [false, false];
     for (const [mode, t0, t1, r, lane, hand, pts] of simReplay.strokes) {
         if (at < t0 || at > t1) continue;
+        active[hand ? 1 : 0] = true;
         const [cr, cg, cb] = HAND_RGB[hand ? 1 : 0];
         let x;
         let y;
@@ -1440,6 +1475,23 @@ function drawHands(g) {
             g.stroke();
         }
         g.fillStyle = 'rgba(255,255,255,.95)';
+        g.font = 'bold 10px sans-serif';
+        g.textAlign = 'center';
+        g.fillText(hand ? 'R' : 'L', x, y + 3.5);
+    }
+    // a hand with nothing to press: shown faintly where it rests or on its way to the next note
+    for (let hand = 0; hand < 2; hand++) {
+        if (active[hand]) continue;
+        const [x, y] = handRest(hand, at);
+        const [cr, cg, cb] = HAND_RGB[hand];
+        g.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',.55)';
+        g.setLineDash([3, 3]);
+        g.lineWidth = 1.4;
+        g.beginPath();
+        g.arc(x, y, 9, 0, 7);
+        g.stroke();
+        g.setLineDash([]);
+        g.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',.7)';
         g.font = 'bold 10px sans-serif';
         g.textAlign = 'center';
         g.fillText(hand ? 'R' : 'L', x, y + 3.5);

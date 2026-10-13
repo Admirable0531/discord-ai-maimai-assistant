@@ -24,11 +24,15 @@ async function main() {
         .readdirSync(DIR)
         .filter((f) => f.endsWith('.meta.json'))
         .map((f) => JSON.parse(fs.readFileSync(path.join(DIR, f))))
-        .filter((m) => m.rank && m.score >= 120 && (m.contrast ?? 2) >= 1.4);
-    const charts = [];
+        .map((m) => ({ ...m, rank: m.rank || 'SSS' }))
+        .filter((m) => m.score >= 120 && (m.contrast ?? 2) >= 1.4);
+    // each rank is fitted on the charts of that rank's own videos (lower ranks were played on harder charts)
+    const byRank = {};
     for (const m of metas)
-        charts.push(buildChart((await getChartText(m.song, m.difficulty, m.type)).text).events);
-    const rate = (f, lapse) => {
+        (byRank[m.rank] = byRank[m.rank] || []).push(
+            buildChart((await getChartText(m.song, m.difficulty, m.type)).text).events
+        );
+    const rate = (charts, f, lapse) => {
         let n = 0;
         let g = 0;
         let gd = 0;
@@ -55,7 +59,7 @@ async function main() {
         let got = [0, 0];
         for (let it = 0; it < 7; it++) {
             f = (lo + hi) / 2;
-            got = rate(f, lapse);
+            got = rate(byRank[rank] || [], f, lapse);
             if (got[0] < tg) lo = f;
             else hi = f;
         }
@@ -63,7 +67,7 @@ async function main() {
         lapse *= td / Math.max(0.05, got[1]);
         for (let it = 0; it < 5; it++) {
             f = (lo + hi) / 2;
-            got = rate(f, lapse);
+            got = rate(byRank[rank] || [], f, lapse);
             if (got[0] < tg) lo = f;
             else hi = f;
         }

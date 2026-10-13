@@ -292,3 +292,42 @@ test('a wifi slide is played with three fingers, one per track, and is cleared b
     assert.equal(r.strokes.filter((s) => s.role === 'slide').length, 3);
     assert.equal([...r.outcomes.values()].find((o) => o.note === 'slide').grade, 0);
 });
+
+test('hand rules from player feedback: doubles slides, holds, spins and trills', () => {
+    const style = {
+        ...STYLES.expert,
+        posSigma: 0,
+        timeSigma: 0,
+        lapse: 0,
+        wander: 0,
+        overshoot: 0,
+    };
+    const hands = (text, role = null) => {
+        const chart = buildChart(text);
+        const r = simulate(chart.events, style, 1);
+        return r.strokes
+            .filter((s) => s.role !== 'transit' && (role === null || s.role === role))
+            .sort((a, b) => a.t0 - b.t0)
+            .map((s) => s.hand);
+    };
+    // two slides at once: one hand each
+    const slides = hands('(120){4}1-5[1:1]/2-6[1:1],,,,E', 'slide');
+    assert.deepEqual(slides.slice().sort(), [0, 1]);
+    // a second hold starts while the first is held: the other hand takes it
+    const holds = hands('(120){4}1h[2:1],3h[2:1],,,E', 'hold');
+    assert.equal(holds.length, 2);
+    assert.notEqual(holds[0], holds[1]);
+    // a spin through the bottom changes hand between lanes 4 and 5
+    assert.deepEqual(hands('(120){8}1,2,3,4,5,6,7,8,,,,E'), [1, 1, 1, 1, 0, 0, 0, 0]);
+    // a quick 4 5 4 5 alternates hands when both are free
+    assert.deepEqual(hands('(120){16}4,5,4,5,4,5,4,5,E'), [1, 0, 1, 0, 1, 0, 1, 0]);
+    // touches far apart at the same moment are not one hand's
+    const far = hands('(120){4}A1/A5,,,E');
+    assert.notEqual(far[0], far[1]);
+    // a touch hold and a slide are not the same hand's while the other hand is free
+    const mixed = buildChart('(120){4}C1h[2:1],,2-6[1:1],,,E');
+    const r = simulate(mixed.events, style, 1);
+    const th = r.strokes.find((s) => s.role === 'hold');
+    const sl = r.strokes.find((s) => s.role === 'slide');
+    assert.notEqual(th.hand, sl.hand);
+});
