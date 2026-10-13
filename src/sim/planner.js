@@ -124,9 +124,27 @@ function actionsOf(notes, style) {
             }
         } else if (n.kind === 'slide') {
             const points = slidePoints(n);
+            // A skilled player does not set a slide off while a tap or hold on its start lane is about to be
+            // played: the finger on that sensor would catch the tap early. The slide's timing is generous, so it
+            // waits until the tap is done (real SSS runs: 1 Great in 373 such taps; unaware simulated players: 12%).
+            let wait = null;
+            if (style.slideAware) {
+                for (const x of notes)
+                    if (
+                        (x.kind === 'tap' || x.kind === 'hold') &&
+                        x.lane === n.head &&
+                        x.t >= n.start - 0.04 &&
+                        x.t <= n.start + 0.14
+                    )
+                        wait = Math.max(wait ?? 0, x.t + 0.03);
+            }
+            if (wait !== null)
+                points.forEach((q, i) => {
+                    q.t = Math.min(n.end, Math.max(q.t, wait + i * 0.005));
+                });
             out.push({
                 note: n,
-                t: n.start - 0.04,
+                t: wait !== null ? wait - 0.01 : n.start - 0.04,
                 end: n.end + 0.05,
                 mode: 'screen',
                 slide: true,
@@ -171,7 +189,6 @@ function plan(notes, style, random, events = null) {
     // slips cluster in fast streams and where the direction of travel changes (stress). In two SSS external-output runs,
     // most GREAT labels were late taps inside such streams.
     let prevAction = null;
-    let prevAngle = null;
     let drift = 0;
     let stress = 0;
     // how this run's player shares the work between hands: free (the nearest finger),
@@ -293,6 +310,23 @@ function plan(notes, style, random, events = null) {
         return list;
     };
 
+    const momentTimes = [];
+    for (const x of actions) {
+        if (!momentTimes.length || x.t - momentTimes[momentTimes.length - 1] > 0.002)
+            momentTimes.push(x.t);
+    }
+    const momentsNear = (t) => {
+        let lo = 0;
+        let hi = momentTimes.length;
+        while (lo < hi) {
+            const m = (lo + hi) >> 1;
+            if (momentTimes[m] < t - 0.5) lo = m + 1;
+            else hi = m;
+        }
+        let n = 0;
+        for (let k = lo; k < momentTimes.length && momentTimes[k] <= t + 0.5; k++) n++;
+        return n;
+    };
     for (let i = 0; i < actions.length;) {
         let j = i + 1;
         while (j < actions.length && Math.abs(actions[j].t - actions[i].t) < 0.002) j++;
@@ -324,22 +358,12 @@ function plan(notes, style, random, events = null) {
         let touchSide = null;
         let touchPos = null;
         if (prevAction) {
+            // stress: how crowded the music is around this moment (notes within half a second either side).
+            // In 21 SSS external-output runs, Greats came 5 times as often with 8 or more moments in that
+            // window as with 4 or fewer.
+            const crowd = momentsNear(group[0].t);
+            stress = Math.min(1, Math.max(0, (crowd - 4) / 4));
             const gap = group[0].t - prevAction.t;
-            const dens = Math.min(1, Math.max(0, (0.3 - gap) / 0.2));
-            const dx = group[0].pos[0] - prevAction.pos[0];
-            const dy = group[0].pos[1] - prevAction.pos[1];
-            let turn = 0;
-            if (Math.hypot(dx, dy) > 0.05) {
-                const ang = Math.atan2(dy, dx);
-                if (prevAngle !== null) {
-                    const d = Math.abs(
-                        Math.atan2(Math.sin(ang - prevAngle), Math.cos(ang - prevAngle))
-                    );
-                    if (d > 1.0) turn = 1;
-                }
-                prevAngle = ang;
-            }
-            stress = dens * (1 + turn);
             const rho = Math.exp(-Math.max(0, gap) / 0.8);
             if (style.timeDrift)
                 drift =
@@ -436,7 +460,14 @@ function plan(notes, style, random, events = null) {
             }
             if (a.note.kind === 'tap')
                 starHand.set(`${a.note.lane}@${Math.round(a.note.t * 1000)}`, h.side);
+            // a lapse: now and then a note is simply played 55 to 105 ms off (mostly late), whatever the music
+            const lapse = style.lapse
+                ? random.next() < style.lapse
+                    ? (random.next() < 0.7 ? 1 : -1) * (0.055 + random.next() * 0.05)
+                    : 0
+                : 0;
             const jitter =
+                lapse +
                 bias +
                 drift +
                 (style.stressLate ?? 0) * style.timeSigma * stress +

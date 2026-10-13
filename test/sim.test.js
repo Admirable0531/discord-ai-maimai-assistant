@@ -132,7 +132,11 @@ test('sensor geometry: a fingertip on A5 turns on A5 alone, a palm covers its ne
 test('with no aiming or timing error every style clears a small chart cleanly', () => {
     const chart = buildChart('(120){4}1,2,3,4,5,6,7,8,E6,1h[2:1],4-6[2:1],,,,E');
     for (const style of Object.values(STYLES)) {
-        const { outcomes } = simulate(chart.events, { ...style, posSigma: 0, timeSigma: 0 }, 1);
+        const { outcomes } = simulate(
+            chart.events,
+            { ...style, posSigma: 0, timeSigma: 0, lapse: 0 },
+            1
+        );
         assert.ok(
             [...outcomes.values()].every((o) => o.kind === 'clean'),
             style.id

@@ -22,6 +22,7 @@ const BASE = {
     reach: 1.2, // a finger reaches this far from where its hand rests without moving the hand
     posSigma: 0.03,
     timeSigma: 0.012,
+    lapse: 0, // chance per note of a plain slip 55 to 105 ms off
     timeDrift: 0, // slow drift of the timing error, as a multiple of timeSigma (errors carry over to the next notes)
     stressNoise: 0, // timing noise grows by this multiple of timeSigma in fast streams that change direction
     stressLate: 0, // and runs this many timeSigma late there
@@ -29,6 +30,7 @@ const BASE = {
     wander: 0, // ring radii a slide's finger drifts sideways off the drawn path
     endSigma: 0, // ring radii a slide's last point lands off the end sensor
     overshoot: 0, // ring radii a finger runs past a slide's end or a touch it arrives at
+    slideAware: false, // waits to set a slide off until a tap on its start lane is done
     slideFree: 1, // fingers of a sliding hand that can still tap meanwhile
     policy: 'logic', // which hand takes a note: 'logic' (readable rules distilled from real players' L. R. breakdowns), 'learned' (the more accurate forest of trees) or 'rules' (the habits below)
     rightHanded: 0.85, // chance a player holds notes with the right hand
@@ -155,9 +157,17 @@ const OVERSHOOT = {
     expert: 0.015,
     top: 0.01,
 };
-// correlated timing options: off by default, the eight real Greats do not support any setting (docs/external-output-notes.md)
+// timing structure (docs/external-output-notes.md): noise grows with how crowded the music is; a few plain lapses
 const DRIFT = 0;
-const STRESS_NOISE = 0;
+const STRESS_NOISE = 0.8; // fitted: the top player then matches the Great rates of 21 real SSS runs
+const LAPSE = {
+    beginner: 0.02,
+    casual: 0.012,
+    intermediate: 0.007,
+    advanced: 0.005,
+    expert: 0.004,
+    top: 0.003,
+};
 const STRESS_LATE = 0;
 const SKILL = [
     ['beginner', 'Beginner', 0.06, 0.04, 0.07, 2, 0.8, 6, 0.13, false],
@@ -185,6 +195,7 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         timeBias,
         timeDrift: DRIFT,
         stressNoise: STRESS_NOISE,
+        lapse: LAPSE[id],
         stressLate: STRESS_LATE,
         posSigma,
         fingers,
@@ -193,6 +204,7 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
         overshoot: OVERSHOOT[id],
         wander: WANDER[id],
         slideFree: SLIDE_FREE[id],
+        slideAware: id !== 'beginner' && id !== 'casual',
         contact: id === 'beginner' || id === 'casual' ? 'fixed' : 'smart',
         endSigma: WANDER[id],
     };
@@ -206,6 +218,7 @@ const LIMITS = {
     posSigma: [0, 0.15],
     timeSigma: [0, 0.07],
     timeBias: [0, 0.06],
+    lapse: [0, 0.05],
     timeDrift: [0, 2],
     stressNoise: [0, 4],
     stressLate: [0, 3],
@@ -221,7 +234,7 @@ const LIMITS = {
     palmFoot: [0.1, 0.4],
     slideWide: [0.05, 0.3],
 };
-const FLAGS = ['touchButtons', 'lift'];
+const FLAGS = ['touchButtons', 'lift', 'slideAware'];
 
 /** A user-supplied style object reduced to known fields within their limits (never trusted as is). */
 function cleanCustom(input) {

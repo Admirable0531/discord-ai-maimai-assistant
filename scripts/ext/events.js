@@ -101,12 +101,64 @@ async function events(id, song, difficulty, type, shift) {
     return out;
 }
 
-function laneSpot(l) {
+function laneSpot(l, r = 0.95) {
     const a = ((22.5 + 45 * (l - 1)) * Math.PI) / 180;
-    return [0.95 * Math.sin(a), -0.95 * Math.cos(a)];
+    return [r * Math.sin(a), -r * Math.cos(a)];
 }
 
-module.exports = { labelEvents, events };
+/** The video clock minus the chart clock, from where yellow (Critical Perfect) cells follow the taps best. */
+function shiftFromLabels(cap, list) {
+    const spots = [1, 2, 3, 4, 5, 6, 7, 8].map((l) => laneSpot(l, 1.05));
+    const lanes = cap.frames.map(([, row]) => {
+        const out = new Array(8).fill(0);
+        for (const r of row) {
+            if (!r[1]) continue;
+            const x = ((r[0] % 100) * cap.CELL + cap.CELL / 2 - cap.cx) / cap.R;
+            const y = (Math.floor(r[0] / 100) * cap.CELL + cap.CELL / 2 - cap.cy) / cap.R;
+            for (let l = 0; l < 8; l++) if (dist(spots[l], [x, y]) < 0.28) out[l] += r[1];
+        }
+        return out;
+    });
+    const times = cap.frames.map((f) => f[0]);
+    const taps = list.filter((n) => n.kind === 'tap' || n.kind === 'break');
+    const frameAt = (t) => {
+        let lo = 0;
+        let hi = times.length - 1;
+        while (lo < hi) {
+            const m = (lo + hi) >> 1;
+            if (times[m] < t) lo = m + 1;
+            else hi = m;
+        }
+        return lo;
+    };
+    const score = (shift) => {
+        let sum = 0;
+        let n = 0;
+        for (const e of taps) {
+            const t = e.when + shift;
+            if (t > times[times.length - 1] - 1) continue;
+            const l = Number(e.key[1]) - 1;
+            let peak = 0;
+            for (let i = frameAt(t); i < times.length && times[i] <= t + 0.6; i++)
+                peak = Math.max(peak, lanes[i][l]);
+            sum += Math.min(300, peak);
+            n++;
+        }
+        return n > 20 ? sum / n : -1;
+    };
+    let best = [0, -1];
+    for (let s = 0; s <= 40; s += 0.05) {
+        const v = score(s);
+        if (v > best[1]) best = [s, v];
+    }
+    for (let s = best[0] - 0.05; s <= best[0] + 0.05; s += 0.0125) {
+        const v = score(s);
+        if (v > best[1]) best = [s, v];
+    }
+    return { shift: best[0], score: best[1] };
+}
+
+module.exports = { labelEvents, events, shiftFromLabels, laneSpot };
 
 if (require.main === module) {
     const [id, song, diff, type, shift] = process.argv.slice(2);

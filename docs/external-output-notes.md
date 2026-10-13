@@ -29,14 +29,35 @@ What it says: the Greats in these SSS runs are mostly LATE hits inside fast tap 
 independent noise on every note, so it never produces them. Real timing errors cluster in dense or direction-changing streams and are
 biased late. That is the correlated timing model (errors depend on density and note pattern) to build next. Eight events is a very small sample.
 
-## Correlated timing: tried, not supported by the data
+## 21 SSS runs: what the Greats have in common
 
-Added optional timing structure to the planner (`timeDrift`: slow drift carried to the next notes; `stressNoise` / `stressLate`:
-more noise and a late shift in fast streams that change direction), all off by default.
-- With stress on, an expert style gets 25 to 45 Greats per chart instead of about 5, because stress covers a large share of notes in dense charts.
-  At the same time the real Greats' position in the simulation's risk ranking only moved from the 11th to about the 38th percentile.
-- None of the pattern features tried separates the 8 real Greats from the other 1,518 notes: gap before/after, distance from the previous note, change of
-  direction, local density, needed hand speed (their percentiles among taps are scattered around 0.5; two of them follow a long pause, which could be a cold start).
-- The count is fine already: the expert style gets about 5 Greats per run on these two charts; real SSS runs had 6 and 2.
-- The one pattern in the data is lateness: 5 of the 6 LiftOff Greats are tagged LATE.
-So the independent noise stays; more videos are needed (about 4 Greats per SSS run) before a pattern can be fitted.
+21 J.Deacon SSS clears (the videos whose alignment score was 80 or more, plus LiftOff and Paradisoda), 14,472 judged notes, 52 Greats matched to a note (0.36%).
+Scripts: `run.js` (reads a list of videos), `analyse.js` (table below), `calibrate.js`, `a16.js`.
+
+| | Great rate |
+|---|---|
+| 4 or fewer moments within +-0.5 s | 0.22% |
+| 4 to 6 | 0.23% |
+| 6 to 8 | 0.43% |
+| 8 or more | 1.11% |
+| less than 0.1 s after the previous note | 0.78% (0.2 to 0.4 s: 0.17%) |
+| taps / holds / slides | 0.39% / 0.12% / 0.16% |
+| touches | 1.07% (5 of 467) |
+| yellow doubles (two at once) | 0.21% (single notes: 0.48%) |
+| change of direction, distance from the previous note, slide nearby | no clear effect |
+
+So Greats follow how crowded the music is, not the shape of the pattern. Two simultaneous notes are not riskier.
+
+**Taps on a slide's start lane shortly after the slide sets off (rule A16): 1 Great in 373 (0.27%), as often as any other tap (0.39%).**
+The simulation's expert got 11.6% there. The slide finger sat on the start sensor and caught the tap early. Skilled players do not set the slide off
+while that tap is due; the planner now has `slideAware` (waits until the tap is done, the slide timing is generous) for intermediate players and up, which gives 0.19%.
+Beginner and casual players stay unaware, so the A16 warning still stands for them. (The earlier finding that this is the dominant splash holds for ordinary players; the evidence here is from SSS players.)
+
+**Timing noise now follows the crowd.** `stressNoise` multiplies timing noise by up to 1 + stressNoise when 8 or more moments fall in a one-second window,
+and `lapse` is the chance per note of a plain 55 to 105 ms slip (70% late). Fitted so the top player matches the SSS runs: Greats 0.38% (real 0.36%);
+by crowd 0.18 / 0.30 / 0.48 / 1.09% (real 0.22 / 0.23 / 0.43 / 1.11%). Other levels use the same stress factor with larger lapses (beginner 2%, top 0.3%).
+
+**Not explained:** touches. Real touches got Greats 1.07% of the time; the simulation's touches never do (its touch window is very wide: early 150 ms, Perfect up to 200 ms late).
+Either the real touch window is narrower than assumed, or touch groups are graded differently. The judging code of MajdataPlay would settle it.
+
+Eight to 52 events is still a small sample; the fit only constrains one number per crowd bin.
