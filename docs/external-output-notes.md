@@ -68,3 +68,24 @@ Eight to 52 events is still a small sample; the fit only constrains one number p
 - **Sentakki** (osu! recreation): its own judging, no sensor model; nothing to use.
 After the slide fix the top simulated player's slides had Great 0.06% (real 0.16%) but Good/Miss 1.0%. Cause: every wifi slide failed. The simulated player drew one line along the middle track with a 0.25 contact, which cannot cover the two outer tracks. A wifi slide is now played with three fingers, one per track (three strokes from one hand); slide Good/Miss fell to 0.15%.
 Touches: real SSS runs had Greats on about 1% of touches (5 of 467), the simulation none, because a touch's Perfect window runs 200 ms late. Touch lapses are now late ones of 210 to 250 ms at three times the lapse rate of other notes; the simulated top player gets 0.4% (weak evidence, 5 events).
+
+## 62 more runs: Greats by rank (Blanc's videos, game screen beside a hand camera)
+
+Blanc's channel posts runs at every rank from S to SSS+ on 12 to 14+ charts, with the game screen on the left and a hand camera on the right. The ring is not at the screen centre, so `labels.js` takes the ring position (`RING="cx,cy,R"`; 301.5, 269.5, 240.5 on a 960 px wide frame) and `events.js` ignores labels outside it. A first batch was captured with the ring assumed at the centre; the cell data were still valid, and `applyRing` fixes the position afterwards (alignment score went from 28-88 to 134-246).
+Alignment is judged by how strongly yellow, orange and salmon labels follow the taps (`contrast` at least 1.4, label score at least 120), which kept 61 videos.
+
+Great labels per note, by rank (`rank.js`):
+
+| Rank | Videos | Notes | Greats |
+|---|---|---|---|
+| S | 5 | 5,877 | 3.11% |
+| S+ | 2 | 2,015 | 2.13% |
+| SS | 10 | 10,398 | 1.88% |
+| SS+ | 13 | 14,567 | 1.30% |
+| SSS | 27 | 21,640 | 0.51% |
+| SSS+ | 4 | 3,718 | 0.22% |
+
+The ladder is clean, so rank mostly means "how often a note is off by more than 50 ms". The simulated skill ladder was far worse than any of these ranks (the old "advanced" gets 15% Greats on the same charts, "intermediate" 22% with 20% Good/Miss): real players in videos are strong. Players below S were not observed.
+
+**Rank players** (`rankS`, `rankSp`, `rankSS`, `rankSSp`, `rankSSS`, `rankSSSp`, hidden among the extra styles): the top player with timing noise and lapse rate scaled by 1.45, 1.3, 1.25, 1.1, 0.78 and 0.45 (`fitrank.js`). On the same charts they get Greats 3.16 / 2.17 / 1.91 / 1.25 / 0.48 / 0.17% against 3.11 / 2.13 / 1.88 / 1.30 / 0.51 / 0.22% real. About 0.4% of Greats in the simulation come from splash and slips whatever the timing, so SSS+ lands a little under the floor.
+Check against the rank itself (`achievement.js`, Great 0.75, Good 0.5, weights tap 1, hold 2, slide 3, touch 1): the simulated achievement median is 98.2 (S, real 97 to 98), 99.2 (S+, 98 to 99), 99.1 (SS, 99 to 99.5), 99.2 (SS+, 99.5 to 100), 99.9 (SSS, 100 to 100.5; no break bonus counted). Within about 1%, so the Good and Miss counts are about right too.

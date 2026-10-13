@@ -73,7 +73,7 @@ Layout:
 
 The viewer has a "Play simulation" panel: virtual hands (full buttons, fingertips, dragging fingers, palm slides, big-hand touch, mixed) play the chart through a copy of the game's judging many times with small aiming and timing errors, and the spots where one input hits or blocks another are listed with a chance per style and drawn as hands on the sensor ring. It runs in a worker thread (`src/sim`), is also available as `simulate: true` on the chart tool, and is explained in [docs/play-simulation-plan.md](docs/play-simulation-plan.md) and [docs/judge-facts.md](docs/judge-facts.md).
 
-Which hand takes a note is learned from "L. R. Breakdown" videos ([docs/hand-model.md](docs/hand-model.md)); the players' timing, how they set slides off, and how crowded music affects them are calibrated against the Great labels in 21 SSS external-output videos ([docs/external-output-notes.md](docs/external-output-notes.md)); player levels are in [docs/player-skill.md](docs/player-skill.md). Scripts that read the videos are in `scripts/lr/` and `scripts/ext/` (they need Chromium, so run them in a container).
+Which hand takes a note is learned from "L. R. Breakdown" videos ([docs/hand-model.md](docs/hand-model.md)); the players' timing, how they set slides off, and how crowded music affects them are calibrated against the Great labels in 21 SSS external-output videos ([docs/external-output-notes.md](docs/external-output-notes.md)); player levels are in [docs/player-skill.md](docs/player-skill.md), and there are players fitted to real S to SSS+ runs. Scripts that read the videos are in `scripts/lr/` and `scripts/ext/` (they need Chromium, so run them in a container).
 
 ## Deployment
 

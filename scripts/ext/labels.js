@@ -57,7 +57,7 @@ async function captureSegment(videoId, rate, from, to) {
     await page.waitForTimeout(2500);
     const positions = [];
     const result = await page.evaluate(
-        async ({ rate, from, to }) => {
+        async ({ rate, from, to, ring_ }) => {
             const v = document.querySelector('video');
             v.muted = true;
             v.playbackRate = rate;
@@ -71,8 +71,10 @@ async function captureSegment(videoId, rate, from, to) {
             const g = cv.getContext('2d', { willReadFrequently: true });
             // find the judgement ring: the radius, from the middle of the frame, where most pure white pixels are
             g.drawImage(v, 0, 0, W, H);
-            const cx = W / 2;
-            const cy = H / 2;
+            // a video with the ring off centre (game screen beside a hand camera): RING="cx,cy,R" in 960 px units
+            const ring = ring_ ? ring_.split(',').map(Number) : null;
+            const cx = ring ? ring[0] : W / 2;
+            const cy = ring ? ring[1] : H / 2;
             const hist = new Float32Array(Math.ceil(H));
             const img = g.getImageData(0, 0, W, H).data;
             for (let y = 0; y < H; y++) {
@@ -86,6 +88,7 @@ async function captureSegment(videoId, rate, from, to) {
             }
             let R = Math.round(H * 0.4465);
             for (let r = Math.floor(H * 0.41); r < H * 0.48; r++) if (hist[r] > hist[R]) R = r;
+            if (ring) R = ring[2];
             const frames = [];
             // judgement label colours: 0 yellow (Critical Perfect), 1 orange (Perfect), 2 red, 3 pink/magenta,
             // 4 green, 5 cyan, 6 blue, 7 white, 8 grey-violet
@@ -114,8 +117,12 @@ async function captureSegment(videoId, rate, from, to) {
                     const row = [];
                     const d = g.getImageData(0, 0, W, H).data;
                     const cells = new Map();
-                    for (let y = 0; y < H; y += 2) {
-                        for (let x = 0; x < W; x += 2) {
+                    const x0 = ring ? Math.max(0, Math.floor(cx - 1.3 * R)) : 0;
+                    const x1 = ring ? Math.min(W, Math.ceil(cx + 1.3 * R)) : W;
+                    const y0 = ring ? Math.max(0, Math.floor(cy - 1.3 * R)) : 0;
+                    const y1 = ring ? Math.min(H, Math.ceil(cy + 1.3 * R)) : H;
+                    for (let y = y0 - (y0 % 2); y < y1; y += 2) {
+                        for (let x = x0 - (x0 % 2); x < x1; x += 2) {
                             const i = (y * W + x) * 4;
                             const k = classify(d[i], d[i + 1], d[i + 2]);
                             if (k < 0) continue;
@@ -141,7 +148,7 @@ async function captureSegment(videoId, rate, from, to) {
             });
             return { R, W, H, CELL, cx, cy, frames, duration: v.duration };
         },
-        { rate, from, to }
+        { rate, from, to, ring_: process.env.RING || '' }
     );
     await browser.close();
     return result;

@@ -210,6 +210,32 @@ for (const [id, label, timeSigma, timeBias, posSigma, fingers, reach, speed, foo
     };
 }
 
+// Players by rank, fitted to real runs: the Great rate of 62 external-output videos at each rank (S 3.1%, S+ 2.1%, SS 1.9%, SS+ 1.3%,
+// SSS 0.51%, SSS+ 0.22%, on 12 to 14+ charts) is matched by scaling the top player's timing noise and lapse rate
+// (scripts/ext/fitrank.js). Aiming, speed and reach stay as the top player's. The lowest simulated Great rate comes from
+// splash and slips, so SSS+ cannot go lower than about 0.4%.
+const RANKS = [
+    ['S', 'S rank (97%)', 1.45],
+    ['S+', 'S+ rank (98%)', 1.3],
+    ['SS', 'SS rank (99%)', 1.25],
+    ['SS+', 'SS+ rank (99.5%)', 1.1],
+    ['SSS', 'SSS rank (100%)', 0.78],
+    ['SSS+', 'SSS+ rank (100.5%)', 0.45],
+];
+for (const [rank, label, f] of RANKS) {
+    const id = `rank${rank.replace('+', 'p')}`;
+    STYLES[id] = {
+        ...STYLES.top,
+        id,
+        label: `${label} player`,
+        about: `Timing fitted to real ${rank} runs: top player's timing noise and slips scaled by ${f}.`,
+        timeSigma: STYLES.top.timeSigma * f,
+        lapse: STYLES.top.lapse * f,
+        extra: true,
+        skill: true,
+    };
+}
+
 /** The numbers a custom style may set, with their limits. */
 const LIMITS = {
     tapFoot: [0.02, 0.4],

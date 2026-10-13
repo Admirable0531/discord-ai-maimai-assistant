@@ -8,17 +8,43 @@ const { execFileSync } = require('child_process');
 const { getChartText } = require('../../src/chart/simaiWiki');
 const { buildChart } = require('../../src/chart/chartModel');
 const { judged } = require('./align');
-const { events, shiftFromLabels } = require('./events');
+const { events, shiftFromLabels, applyRing } = require('./events');
 
 const DIR = path.join(__dirname, '..', '..', 'data', 'ext');
 
+// Blanc's videos: the game screen on the left, a hand camera on the right ("[Maimai] Song SS+ [Master 14]")
+const BLANC_RING = '301.5,269.5,240.5';
+
 function parse(title) {
+    const b =
+        /^\[Maimai[^\]]*\]\s*(.+?)\s+(?:初\s*)?(SSS\+|SSS|SS\+|SS|S\+|S|AP\+?)(?:\s+FC\+?)?\s+\[\s*(Master|Re:\s?Master|Expert)\s*([\d+]*)\s*\]/i.exec(
+            title
+        );
+    if (b) {
+        let song = b[1].trim();
+        let types = ['dx', 'std'];
+        const tag = /\s*\[(ST|DX)\]\s*$/i.exec(song);
+        if (tag) {
+            song = song.slice(0, tag.index).trim();
+            types = [tag[1].toUpperCase() === 'ST' ? 'std' : 'dx'];
+        }
+        const d = b[3].toLowerCase().replace(/\s/g, '');
+        return {
+            song,
+            difficulty: d === 'master' ? 'master' : d === 'expert' ? 'expert' : 'remaster',
+            types,
+            rank: b[2].toUpperCase(),
+            level: b[4],
+            ring: BLANC_RING,
+        };
+    }
     const m = /】\s*(.+?)\s*\/\s*(Re:MASTER|MASTER)/.exec(title);
     if (!m) return null;
     return {
         song: m[1],
         difficulty: m[2] === 'MASTER' ? 'master' : 'remaster',
         types: /スタンダード/.test(title) ? ['std'] : ['dx', 'std'],
+        rank: 'SSS',
     };
 }
 
@@ -40,16 +66,18 @@ async function one(v) {
     if (!fs.existsSync(lab))
         execFileSync('node', [path.join(__dirname, 'labels.js'), v.id, lab, '1'], {
             stdio: 'inherit',
+            env: { ...process.env, RING: p.ring || '' },
         });
     const cap = JSON.parse(fs.readFileSync(lab));
-    const { shift, score } = shiftFromLabels(cap, judged(buildChart(chartText)));
-    const list = await events(v.id, p.song, p.difficulty, type, shift);
+    applyRing(cap, p.ring);
+    const { shift, score, contrast } = shiftFromLabels(cap, judged(buildChart(chartText)));
+    const list = await events(v.id, p.song, p.difficulty, type, shift, p.ring);
     fs.writeFileSync(path.join(DIR, `${v.id}.great.json`), JSON.stringify(list, null, 1));
     fs.writeFileSync(
         path.join(DIR, `${v.id}.meta.json`),
-        JSON.stringify({ ...v, ...p, type, shift, score })
+        JSON.stringify({ ...v, ...p, type, shift, score, contrast })
     );
-    return `${v.id} ${p.song} ${p.difficulty}: shift ${shift.toFixed(2)} (yellow ${score.toFixed(0)}), ${list.length} greats`;
+    return `${v.id} ${p.song} ${p.difficulty}: shift ${shift.toFixed(2)} (label ${score.toFixed(0)}, contrast ${contrast.toFixed(1)}), ${list.length} greats`;
 }
 
 if (require.main === module) {

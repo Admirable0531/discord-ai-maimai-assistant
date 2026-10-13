@@ -50,6 +50,7 @@ function labelEvents(cap, minCount = 120, minTag = 10) {
             n,
             tag: late >= fast ? 'late' : 'fast',
         };
+        if (Math.hypot(p.x, p.y) > 1.3) continue; // outside the ring: a hand camera or the info panel
         if (cur && t - cur.last < 0.2) {
             cur.last = t;
             if (n > cur.n) Object.assign(cur, { x: p.x, y: p.y, n, tag: p.tag });
@@ -64,8 +65,8 @@ function labelEvents(cap, minCount = 120, minTag = 10) {
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-async function events(id, song, difficulty, type, shift) {
-    const cap = JSON.parse(fs.readFileSync(path.join(DIR, `${id}.lab.json`)));
+async function events(id, song, difficulty, type, shift, ring) {
+    const cap = applyRing(JSON.parse(fs.readFileSync(path.join(DIR, `${id}.lab.json`))), ring);
     const chart = buildChart((await getChartText(song, difficulty, type)).text);
     const list = judged(chart);
     const where = (n) => (n.key.startsWith('L') ? laneSpot(Number(n.key[1])) : centre(n.key));
@@ -106,16 +107,25 @@ function laneSpot(l, r = 0.95) {
     return [r * Math.sin(a), -r * Math.cos(a)];
 }
 
+/** A capture made without knowing where the ring is: set it afterwards ("cx,cy,R" in 960 px units). */
+function applyRing(cap, ring) {
+    if (!ring) return cap;
+    const [cx, cy, R] = ring.split(',').map(Number);
+    Object.assign(cap, { cx, cy, R });
+    return cap;
+}
+
 /** The video clock minus the chart clock, from where yellow (Critical Perfect) cells follow the taps best. */
 function shiftFromLabels(cap, list) {
     const spots = [1, 2, 3, 4, 5, 6, 7, 8].map((l) => laneSpot(l, 1.05));
     const lanes = cap.frames.map(([, row]) => {
         const out = new Array(8).fill(0);
         for (const r of row) {
-            if (!r[1]) continue;
+            if (!r[1] && !r[2] && !r[3]) continue;
             const x = ((r[0] % 100) * cap.CELL + cap.CELL / 2 - cap.cx) / cap.R;
             const y = (Math.floor(r[0] / 100) * cap.CELL + cap.CELL / 2 - cap.cy) / cap.R;
-            for (let l = 0; l < 8; l++) if (dist(spots[l], [x, y]) < 0.28) out[l] += r[1];
+            for (let l = 0; l < 8; l++)
+                if (dist(spots[l], [x, y]) < 0.28) out[l] += r[1] + r[2] + r[3];
         }
         return out;
     });
@@ -147,18 +157,22 @@ function shiftFromLabels(cap, list) {
         return n > 20 ? sum / n : -1;
     };
     let best = [0, -1];
-    for (let s = 0; s <= 40; s += 0.05) {
+    const all = [];
+    for (let s = 0; s <= 45; s += 0.05) {
         const v = score(s);
+        all.push(v);
         if (v > best[1]) best = [s, v];
     }
+    all.sort((x, y) => x - y);
+    const median = Math.max(1, all[Math.floor(all.length / 2)]);
     for (let s = best[0] - 0.05; s <= best[0] + 0.05; s += 0.0125) {
         const v = score(s);
         if (v > best[1]) best = [s, v];
     }
-    return { shift: best[0], score: best[1] };
+    return { shift: best[0], score: best[1], contrast: best[1] / median };
 }
 
-module.exports = { labelEvents, events, shiftFromLabels, laneSpot };
+module.exports = { labelEvents, events, shiftFromLabels, laneSpot, applyRing };
 
 if (require.main === module) {
     const [id, song, diff, type, shift] = process.argv.slice(2);
