@@ -341,12 +341,10 @@ function plan(notes, style, random, events = null) {
             }
             stress = dens * (1 + turn);
             const rho = Math.exp(-Math.max(0, gap) / 0.8);
-            drift =
-                rho * drift +
-                Math.sqrt(1 - rho * rho) *
-                    random.gauss() *
-                    (style.timeDrift ?? 0) *
-                    style.timeSigma;
+            if (style.timeDrift)
+                drift =
+                    rho * drift +
+                    Math.sqrt(1 - rho * rho) * random.gauss() * style.timeDrift * style.timeSigma;
         }
         group.forEach((a, k) => {
             // a slide whose star was tapped just before: hand it to the other hand when that
