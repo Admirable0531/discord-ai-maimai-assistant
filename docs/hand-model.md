@@ -48,3 +48,17 @@ A forest of 12 trees is accurate but cannot be read. The default policy, `logic`
 | "Right half of the screen is the right hand" | 78.1% | 76.6% |
 
 A hand-written rule list (a busy hand cannot take anything, the left note of a pair goes left, a slide goes to the hand with fewer notes coming, fast runs alternate; `src/sim/handLogic.js`, checked by `scripts/lr/logic.js`) only reproduced the player's hand on 74.7% of notes: a hand holding or sliding still takes about 45% of notes near it (a hold uses one finger; a slide leaves 1 to 2 free), and "fast runs alternate" was right only 42% of the time. The rules learned from the data capture that better than I wrote them by hand, which is why the default uses them. The custom editor lets you choose `logic`, `learned` or the old `rules`.
+
+## Checked on a video from another creator (Oct 2026)
+Searches (English, Japanese, Chinese) found only **one** other hand-coloured L. R. breakdown, wbr's "7Wonder L.R Breakdown" (the KOP 7th final song, chart "7 Wonders" MASTER). The other creators' "breakdown" videos colour notes by rhythm or by note type, or are hand-cam footage whose hands cannot be read automatically. It uses the same cyan and pink hand colours. Read with the same scripts (`scripts/lr/evaluate.js`), 1,255 notes with a clear hand, and never seen in training:
+
+| | Given the human's earlier moves | When the simulated player plays the chart itself |
+|---|---|---|
+| Readable rules (default) | 84.6% | 79.0% |
+| Forest of 12 trees | 89.1% | 86.4% |
+| Earlier rule-based habits | n/a | 73.5% |
+| "Right half of the screen is the right hand" | 75.9% | n/a |
+
+So the logic holds up: the same level as on the held-out KT videos (84 to 88%, and 81.5% / 84.4% when playing itself), and clearly above the simple rule. The shares of crossing (24% against 21%), hand-off (26% against 22%), simultaneous splits (94% against 90%) and alternation (58.5% against 54%) are close to the training videos too.
+
+One habit did not carry over: this player holds with the **left** hand 48% of the time, against 20% in KT's videos. The "holds go to the right hand" tendency in the model is KT's habit, not a rule of the game, which is why the hold rule is the weakest part.
