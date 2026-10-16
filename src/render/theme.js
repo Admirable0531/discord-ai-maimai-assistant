@@ -15,6 +15,7 @@ const TOKENS = {
     grid: '#2c2c2a',
     axis: '#383835',
     series1: '#3987e5',
+    series2: '#ec8a3d', // the second player in a comparison
     good: '#0ca30c',
     warning: '#fab219',
 };

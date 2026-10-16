@@ -1,7 +1,12 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { loadSnapshot, chartKey, freshnessNote, sum } = require('../../../web/maimaiPlayerSnapshot');
-const { formatInt, TOKENS } = require('../../../render/theme');
+const { compareSnapshots } = require('../../../web/maimaiCompare');
+const { loadCoverMap } = require('../../../web/maimaiCovers');
+const { buildCompareHtml, WIDTH } = require('../../../render/compareCard');
+const { renderHtmlToPng } = require('../../../render/browserRenderer');
+const { formatInt, displayName, TOKENS, COVER_HOST } = require('../../../render/theme');
 const { denyWithoutScope, describeFailure, suggestPlayers } = require('../../commandHelpers');
+const logger = require('../../../utils/logger');
 
 const BIGGEST_GAPS = 4;
 
@@ -85,6 +90,42 @@ module.exports = {
         if (a.player.id === b.player.id) {
             await interaction.editReply('Pick two different players.');
             return;
+        }
+
+        // The image card is the answer; the text embed below is only what is sent if the card cannot be drawn.
+        try {
+            const data = compareSnapshots(a, b);
+            const shown = [
+                ...data.shared.slice(0, 8).map((x) => x.song),
+                ...data.onlyA.slice(0, 4).map((x) => x.song),
+                ...data.onlyB.slice(0, 4).map((x) => x.song),
+            ];
+            const html = buildCompareHtml({
+                nameA: a.player.name,
+                nameB: b.player.name,
+                data,
+                covers: await loadCoverMap(shown),
+                staleNotes: [a, b]
+                    .filter((x) => x.stale)
+                    .map((x) => `${displayName(x.player.name)} (${x.ageDays ?? '?'}d old)`),
+            });
+            const png = await renderHtmlToPng(html, {
+                width: WIDTH,
+                scale: 1.5,
+                allowedHosts: [COVER_HOST],
+            });
+            const gap = (data.sa.rating ?? 0) - (data.sb.rating ?? 0);
+            const lead =
+                gap === 0
+                    ? 'level on rating'
+                    : `${displayName(gap > 0 ? a.player.name : b.player.name)} ahead by ${formatInt(Math.abs(gap))}`;
+            await interaction.editReply({
+                content: `**${displayName(a.player.name)}** ${formatInt(data.sa.rating)} vs **${displayName(b.player.name)}** ${formatInt(data.sb.rating)} — ${lead}`,
+                files: [new AttachmentBuilder(png, { name: 'compare.png' })],
+            });
+            return;
+        } catch (err) {
+            logger.error('compare', 'Could not draw the comparison card', err);
         }
 
         const sa = summarise(a);
