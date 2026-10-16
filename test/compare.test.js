@@ -67,6 +67,7 @@ test('a chart only one player has says what the other would need to get it into 
     assert.equal(row.chase.gain, 60);
     assert.ok(row.chase.needed >= 97 && row.chase.needed <= 100.5, String(row.chase.needed));
     assert.equal(row.chase.unreachable, false);
+    assert.equal(row.chase.cutoff, 270);
 });
 
 test('a section with room takes any score, and an impossible chart is out of reach', () => {

@@ -50,13 +50,15 @@ function summarise(snapshot) {
 function chase(play, otherSummary) {
     const cut = play.section === 'new' ? otherSummary.cutoffNew : otherSummary.cutoffOld;
     const same = getSongRating(play.level, play.achievement)?.rating ?? play.rating;
-    if (cut === null) return { gain: same, needed: null, neededRank: null, unreachable: false };
+    if (cut === null)
+        return { gain: same, needed: null, neededRank: null, unreachable: false, cutoff: null };
     const found = findMinAchvForRating(play.level, cut + 1);
     return {
         gain: Math.max(0, same - cut),
         needed: found ? found.achv_needed : null,
         neededRank: found ? found.rank : null,
         unreachable: !found,
+        cutoff: cut,
     };
 }
 
@@ -92,11 +94,11 @@ function compareSnapshots(a, b) {
     const onlyA = [...ma.entries()]
         .filter(([key]) => !mb.has(key))
         .map(([, p]) => ({ ...p, rank: rankOf(p.achievement), chase: chase(p, sb) }))
-        .sort((x, y) => y.rating - x.rating);
+        .sort((x, y) => y.chase.gain - x.chase.gain || y.rating - x.rating);
     const onlyB = [...mb.entries()]
         .filter(([key]) => !ma.has(key))
         .map(([, p]) => ({ ...p, rank: rankOf(p.achievement), chase: chase(p, sa) }))
-        .sort((x, y) => y.rating - x.rating);
+        .sort((x, y) => y.chase.gain - x.chase.gain || y.rating - x.rating);
 
     return {
         sa,

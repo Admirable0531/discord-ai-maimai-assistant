@@ -14,10 +14,10 @@ const {
 const { difficultyPill, PARTS_CSS } = require('./parts');
 
 // Wide enough for the three-part chart rows (title, diverging bar, rating gap); Discord shrinks it to the chat width.
-const WIDTH = 720;
+const WIDTH = 680;
 const SHARED_ROWS = 8;
 const ONLY_ROWS = 4;
-const BAR_HALF = 104; // px of bar on each side of the centre line
+const BAR_HALF = 100; // px of bar on each side of the centre line
 const BAR_FULL_GAP = 1; // an achievement gap of this many percentage points fills the bar
 
 const A_COLOR = TOKENS.series1;
@@ -45,29 +45,29 @@ ${PARTS_CSS}
 .section-head .name { font-size: 19px; font-weight: 600; }
 .section-head .sum { color: ${TOKENS.inkSecondary}; font-size: 14px; text-align: right; }
 .stats { background: ${TOKENS.raised}; border-radius: 8px; padding: 4px 14px; }
-.stat { display: grid; grid-template-columns: 1fr 150px 1fr; align-items: center; height: 36px; border-bottom: 1px solid ${TOKENS.grid}; font-size: 17px; }
+.stat { display: grid; grid-template-columns: 1fr 170px 1fr; align-items: center; height: 40px; border-bottom: 1px solid ${TOKENS.grid}; font-size: 19px; }
 .stat:last-child { border-bottom: 0; }
-.stat .k { text-align: center; color: ${TOKENS.inkMuted}; font-size: 13px; letter-spacing: 0.04em; }
+.stat .k { text-align: center; color: ${TOKENS.inkMuted}; font-size: 14px; letter-spacing: 0.04em; }
 .stat .v.b { text-align: right; }
 .stat .v.lead { font-weight: 700; }
 .stat .v.dim { color: ${TOKENS.inkSecondary}; }
 .rows { display: flex; flex-direction: column; gap: 8px; }
-.crow { display: grid; grid-template-columns: 52px 1fr ${BAR_HALF * 2 + 8}px 58px; gap: 10px; align-items: center; background: ${TOKENS.raised}; border-radius: 8px; padding: 6px 10px 6px 6px; min-height: 64px; }
+.crow { display: grid; grid-template-columns: 52px 1fr ${BAR_HALF * 2 + 8}px 52px; gap: 10px; align-items: center; background: ${TOKENS.raised}; border-radius: 8px; padding: 6px 10px 6px 6px; min-height: 64px; }
 .cover { width: 52px; height: 52px; border-radius: 6px; background: ${TOKENS.axis}; overflow: hidden; }
 .cover img { display: block; width: 52px; height: 52px; object-fit: cover; }
 .info { min-width: 0; }
-.title { font-size: 15px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.title { font-size: 17px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.vals { display: flex; justify-content: space-between; font-size: 12.5px; color: ${TOKENS.inkSecondary}; margin-bottom: 4px; white-space: nowrap; }
+.vals { display: flex; justify-content: space-between; font-size: 14px; color: ${TOKENS.inkSecondary}; margin-bottom: 4px; white-space: nowrap; }
 .vals .lead { color: ${TOKENS.ink}; font-weight: 700; }
 .bar { position: relative; height: 12px; }
 .bar .axis { position: absolute; left: 50%; top: -2px; width: 1px; height: 16px; background: ${TOKENS.axis}; }
 .bar .fill { position: absolute; top: 2px; height: 8px; border-radius: 4px; }
-.delta { text-align: right; font-size: 16px; font-weight: 700; }
+.delta { text-align: right; font-size: 18px; font-weight: 700; }
 .delta small { display: block; color: ${TOKENS.inkMuted}; font-size: 11px; font-weight: 600; }
 .orow { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: center; background: ${TOKENS.raised}; border-radius: 8px; padding: 6px 10px 6px 6px; min-height: 64px; }
-.own { font-size: 13px; color: ${TOKENS.inkSecondary}; margin-top: 3px; }
-.chase { font-size: 13px; margin-top: 3px; }
+.own { font-size: 15px; color: ${TOKENS.inkSecondary}; margin-top: 3px; }
+.chase { font-size: 14.5px; line-height: 1.35; margin-top: 3px; }
 .chase b { font-weight: 700; }
 .empty { color: ${TOKENS.inkMuted}; font-size: 15px; padding: 6px 0; }
 .legend { display: flex; gap: 16px; align-items: center; color: ${TOKENS.inkMuted}; font-size: 12px; margin-top: 8px; }
@@ -118,12 +118,15 @@ function sharedRow(s, covers) {
 }
 
 /** What the other player would have to do to get this chart into their own best 50. */
-function chaseText(c, otherName) {
+function chaseText(c, otherName, theirScore) {
     const who = `<b>${escapeHtml(otherName)}</b>`;
     if (c.unreachable) return `${who}: out of reach, it needs more than 100.5%`;
     if (c.needed === null)
-        return `${who}: room in that section, any score adds up to <b>+${formatInt(c.gain)}</b>`;
-    return `${who}: needs <b>${c.needed.toFixed(2)}%</b> ${escapeHtml(c.neededRank || '')} to get in · the same score adds <b>+${formatInt(c.gain)}</b>`;
+        return `${who}: has room, any score adds up to <b>+${formatInt(c.gain)}</b>`;
+    const need = `needs <b>${c.needed.toFixed(2)}%</b> ${escapeHtml(c.neededRank || '')} to get in (their weakest there is ${formatInt(c.cutoff)})`;
+    return c.gain > 0
+        ? `${who}: ${need}; ${escapeHtml(theirScore)} would add <b>+${formatInt(c.gain)}</b>`
+        : `${who}: ${need}`;
 }
 
 function onlyRow(p, ownerName, otherName, color, covers) {
@@ -134,7 +137,7 @@ function onlyRow(p, ownerName, otherName, color, covers) {
         <div class="title">${escapeHtml(p.song)}</div>
         <div class="meta">${difficultyPill(p.difficulty, p.level.toFixed(1))}<span class="tag">${escapeHtml(p.chartType.toUpperCase())}</span></div>
         <div class="own tabular" style="color:${color}">${escapeHtml(ownerName)}: ${escapeHtml(fmtPct(p.achievement))} ${escapeHtml(p.rank)} · ${formatInt(p.rating)}</div>
-        <div class="chase">${chaseText(p.chase, otherName)}</div>
+        <div class="chase">${chaseText(p.chase, otherName, fmtPct(p.achievement))}</div>
       </div>
     </div>`;
 }
@@ -146,7 +149,7 @@ function onlySection(list, ownerName, otherName, color, covers) {
         : `<div class="empty">Every chart in ${escapeHtml(ownerName)}'s best 50 is in ${escapeHtml(otherName)}'s too.</div>`;
     return `
   <div class="section">
-    <div class="section-head"><span class="name">Only in ${escapeHtml(ownerName)}'s best 50</span><span class="sum">${list.length} chart${list.length === 1 ? '' : 's'}${list.length > rows.length ? ` · top ${rows.length} by rating` : ''}</span></div>
+    <div class="section-head"><span class="name">Only in ${escapeHtml(ownerName)}'s best 50</span><span class="sum">${list.length} chart${list.length === 1 ? '' : 's'}${list.length > rows.length ? ` · the ${rows.length} that would add most for ${escapeHtml(otherName)}` : ''}</span></div>
     ${body}
   </div>`;
 }
@@ -170,12 +173,11 @@ function buildCompareHtml(model) {
     const leadColor = diff > 0 ? A_COLOR : diff < 0 ? B_COLOR : TOKENS.inkSecondary;
 
     const stats = [
-        statRow('Rating', sa.rating, sb.rating, formatInt),
         statRow('Best 15 · new', sa.b15, sb.b15, formatInt),
         statRow('Best 35 · old', sa.b35, sb.b35, formatInt),
         statRow('Average constant', sa.avgLevel, sb.avgLevel, (v) => v.toFixed(2)),
         statRow('Hardest chart', sa.hardest, sb.hardest, (v) => v.toFixed(1)),
-        statRow('Charts at 14.0 or higher', sa.level14, sb.level14, String),
+        statRow('Charts ≥ 14.0', sa.level14, sb.level14, String),
         statRow('Average achievement', sa.avgAchv, sb.avgAchv, fmtPct),
         statRow('SSS or better', sa.sssUp, sb.sssUp, String),
         statRow('SSS+', sa.sssPlus, sb.sssPlus, String),
