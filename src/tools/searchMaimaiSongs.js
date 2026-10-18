@@ -5,11 +5,12 @@ const { buildSongCardModel } = require('../web/maimaiSongCardModel');
 const { drawCard } = require('../render/drawCard');
 
 const MAX_RESULTS = 15;
+const NOTE_TYPES = ['total', 'tap', 'hold', 'slide', 'touch', 'break'];
 
 const declaration = {
     name: 'search_maimai_songs',
     description:
-        'Exact song and chart data from the game\'s song list: each chart\'s level and precise constant (internal level), BPM, artist, category, charter, note counts per chart (tap/hold/slide/touch/break/total), and the version a song was added in (intl_version when International got it later). Use it — not the web — for any question about a song\'s charts, level, notes or version. Loose names work (romaji, community nicknames, simplified Chinese, typos); matched_via says how a loose match was made, so confirm it with the user if it isn\'t obvious. For a question about ONE song ("what is X", "is X in international"), pass as_image: true for a song card.',
+        'Exact song and chart data from the game\'s song list: each chart\'s level and precise constant (internal level), BPM, artist, category, charter, note counts per chart (tap/hold/slide/touch/break/total), and the version a song was added in (intl_version when International got it later). Use it — not the web — for any question about a song\'s charts, level, notes or version. It covers every chart, so "which chart has N breaks" or "most notes at 14+" is one call with the note filters or sort_by, not a scan. Loose names work (romaji, community nicknames, simplified Chinese, typos); matched_via says how a loose match was made, so confirm it with the user if it isn\'t obvious. For a question about ONE song ("what is X", "is X in international"), pass as_image: true for a song card.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -50,6 +51,28 @@ const declaration = {
                 description: "Minimum BPM (the song's, not any one chart's).",
             },
             max_bpm: { type: 'number', description: 'Maximum BPM.' },
+            note_type: {
+                type: 'string',
+                enum: NOTE_TYPES,
+                description:
+                    'Which note count min_notes/max_notes and sort_by "notes" use (default total) — e.g. "break" for "charts with 135 breaks".',
+            },
+            min_notes: {
+                type: 'number',
+                description: 'Only charts with at least this many notes of note_type.',
+            },
+            max_notes: {
+                type: 'number',
+                description:
+                    'Only charts with at most this many notes of note_type (min_notes = max_notes for an exact count).',
+            },
+            sort_by: {
+                type: 'string',
+                enum: ['notes', 'level', 'bpm'],
+                description:
+                    'Order songs by their highest matching chart, so the first 15 are the top ones — "most breaks", "highest total notes", "fastest songs". Descending unless sort_ascending.',
+            },
+            sort_ascending: { type: 'boolean', description: 'Lowest first with sort_by.' },
             version: {
                 type: 'string',
                 description:
@@ -129,8 +152,18 @@ async function execute(args, context) {
     const minBpm = typeof args?.min_bpm === 'number' ? args.min_bpm : null;
     const maxBpm = typeof args?.max_bpm === 'number' ? args.max_bpm : null;
     const random = args?.random === true;
+    const noteType = NOTE_TYPES.includes(args?.note_type) ? args.note_type : 'total';
+    const minNotes = typeof args?.min_notes === 'number' ? args.min_notes : null;
+    const maxNotes = typeof args?.max_notes === 'number' ? args.max_notes : null;
+    const sortBy = ['notes', 'level', 'bpm'].includes(args?.sort_by) ? args.sort_by : null;
     const hasSheetFilter = Boolean(
-        difficulty || type || minLevel !== null || maxLevel !== null || noteDesigner
+        difficulty ||
+        type ||
+        minLevel !== null ||
+        maxLevel !== null ||
+        noteDesigner ||
+        minNotes !== null ||
+        maxNotes !== null
     );
 
     let data;
@@ -186,6 +219,12 @@ async function execute(args, context) {
             const level = sheet.internalLevelValue ?? sheet.levelValue;
             if (minLevel !== null && level < minLevel) return false;
             if (maxLevel !== null && level > maxLevel) return false;
+            if (minNotes !== null || maxNotes !== null) {
+                const count = sheet.noteCounts?.[noteType];
+                if (count == null) return false;
+                if (minNotes !== null && count < minNotes) return false;
+                if (maxNotes !== null && count > maxNotes) return false;
+            }
             return true;
         });
         if (hasSheetFilter && sheets.length === 0) return null;
@@ -236,6 +275,31 @@ async function execute(args, context) {
         : data.songs.map((song) => ({ song, via: true }));
     const matches = collect(entries);
 
+    if (sortBy) {
+        const sign = args?.sort_ascending === true ? 1 : -1;
+        const chartValue = (c) =>
+            sortBy === 'notes' ? c.notes?.[noteType] : (c.internalLevel ?? null);
+        // A song ranks by its best matching chart: highest when descending, lowest when ascending.
+        const key = (m) => {
+            const values =
+                sortBy === 'bpm'
+                    ? [m.bpm]
+                    : m.charts
+                          .map(chartValue)
+                          .map((v) => (typeof v === 'number' ? v : parseFloat(v)));
+            const known = values.filter((v) => Number.isFinite(v));
+            if (known.length === 0) return null;
+            return sign < 0 ? Math.max(...known) : Math.min(...known);
+        };
+        const keyed = matches.map((m) => ({ m, k: key(m) }));
+        keyed.sort((a, b) => {
+            if (a.k === null) return b.k === null ? 0 : 1;
+            if (b.k === null) return -1;
+            return sign * (a.k - b.k);
+        });
+        matches.splice(0, matches.length, ...keyed.map((x) => x.m));
+    }
+
     if (random) {
         if (matches.length === 0) {
             return { success: true, result_count: 0, songs: [], data_updated_at: data.updateTime };
@@ -254,6 +318,7 @@ async function execute(args, context) {
         success: true,
         result_count: Math.min(matches.length, MAX_RESULTS),
         truncated: matches.length > MAX_RESULTS,
+        ...(matches.length > MAX_RESULTS ? { total_matches: matches.length } : {}),
         songs: matches.slice(0, MAX_RESULTS),
         data_updated_at: data.updateTime,
     };
