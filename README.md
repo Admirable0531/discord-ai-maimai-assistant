@@ -5,7 +5,8 @@ A Discord bot for a maimai DX community. It answers in chat with tools (DeepSeek
 ## What it does
 
 - **Chat with tools.** Ask in a channel or with `/ask`. The model calls tools for scores, ratings, songs, plates, play history and web pages. See `src/ai/toolDefinitions.js`.
-- **Slash commands.** `/b50`, `/rating`, `/target`, `/recommend`, `/compare`, `/history`, `/song`, `/preview`, `/circles`, `/leaderboard`, `/remember`, `/memories`, `/forget`, `/knowledge`, `/chartcheck`, `/help`.
+- **Slash commands.** `/b50`, `/rating`, `/target`, `/recommend`, `/compare`, `/history`, `/song`, `/preview`, `/circles`, `/leaderboard`, `/remember`, `/memories`, `/forget`, `/knowledge`, `/chartcheck`, `/voice`, `/help`.
+- **Voice.** `/voice join` in a voice channel, then say "hey Atri" and a question; the answer is posted in that channel's chat. Only people who ran `/voice join` are listened to. Speech is transcribed by Groq Whisper when `GROQ_API_KEY` is set, otherwise Gemini. See `src/voice/`.
 - **Image cards.** B50 and rating history cards rendered with Playwright (`src/render`).
 - **Memory.** Per-user memories and a shared knowledge base, both in SQLite.
 - **Chart analysis.** See below.

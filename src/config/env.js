@@ -109,6 +109,18 @@ const config = {
         },
     },
 
+    // Voice requests ("hey Atri, ...") in a voice channel — see src/voice.
+    voice: {
+        // Used when GROQ_API_KEY is set; otherwise clips go to Gemini.
+        groqModel: env.VOICE_GROQ_MODEL || 'whisper-large-v3-turbo',
+        // Gemini model for transcription (unset = GEMINI_MODEL).
+        geminiModel: env.VOICE_GEMINI_MODEL || null,
+        // How long a pause ends an utterance.
+        silenceMs: num('VOICE_SILENCE_MS', 1000),
+        // Leave the channel after this long with no request.
+        idleTimeoutMs: num('VOICE_IDLE_TIMEOUT_MS', 30 * 60 * 1000),
+    },
+
     tools: {
         // maimaiscrape's Express API (friend leaderboards, circle rankings, top scores).
         maimaiApiUrl: env.MAIMAI_API_URL || 'http://localhost:3000',

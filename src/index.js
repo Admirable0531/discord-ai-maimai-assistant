@@ -6,6 +6,7 @@ const { loadEnv } = require('./config/env');
 const { startDiscordLog } = require('./utils/discordLog');
 const { createDiscordClient } = require('./discord/client');
 const { registerMessageHandler } = require('./discord/messageHandler');
+const { registerVoiceStateHandler } = require('./voice/voiceSession');
 const { routeComponent } = require('./discord/componentRouter');
 const { closeBrowser } = require('./web/playwrightFetcher');
 const { pruneOlderThan } = require('./database/repositories/conversationRepository');
@@ -60,6 +61,7 @@ for (const folder of fs.readdirSync(commandsRoot)) {
 logger.info('bot', `Loaded ${client.commands.size} slash command(s)`);
 
 registerMessageHandler(client, config);
+registerVoiceStateHandler(client);
 
 client.on('interactionCreate', async (interaction) => {
     // Autocomplete (friend names in /b50 and /history) has to answer within 3

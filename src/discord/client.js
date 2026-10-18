@@ -12,6 +12,8 @@ function createDiscordClient() {
             GatewayIntentBits.GuildMessages,
             GatewayIntentBits.MessageContent,
             GatewayIntentBits.DirectMessages,
+            // Voice channels: joining one, and noticing when a listener leaves (see src/voice).
+            GatewayIntentBits.GuildVoiceStates,
         ],
         // Channel is needed to receive DMs at all.
         partials: [Partials.Channel],
