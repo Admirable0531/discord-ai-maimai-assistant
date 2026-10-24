@@ -18,20 +18,35 @@ function dayString(t) {
 
 /**
  * Which day to read, from one point per day (ascending, bad reads dropped):
- * the first day at or above `reachedRating`, or the last day on or before
- * `date` ("YYYY-MM-DD"). Returns { point } or { error }.
+ * a day `reachedRating` was reached, or the last day on or before `date`
+ * ("YYYY-MM-DD"). A rating can be reached more than once — each new version
+ * resets the B15 and drops it — so every crossing is returned as `crossings`
+ * and `occurrence` picks one: 1 the first (default), 2 the second, -1 the
+ * most recent. Returns { point, crossings? } or { error }.
  */
-function pickDay(points, { date, reachedRating }) {
+function pickDay(points, { date, reachedRating, occurrence = 1 }) {
     if (points.length === 0) return { error: 'No snapshots are recorded for this player.' };
     const first = dayString(points[0].t).iso;
 
     if (Number.isFinite(reachedRating)) {
-        const point = points.find((p) => p.rating >= reachedRating);
-        if (point) return { point };
-        const peak = Math.max(...points.map((p) => p.rating));
-        return {
-            error: `Never reached ${reachedRating} in the snapshots (from ${first}); the highest is ${peak}.`,
-        };
+        const crossings = points.filter(
+            (p, i) => p.rating >= reachedRating && (i === 0 || points[i - 1].rating < reachedRating)
+        );
+        if (crossings.length === 0) {
+            const peak = Math.max(...points.map((p) => p.rating));
+            return {
+                error: `Never reached ${reachedRating} in the snapshots (from ${first}); the highest is ${peak}.`,
+            };
+        }
+        const n = Number.isInteger(occurrence) && occurrence !== 0 ? occurrence : 1;
+        const point = n < 0 ? crossings[crossings.length + n] : crossings[n - 1];
+        if (!point) {
+            return {
+                error: `${reachedRating} was reached ${crossings.length} time(s), so there is no occurrence ${n}.`,
+                crossings,
+            };
+        }
+        return { point, crossings };
     }
 
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date || '');
@@ -50,11 +65,11 @@ async function getJson(url) {
 }
 
 /**
- * The snapshot for `playerId` picked by { date } or { reachedRating }:
+ * The snapshot for `playerId` picked by { date } or { reachedRating, occurrence }:
  * { success, snapshot_date, snapshot_rating, snapshot_age_days, new, old },
  * or { success: false, error }.
  */
-async function fetchPastSnapshot(playerId, { date, reachedRating }) {
+async function fetchPastSnapshot(playerId, { date, reachedRating, occurrence }) {
     const id = encodeURIComponent(playerId);
     let history;
     try {
@@ -63,8 +78,18 @@ async function fetchPastSnapshot(playerId, { date, reachedRating }) {
         return { success: false, error: `Could not read the snapshot history: ${err.message}` };
     }
     const { points } = dropGlitches(toDailyPoints(Array.isArray(history) ? history : []));
-    const picked = pickDay(points, { date, reachedRating });
-    if (picked.error) return { success: false, error: picked.error };
+    const picked = pickDay(points, { date, reachedRating, occurrence });
+    const reachedOn = picked.crossings?.map((p) => ({
+        date: dayString(p.t).iso,
+        rating: p.rating,
+    }));
+    if (picked.error) {
+        return {
+            success: false,
+            error: picked.error,
+            ...(reachedOn ? { reached_on: reachedOn } : {}),
+        };
+    }
 
     const day = dayString(picked.point.t);
     let record;
@@ -91,6 +116,8 @@ async function fetchPastSnapshot(playerId, { date, reachedRating }) {
         ),
         new_version_top_plays: newPlays,
         old_version_top_plays: oldPlays,
+        // Every day the rating was crossed, so the answer can say it happened more than once.
+        ...(reachedOn && reachedOn.length > 1 ? { reached_on: reachedOn } : {}),
     };
 }
 

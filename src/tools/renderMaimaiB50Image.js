@@ -29,7 +29,12 @@ const declaration = {
             reached_rating: {
                 type: 'number',
                 description:
-                    'Draw the B50 from the first day the player reached this rating — "when I hit 16000".',
+                    'Draw the B50 from a day the player reached this rating — "when I hit 16000". New versions reset ratings, so it may have been reached several times; the result lists them all as reached_on — say so when there are several.',
+            },
+            occurrence: {
+                type: 'integer',
+                description:
+                    'With reached_rating: which time — 1 the first (default), 2 the second, -1 the most recent.',
             },
             date: {
                 type: 'string',
@@ -76,7 +81,11 @@ async function execute(args, context) {
     const date = typeof args?.date === 'string' && args.date.trim() ? args.date.trim() : null;
     const past = reachedRating !== null || date !== null;
     const data = past
-        ? await fetchPastSnapshot(player.id, { date, reachedRating })
+        ? await fetchPastSnapshot(player.id, {
+              date,
+              reachedRating,
+              occurrence: Number.isInteger(args?.occurrence) ? args.occurrence : 1,
+          })
         : player.isTracked
           ? await getOwnTopScores.execute()
           : await getFriendTopScores.execute({ friend_name: player.name });
@@ -133,6 +142,7 @@ async function execute(args, context) {
         snapshot_age_days: data.snapshot_age_days,
         stale,
         ...(past ? { past_snapshot: true } : {}),
+        ...(data.reached_on ? { reached_on: data.reached_on } : {}),
         ...(data.current_rating != null ? { current_rating: data.current_rating } : {}),
     };
 }
