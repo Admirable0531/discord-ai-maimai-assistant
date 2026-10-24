@@ -7,6 +7,7 @@ const { renderHtmlToPng } = require('../render/browserRenderer');
 const { COVER_HOST } = require('../render/theme');
 const { attachFile } = require('../utils/outputs');
 const { isStale, formatSnapshotStamp } = require('../utils/snapshotAge');
+const { fetchPastSnapshot } = require('../web/maimaiPastSnapshot');
 
 // 'new' = the best 15 of the current version, 'old' = the best 35 of the rest.
 const SECTIONS = ['all', 'new', 'old'];
@@ -14,7 +15,7 @@ const SECTIONS = ['all', 'new', 'old'];
 const declaration = {
     name: 'render_maimai_b50_image',
     description:
-        'Draw a player\'s best 50 (B15 new version + B35 old) as an image card — cover, difficulty, constant, achievement, rank and rating per chart, plus rating and snapshot age. For "show / send / post my B50", or just the B15 / B35 (section "new" / "old"). Leave player_name out for the tracked account; pass a friend\'s name otherwise. Don\'t list the charts in your reply (the result has the totals and each list\'s lowest chart); if stale is true, say the snapshot is old. For questions needing the chart data in text, use get_maimai_own_top_scores / get_maimai_friend_top_scores.',
+        'Draw a player\'s best 50 (B15 new version + B35 old) as an image card — cover, difficulty, constant, achievement, rank and rating per chart, plus rating and snapshot age. For "show / send / post my B50", or just the B15 / B35 (section "new" / "old"). Leave player_name out for the tracked account; pass a friend\'s name otherwise. Don\'t list the charts in your reply (the result has the totals and each list\'s lowest chart); if stale is true, say the snapshot is old. For questions needing the chart data in text, use get_maimai_own_top_scores / get_maimai_friend_top_scores. An earlier B50 is kept for every day since the snapshots began: "my B50 when I hit 16000" (reached_rating), "my B50 on 1 March" (date) — past, never a prediction.',
     parametersJsonSchema: {
         type: 'object',
         properties: {
@@ -24,6 +25,16 @@ const declaration = {
                 description:
                     'Which half to draw: "new" for just the best 15 (the B15), "old" for just the best 35, ' +
                     'default "all". The rating and both totals stay in the header either way.',
+            },
+            reached_rating: {
+                type: 'number',
+                description:
+                    'Draw the B50 from the first day the player reached this rating — "when I hit 16000".',
+            },
+            date: {
+                type: 'string',
+                description:
+                    'Draw the B50 from this day (YYYY-MM-DD), or the last snapshot before it — "my B50 a year ago".',
             },
             player_name: {
                 type: 'string',
@@ -61,9 +72,14 @@ async function execute(args, context) {
         };
     const { player } = found;
 
-    const data = player.isTracked
-        ? await getOwnTopScores.execute()
-        : await getFriendTopScores.execute({ friend_name: player.name });
+    const reachedRating = Number.isFinite(args?.reached_rating) ? args.reached_rating : null;
+    const date = typeof args?.date === 'string' && args.date.trim() ? args.date.trim() : null;
+    const past = reachedRating !== null || date !== null;
+    const data = past
+        ? await fetchPastSnapshot(player.id, { date, reachedRating })
+        : player.isTracked
+          ? await getOwnTopScores.execute()
+          : await getFriendTopScores.execute({ friend_name: player.name });
     if (!data.success) return data;
 
     const newPlays = data.new_version_top_plays || [];
@@ -72,7 +88,8 @@ async function execute(args, context) {
         return { success: false, error: `${player.name} has no top-score snapshot to draw.` };
     }
 
-    const stale = isStale(data.snapshot_date);
+    // An old snapshot asked for on purpose isn't out of date.
+    const stale = !past && isStale(data.snapshot_date);
     const html = buildB50Html({
         playerName: player.name,
         rating: data.snapshot_rating,
@@ -94,7 +111,7 @@ async function execute(args, context) {
         return { success: false, error: err.message };
     }
     const attached = attachFile(context, {
-        name: `b50-${player.isTracked ? 'tracked' : player.id}${SECTIONS.includes(args?.section) && args.section !== 'all' ? `-${args.section}` : ''}.png`,
+        name: `b50-${player.isTracked ? 'tracked' : player.id}${past ? `-${data.snapshot_date.slice(0, 10).replace(/\//g, '-')}` : ''}${SECTIONS.includes(args?.section) && args.section !== 'all' ? `-${args.section}` : ''}.png`,
         data: png,
     });
     if (!attached.ok) return { success: false, error: attached.reason };
@@ -115,6 +132,7 @@ async function execute(args, context) {
         snapshot_date: data.snapshot_date,
         snapshot_age_days: data.snapshot_age_days,
         stale,
+        ...(past ? { past_snapshot: true } : {}),
         ...(data.current_rating != null ? { current_rating: data.current_rating } : {}),
     };
 }
