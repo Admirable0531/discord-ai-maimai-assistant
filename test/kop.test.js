@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseRanking, formatUpdate, withMovement } = require('../src/web/kopRanking');
-const { buildKopHtml } = require('../src/render/kopCard');
+const { kopMessage, rankingLine, PARTS } = require('../src/discord/kopText');
 
 const body = {
     update: '2026/10/30 02:00:00 (JST)',
@@ -53,60 +53,36 @@ test('KOP: movement since the previous update', () => {
     );
 });
 
-test('KOP card: rows, movement glyphs, and friends below the cut', () => {
-    const entries = withMovement(parseRanking(body), [{ rank: 1, name: 'Ｍｉｎｊｉｎ' }]);
-    const html = buildKopHtml({
-        region: 'International',
-        updated: '2026/10/30 02:00 JST',
-        entries,
-        ours: new Set([3]),
-        maxRows: 2,
-    });
-    assert.match(html, /TNT_M\+7R/);
-    assert.match(html, /▼1/);
-    assert.match(html, /NEW/);
-    assert.doesNotMatch(html, /···/); // rank 3 follows rank 2: highlighted, but no gap
-    const far = buildKopHtml({
-        region: 'Japan',
-        updated: '',
-        entries: [...entries, { rank: 9, name: 'Far', score: 1, dxScore: 1, move: 0 }],
-        ours: new Set([9]),
-        maxRows: 2,
-    });
-    assert.match(far, /···/);
-    assert.match(html, /67tify☆<span class="tag">friend/);
-    assert.match(html, /3,029,466/);
+test('KOP text: lines are searchable, friends starred, movement shown', () => {
+    const [first] = withMovement(parseRanking(body), [{ rank: 2, name: 'TNT_M+7R' }]);
+    assert.equal(rankingLine(first, false), '`  1` TNT\\_M+7R — 3,029,466 · DX 9,367 ▲1');
+    const [, second] = withMovement(parseRanking(body), [{ rank: 9, name: 'x' }]);
+    assert.equal(rankingLine(second, true), '`  2` ⭐ **Minjin** — 3,029,447 · DX 9,382 🆕');
 });
 
-test('KOP card: the second half of the ranking', () => {
+test("KOP text: the top 100 in three messages, each within Discord's limit", () => {
     const entries = Array.from({ length: 100 }, (_, i) => ({
         rank: i + 1,
-        name: `P${i + 1}`,
-        score: 3030000 - i,
-        dxScore: 9000,
-        move: null,
+        name: 'ＷＷＷＷＷＷＷＷ', // eight full-width characters, the longest maimai allows
+        score: 3029999 - i,
+        dxScore: 9999,
+        move: i % 2 ? 'new' : -12,
     }));
-    const html = buildKopHtml({
-        region: 'Japan',
-        updated: '',
-        entries,
-        from: 50,
-        maxRows: 50,
-        oursBelow: false,
-    });
-    assert.match(html, /Ranks 51–100 of 100/);
-    assert.match(html, />P51</);
-    assert.match(html, />P100</);
-    assert.doesNotMatch(html, />P50</);
-    assert.doesNotMatch(html, /···/);
-    const first = buildKopHtml({
-        region: 'Japan',
-        updated: '',
-        entries,
-        maxRows: 50,
-        oursBelow: false,
-        ours: new Set([80]),
-    });
-    assert.match(first, /Top 50 of 100/);
-    assert.doesNotMatch(first, />P80</); // shown on the second card instead
+    const parts = PARTS.map((_, index) =>
+        kopMessage({
+            region: 'International',
+            updated: '2026/10/30 02:00 JST',
+            pageUrl: 'https://example.com/r',
+            entries,
+            index,
+        })
+    );
+    assert.ok(
+        parts.every((t) => t.length <= 2000),
+        parts.map((t) => t.length).join()
+    );
+    assert.match(parts[0], /^\*\*KOP8th maimai — International\*\* · updated/);
+    assert.match(parts[0], /ranks 1–34/);
+    assert.match(parts[2], /ranks 68–100/);
+    assert.equal(parts.join('\n').match(/^`/gm).length, 100);
 });
