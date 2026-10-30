@@ -36,6 +36,8 @@ const config = {
     chartPageBaseUrl: (process.env.CHART_PAGE_BASE_URL || '').replace(/\/+$/, ''),
     // Warnings and errors are mirrored here (see utils/discordLog.js); '' turns it off.
     logChannelId: env.LOG_CHANNEL_ID ?? '1557778665729691759',
+    // The KOP8th maimai ranking board (see discord/kopBoard.js); '' turns it off.
+    kopChannelId: env.KOP_CHANNEL_ID ?? '1565609032184762378',
 
     maxHistoryMessages: num('MAX_HISTORY_MESSAGES', 4),
     replyCooldownMs: num('REPLY_COOLDOWN_MS', 3000),

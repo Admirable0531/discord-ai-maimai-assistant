@@ -4,6 +4,7 @@ const { Collection, Events, MessageFlags } = require('discord.js');
 const logger = require('./utils/logger');
 const { loadEnv } = require('./config/env');
 const { startDiscordLog } = require('./utils/discordLog');
+const { startKopBoard } = require('./discord/kopBoard');
 const { createDiscordClient } = require('./discord/client');
 const { registerMessageHandler } = require('./discord/messageHandler');
 const { registerVoiceStateHandler } = require('./voice/voiceSession');
@@ -106,6 +107,9 @@ client.on('interactionCreate', async (interaction) => {
 client.once(Events.ClientReady, (readyClient) => {
     logger.info('bot', `Logged in as ${readyClient.user.tag}`);
     startDiscordLog(readyClient, config.logChannelId);
+    startKopBoard(readyClient, config.kopChannelId).catch((err) =>
+        logger.error('kop', 'Could not start the KOP board', err)
+    );
 });
 
 client.login(config.discordToken).catch((err) => {
