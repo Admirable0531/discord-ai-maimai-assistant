@@ -82,7 +82,7 @@ test("KOP text: the top 100 in three messages, each within Discord's limit", () 
         parts.map((t) => t.length).join()
     );
     assert.match(parts[0], /^\*\*KOP8th maimai — International\*\* · updated/);
-    assert.match(parts[0], /ranks 1–34/);
-    assert.match(parts[2], /ranks 68–100/);
+    assert.match(parts[1], /^` 35`/); // later parts carry on the list with no heading
+    assert.match(parts[2], /^` 68`/);
     assert.equal(parts.join('\n').match(/^`/gm).length, 100);
 });

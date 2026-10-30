@@ -36,17 +36,16 @@ function rankingLine(e, isOurs, shortNames = false) {
 
 /**
  * The text of one board message: part `index` of PARTS for one region.
- * The first part carries the header (region, update time, link); the others a
- * short heading so each message still says what it is when searched.
+ * Only the first part has a header (region, update time, link): the parts
+ * follow each other in the channel and read as one list.
  */
 function kopMessage({ region, updated, pageUrl, entries, ours = new Set(), index }) {
     const [from, to] = PARTS[index];
     const slice = entries.slice(from, to);
     const heading =
         index === 0 ? `**KOP8th maimai — ${region}** · updated ${updated} · <${pageUrl}>\n` : '';
-    const sub = `**${region}** · ranks ${slice[0]?.rank ?? from + 1}–${slice[slice.length - 1]?.rank ?? to}\n`;
     const build = (short) =>
-        heading + sub + slice.map((e) => rankingLine(e, ours.has(e.rank), short)).join('\n');
+        heading + slice.map((e) => rankingLine(e, ours.has(e.rank), short)).join('\n');
     const text = build(false);
     // Long names could push a message past Discord's limit; shorten them rather than fail.
     return text.length <= MAX_LENGTH ? text : build(true).slice(0, MAX_LENGTH);
