@@ -17,6 +17,8 @@ const { normalizeName } = require('../web/maimaiFriendLookup');
 const STATE_PATH = path.resolve(__dirname, '../../data/kop-board.json');
 const HISTORY_DIR = path.resolve(__dirname, '../../data/kop-history');
 const CHECK_EVERY_MS = 10 * 60 * 1000;
+// Bump when the message layout changes, so the board is redrawn without waiting for SEGA's next update.
+const FORMAT = 2;
 
 function loadState() {
     try {
@@ -88,7 +90,7 @@ async function refresh(channel, state) {
             }
         }
         const posted = Array.isArray(saved.messageIds) && saved.messageIds.length === PARTS.length;
-        if (posted && saved.update === latest.update) continue;
+        if (posted && saved.update === latest.update && saved.format === FORMAT) continue;
 
         // Movement is against the last update shown; a restart with the same update keeps the old arrows.
         const previous = saved.update === latest.update ? saved.previous : saved.entries;
@@ -129,6 +131,7 @@ async function refresh(channel, state) {
         }
         state.regions[region.key] = {
             messageIds,
+            format: FORMAT,
             update: latest.update,
             historyUpdate: saved.historyUpdate,
             entries: latest.entries,
