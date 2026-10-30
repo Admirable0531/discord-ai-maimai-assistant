@@ -1,8 +1,11 @@
-// The KOP8th ranking board: one message per region in the configured channel,
-// each an image of the top players, edited in place whenever SEGA publishes a
-// new update — the channel always shows the current ranking instead of
-// filling up with copies of it. Which messages are the board, and the ranking
-// they last showed (for the movement arrows), survive restarts in data/.
+// The KOP8th ranking board: for each region, the whole top 100 as two images
+// (1–50 and 51–100, one message each — a single 100-row image is too tall to
+// read in Discord) in the configured channel, edited in place whenever SEGA
+// publishes a new update, so the channel always shows the current ranking
+// instead of filling up with copies of it. Which messages are the board, and
+// the ranking they last showed (for the movement arrows), survive restarts in
+// data/kop-board.json; every update SEGA publishes is also kept, in full, in
+// data/kop-history/<region>.jsonl.
 const fs = require('node:fs');
 const path = require('node:path');
 const { AttachmentBuilder } = require('discord.js');
@@ -14,6 +17,9 @@ const { fetchUsers } = require('../web/maimaiPlayers');
 const { normalizeName } = require('../web/maimaiFriendLookup');
 
 const STATE_PATH = path.resolve(__dirname, '../../data/kop-board.json');
+const HISTORY_DIR = path.resolve(__dirname, '../../data/kop-history');
+const PART_SIZE = 50;
+const PARTS = [0, PART_SIZE];
 const CHECK_EVERY_MS = 10 * 60 * 1000;
 
 function loadState() {
@@ -26,6 +32,15 @@ function loadState() {
 
 function saveState(state) {
     fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+}
+
+/** Appends one published update, all of it, to the region's history file. */
+function recordHistory(regionKey, update, entries) {
+    fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    fs.appendFileSync(
+        path.join(HISTORY_DIR, `${regionKey}.jsonl`),
+        JSON.stringify({ update, fetchedAt: new Date().toISOString(), entries }) + '\n'
+    );
 }
 
 /** Normalised names of the tracked account and its friends, to mark them on the board. */
@@ -66,7 +81,18 @@ async function refresh(channel, state) {
             continue;
         }
         if (latest.entries.length === 0) continue;
-        if (saved.messageId && saved.update === latest.update) continue;
+        if (saved.historyUpdate !== latest.update) {
+            try {
+                recordHistory(region.key, latest.update, latest.entries);
+                saved.historyUpdate = latest.update;
+                state.regions[region.key] = saved;
+                saveState(state);
+            } catch (err) {
+                logger.warn('kop', `Could not save the ${region.label} history: ${err.message}`);
+            }
+        }
+        const posted = Array.isArray(saved.messageIds) && saved.messageIds.length === PARTS.length;
+        if (posted && saved.update === latest.update) continue;
 
         // Movement is against the last update shown; a restart with the same update keeps the old arrows.
         const previous = saved.update === latest.update ? saved.previous : saved.entries;
@@ -76,35 +102,58 @@ async function refresh(channel, state) {
         );
         const updated = formatUpdate(latest.update);
 
-        let png;
-        try {
-            png = await renderHtmlToPng(
-                buildKopHtml({ region: region.label, updated, entries, ours }),
-                { width: WIDTH, scale: 1.5 }
-            );
-        } catch (err) {
-            logger.warn('kop', `Could not draw the ${region.label} board: ${err.message}`);
-            continue;
-        }
         const leader = entries[0];
-        const payload = {
-            content: `**KOP8th maimai — ${region.label}** · updated ${updated} · #1 ${leader.name} (${leader.score.toLocaleString('en-US')}) · <${region.pageUrl}>`,
-            files: [new AttachmentBuilder(png, { name: `kop8th-${region.key}.png` })],
-            allowedMentions: { parse: [] },
-        };
+        const messageIds = [];
         try {
-            const messageId = await publish(channel, saved.messageId, payload);
-            state.regions[region.key] = {
-                messageId,
-                update: latest.update,
-                entries: latest.entries,
-                previous: saved.update === latest.update ? saved.previous : saved.entries || null,
-            };
-            saveState(state);
-            logger.info('kop', `${region.label} board updated (${updated})`);
+            for (const [i, from] of PARTS.entries()) {
+                const png = await renderHtmlToPng(
+                    buildKopHtml({
+                        region: region.label,
+                        updated,
+                        entries,
+                        ours,
+                        from,
+                        maxRows: PART_SIZE,
+                        oursBelow: false,
+                    }),
+                    { width: WIDTH, scale: 1.5 }
+                );
+                const content =
+                    i === 0
+                        ? `**KOP8th maimai — ${region.label}** · updated ${updated} · #1 ${leader.name} (${leader.score.toLocaleString('en-US')}) · <${region.pageUrl}>`
+                        : `**KOP8th maimai — ${region.label}** · ranks ${from + 1}–${from + PART_SIZE}`;
+                messageIds.push(
+                    await publish(channel, saved.messageIds?.[i], {
+                        content,
+                        files: [
+                            new AttachmentBuilder(png, {
+                                name: `kop8th-${region.key}-${i + 1}.png`,
+                            }),
+                        ],
+                        allowedMentions: { parse: [] },
+                    })
+                );
+            }
         } catch (err) {
             logger.warn('kop', `Could not post the ${region.label} board: ${err.message}`);
+            // Keep the ids of any part already posted, so the next try edits it rather than posting another.
+            saved.messageIds = [
+                ...messageIds,
+                ...(saved.messageIds || []).slice(messageIds.length),
+            ];
+            state.regions[region.key] = saved;
+            saveState(state);
+            continue;
         }
+        state.regions[region.key] = {
+            messageIds,
+            update: latest.update,
+            historyUpdate: saved.historyUpdate,
+            entries: latest.entries,
+            previous: saved.update === latest.update ? saved.previous : saved.entries || null,
+        };
+        saveState(state);
+        logger.info('kop', `${region.label} board updated (${updated})`);
     }
 }
 
@@ -120,6 +169,15 @@ async function startKopBoard(client, channelId) {
         return;
     }
     const state = loadState();
+    // The first version posted one message per region; replace those with the
+    // two-part boards, posted afresh so the four stay in order.
+    for (const saved of Object.values(state.regions)) {
+        if (!saved.messageId) continue;
+        const old = await channel.messages.fetch(saved.messageId).catch(() => null);
+        if (old) await old.delete().catch(() => {});
+        delete saved.messageId;
+    }
+    saveState(state);
     let running = false;
     const tick = async () => {
         if (running) return;

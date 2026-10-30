@@ -49,15 +49,26 @@ function moveCell(move) {
  * @param {string} model.updated       "2026/10/30 07:00 JST"
  * @param {Array<{rank,name,score,dxScore,move}>} model.entries  best first
  * @param {Set<number>} [model.ours]   ranks of the group's own players
+ * @param {number} [model.from]       index of the first row to draw (0 = #1)
  * @param {number} [model.maxRows]
+ * @param {boolean} [model.oursBelow] also draw the group's players ranked below
+ *                                    the drawn rows (off when another card shows them)
  */
-function buildKopHtml({ region, updated, entries, ours = new Set(), maxRows = DEFAULT_MAX_ROWS }) {
-    const top = entries.slice(0, maxRows);
-    const below = entries.slice(maxRows).filter((e) => ours.has(e.rank));
+function buildKopHtml({
+    region,
+    updated,
+    entries,
+    ours = new Set(),
+    from = 0,
+    maxRows = DEFAULT_MAX_ROWS,
+    oursBelow = true,
+}) {
+    const top = entries.slice(from, from + maxRows);
+    const below = oursBelow ? entries.slice(from + maxRows).filter((e) => ours.has(e.rank)) : [];
     const row = (e) =>
         `<div class="row${ours.has(e.rank) ? ' ours' : ''}"><div class="rank tabular">${e.rank}</div>${moveCell(e.move)}<div class="name">${escapeHtml(displayName(e.name))}${ours.has(e.rank) ? '<span class="tag">friend</span>' : ''}</div><div class="score tabular">${formatInt(e.score)}</div><div class="dx tabular">${formatInt(e.dxScore)}</div></div>`;
     // A gap only where ranks are skipped, so the list is never taken to be contiguous when it isn't.
-    let previous = 0;
+    let previous = top.length ? top[0].rank - 1 : 0;
     const rows = [...top, ...below]
         .map((e) => {
             const gap = e.rank - previous > 1 ? '<div class="gap">···</div>' : '';
@@ -66,11 +77,16 @@ function buildKopHtml({ region, updated, entries, ours = new Set(), maxRows = DE
         })
         .join('');
 
+    const first = top[0]?.rank ?? 0;
+    const lastShown = top[top.length - 1]?.rank ?? 0;
+    const range = from === 0 ? `Top ${lastShown}` : `Ranks ${first}–${lastShown}`;
     const last = entries[entries.length - 1];
     const notes = [
         last ? `#${last.rank} is ${formatInt(last.score)}.` : '',
         entries.some((e) => e.move !== null) ? 'Movement is since SEGA’s previous update.' : '',
-        ours.size ? 'Highlighted: players on the tracked friend list.' : '',
+        [...top, ...below].some((e) => ours.has(e.rank))
+            ? 'Highlighted: players on the tracked friend list.'
+            : '',
     ]
         .filter(Boolean)
         .join(' ');
@@ -79,7 +95,7 @@ function buildKopHtml({ region, updated, entries, ours = new Set(), maxRows = DE
 <div class="card">
   <div class="label">KOP8th · maimai DX score attack</div>
   <div class="title">${escapeHtml(region)}</div>
-  <div class="sub">Top ${Math.min(maxRows, entries.length)} of ${entries.length} · updated ${escapeHtml(updated)}</div>
+  <div class="sub">${range} of ${entries.length} · updated ${escapeHtml(updated)}</div>
   <div class="table">
     <div class="head"><div class="rank">#</div><div class="move"></div><div class="name">Player</div><div class="score">Score</div><div class="dx">DX</div></div>
     ${rows}

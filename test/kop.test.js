@@ -77,3 +77,36 @@ test('KOP card: rows, movement glyphs, and friends below the cut', () => {
     assert.match(html, /67tify☆<span class="tag">friend/);
     assert.match(html, /3,029,466/);
 });
+
+test('KOP card: the second half of the ranking', () => {
+    const entries = Array.from({ length: 100 }, (_, i) => ({
+        rank: i + 1,
+        name: `P${i + 1}`,
+        score: 3030000 - i,
+        dxScore: 9000,
+        move: null,
+    }));
+    const html = buildKopHtml({
+        region: 'Japan',
+        updated: '',
+        entries,
+        from: 50,
+        maxRows: 50,
+        oursBelow: false,
+    });
+    assert.match(html, /Ranks 51–100 of 100/);
+    assert.match(html, />P51</);
+    assert.match(html, />P100</);
+    assert.doesNotMatch(html, />P50</);
+    assert.doesNotMatch(html, /···/);
+    const first = buildKopHtml({
+        region: 'Japan',
+        updated: '',
+        entries,
+        maxRows: 50,
+        oursBelow: false,
+        ours: new Set([80]),
+    });
+    assert.match(first, /Top 50 of 100/);
+    assert.doesNotMatch(first, />P80</); // shown on the second card instead
+});
