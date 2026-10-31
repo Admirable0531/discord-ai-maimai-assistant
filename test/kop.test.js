@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseRanking, formatUpdate, withMovement } = require('../src/web/kopRanking');
-const { kopMessage, rankingLine, PARTS } = require('../src/discord/kopText');
+const { kopEmbeds, packMessages, percent, percentDelta } = require('../src/discord/kopEmbeds');
 
 const body = {
     update: '2026/10/30 02:00:00 (JST)',
@@ -53,36 +53,66 @@ test('KOP: movement since the previous update', () => {
     );
 });
 
-test('KOP text: lines are searchable, friends starred, movement shown', () => {
-    const [first] = withMovement(parseRanking(body), [{ rank: 2, name: 'TNT_M+7R' }]);
-    assert.equal(rankingLine(first, false), '`  1` TNT\\_M+7R — 3,029,466 · DX 9,367 ▲1');
-    const [, second] = withMovement(parseRanking(body), [{ rank: 9, name: 'x' }]);
-    assert.equal(rankingLine(second, true), '`  2` ⭐ **Minjin** — 3,029,447 · DX 9,382 🆕');
+const region = { key: 'intl', label: 'International', pageUrl: 'https://example.com/r' };
+
+test('KOP embeds: scores as summed percentages, with the change since last time', () => {
+    assert.equal(percent(3029910), '302.9910%');
+    assert.equal(percentDelta(123), '+0.0123%');
+    assert.equal(percentDelta(-5), '−0.0005%');
+
+    const previous = [
+        { rank: 1, name: 'Ｍｉｎｊｉｎ', score: 3029300 },
+        { rank: 2, name: 'TNT_M+7R', score: 3029466 },
+        { rank: 3, name: 'Gone', score: 3029000 },
+    ];
+    const entries = withMovement(parseRanking(body), previous);
+    const embeds = kopEmbeds({
+        region,
+        updated: '2026/10/31 02:00 JST',
+        entries,
+        previous,
+        ours: new Set([2]),
+    });
+    const list = embeds[0].description;
+    assert.match(list, /`01\.` \*\*TNT\\_M\+7R\*\* — 302\.9466% ⬆️1/); // same score: no (+), moved up
+    assert.match(list, /`02\.` ⭐ \*\*Minjin\*\* — 302\.9447% \(\+0\.0147%\) ⬇️1/);
+    assert.match(list, /`03\.` \*\*67tify☆\*\* — 302\.9367% 🆕/);
+    assert.match(list, /Friends:\*\* Minjin #2/);
+
+    const report = embeds[embeds.length - 1].description;
+    assert.match(report, /BIGGEST IMPROVERS/);
+    assert.match(report, /Minjin\*\* — \+0\.0147% → 302\.9447%/);
+    assert.match(report, /New in the top 3:\*\* 1/);
+    assert.match(report, /Gone \(was #3\)/);
 });
 
-test("KOP text: the top 100 in three messages, each within Discord's limit", () => {
+test("KOP embeds: the first update has no report, and 100 lines fit Discord's limits", () => {
     const entries = Array.from({ length: 100 }, (_, i) => ({
         rank: i + 1,
         name: 'ＷＷＷＷＷＷＷＷ', // eight full-width characters, the longest maimai allows
-        score: 3029999 - i,
-        dxScore: 9999,
-        move: i % 2 ? 'new' : -12,
+        score: 3029999 - i * 150,
+        dxScore: 9000,
+        move: null,
     }));
-    const parts = PARTS.map((_, index) =>
-        kopMessage({
-            region: 'International',
-            updated: '2026/10/30 02:00 JST',
-            pageUrl: 'https://example.com/r',
-            entries,
-            index,
-        })
-    );
+    const first = kopEmbeds({ region, updated: '', entries, previous: null });
+    assert.equal(first.length, 2);
+    assert.match(first[1].footer.text, /first update/);
+
+    const previous = entries.map((e) => ({ ...e, score: e.score - 5000 }));
+    const moved = withMovement(entries, previous);
+    const embeds = kopEmbeds({ region, updated: '', entries: moved, previous });
+    assert.equal(embeds.length, 3);
+    assert.ok(embeds.every((e) => e.description.length <= 4096));
+    const messages = packMessages(embeds);
     assert.ok(
-        parts.every((t) => t.length <= 2000),
-        parts.map((t) => t.length).join()
+        messages.every(
+            (m) =>
+                m.reduce(
+                    (n, e) =>
+                        n + e.title.length + e.description.length + (e.footer?.text.length || 0),
+                    0
+                ) <= 6000
+        )
     );
-    assert.match(parts[0], /^\*\*KOP8th maimai — International\*\* · updated/);
-    assert.match(parts[1], /^` 35`/); // later parts carry on the list with no heading
-    assert.match(parts[2], /^` 68`/);
-    assert.equal(parts.join('\n').match(/^`/gm).length, 100);
+    assert.equal(messages.flat().length, 3);
 });
