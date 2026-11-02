@@ -32,6 +32,11 @@ const TYPE_BY_EXTENSION = {
     webp: 'image/webp',
 };
 
+/** The supported type the bytes actually are, or null. */
+function sniffType(data) {
+    return Object.keys(SIGNATURES).find((type) => SIGNATURES[type](data)) || null;
+}
+
 function declaredType(attachment) {
     const fromHeader = (attachment.contentType || '').split(';')[0].trim().toLowerCase();
     if (SIGNATURES[fromHeader]) return fromHeader;
@@ -106,14 +111,17 @@ async function collectImages(messages) {
                     skipped.push(`${name}: larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
                     continue;
                 }
-                if (!SIGNATURES[type](data)) {
+                // The bytes decide, not the label: Discord has labelled a PNG as WEBP, and that
+                // turned away a perfectly good image. Only files that are no image at all are refused.
+                const actual = sniffType(data);
+                if (!actual) {
                     skipped.push(
                         `${name}: the file isn't really a ${type.split('/')[1].toUpperCase()}`
                     );
                     continue;
                 }
                 totalBytes += data.length;
-                images.push({ mimeType: type, data: data.toString('base64'), name });
+                images.push({ mimeType: actual, data: data.toString('base64'), name });
             } catch (err) {
                 logger.warn('discord', `Could not download attachment ${name}`, err);
                 skipped.push(`${name}: could not be downloaded`);
@@ -151,6 +159,7 @@ function unreadableImagesReply({ images, skipped }) {
 }
 
 module.exports = {
+    sniffType,
     collectImages,
     unreadableImagesReply,
     describeImages,
