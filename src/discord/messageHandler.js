@@ -10,6 +10,7 @@ const { createMessageProgress } = require('./progress');
 const { whileTyping } = require('./typing');
 const { describeUser } = require('./speaker');
 const { onCooldown } = require('./cooldown');
+const { isChannelAllowed } = require('./channelLimits');
 
 const REPLY_CONTEXT_MAX_LENGTH = 800;
 
@@ -41,14 +42,16 @@ const INTRO =
     'friends and circles. Mention me with a question, or use `/ask`. `/help` lists everything I can do.';
 
 /**
- * Trigger: @-mentioned in a guild channel, or a DM from the owner. DMs from
+ * Trigger: @-mentioned in a guild channel (not via @everyone/@here, and only in
+ * the channels a limited server allows), or a DM from the owner. DMs from
  * anyone else are ignored — the bot doesn't respond to being messaged
  * directly except for the owner's own admin/chat access.
  */
 function shouldRespond(message, clientUserId) {
     if (message.author.bot) return false;
     if (!message.guild) return isOwner(message.author.id);
-    return message.mentions.has(clientUserId);
+    if (!isChannelAllowed(message.guild.id, message.channel)) return false;
+    return message.mentions.has(clientUserId, { ignoreEveryone: true });
 }
 
 /**

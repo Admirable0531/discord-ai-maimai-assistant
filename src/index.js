@@ -7,6 +7,7 @@ const { startDiscordLog } = require('./utils/discordLog');
 const { startKopBoard } = require('./discord/kopBoard');
 const { createDiscordClient } = require('./discord/client');
 const { registerMessageHandler } = require('./discord/messageHandler');
+const { isChannelAllowed } = require('./discord/channelLimits');
 const { registerVoiceStateHandler } = require('./voice/voiceSession');
 const { routeComponent } = require('./discord/componentRouter');
 const { closeBrowser } = require('./web/playwrightFetcher');
@@ -79,6 +80,16 @@ client.on('interactionCreate', async (interaction) => {
         return;
     }
     if (!interaction.isChatInputCommand()) return;
+
+    if (!isChannelAllowed(interaction.guildId, interaction.channel ?? interaction.channelId)) {
+        await interaction
+            .reply({
+                content: "I can't be used in this channel.",
+                flags: MessageFlags.Ephemeral,
+            })
+            .catch((err) => logger.error('bot', 'Could not refuse a command', err));
+        return;
+    }
 
     const command = client.commands.get(interaction.commandName);
     if (!command) {
